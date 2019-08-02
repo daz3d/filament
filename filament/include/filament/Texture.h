@@ -404,6 +404,9 @@ public:
     void generatePrefilterMipmap(Engine& engine,
             PixelBufferDescriptor&& buffer, const FaceOffsets& faceOffsets,
             PrefilterOptions const* options = nullptr);
+
+    //DAZ ADD
+    uint32_t getOGLId(Engine& engine)const noexcept;
 };
 
 } // namespace filament

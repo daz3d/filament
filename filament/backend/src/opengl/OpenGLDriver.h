@@ -51,6 +51,9 @@ class OpenGLDriver final : public backend::DriverBase {
 public:
     static backend::Driver* create(backend::OpenGLPlatform* platform, void* sharedGLContext) noexcept;
 
+    //DAZ ADD
+    uint32_t getTextureOGLId(const backend::Handle<backend::HwTexture>& handle)noexcept override;
+
     // OpenGLDriver specific fields
     struct GLBuffer {
         GLuint id = 0;

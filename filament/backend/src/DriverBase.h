@@ -153,6 +153,9 @@ public:
 
     Dispatcher& getDispatcher() noexcept final { return *mDispatcher; }
 
+    //DAZ ADD
+    uint32_t getTextureOGLId(const Handle<HwTexture>& handle)noexcept override { return 0; }
+
     // --------------------------------------------------------------------------------------------
     // Privates
     // --------------------------------------------------------------------------------------------

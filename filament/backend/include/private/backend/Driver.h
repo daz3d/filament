@@ -59,6 +59,9 @@ public:
     virtual void debugCommand(const char* methodName) {}
 #endif
 
+    //DAZ ADD
+    virtual uint32_t getTextureOGLId(const backend::Handle<backend::HwTexture>& handle)noexcept = 0;
+
     /*
      * Asynchronous calls here only to provide a type to CommandStream. They must be non-virtual
      * so that calling the concrete implementation won't go through a vtable.

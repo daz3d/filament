@@ -261,6 +261,12 @@ OpenGLDriver::~OpenGLDriver() noexcept {
     delete mOpenGLBlitter;
 }
 
+//DAZ ADD
+uint32_t OpenGLDriver::getTextureOGLId(const backend::Handle<backend::HwTexture>& handle) noexcept {
+    GLTexture* t = handle_cast<GLTexture*>(handle);
+    return t->gl.id;
+}
+
 // ------------------------------------------------------------------------------------------------
 // Driver interface concrete implementation
 // ------------------------------------------------------------------------------------------------

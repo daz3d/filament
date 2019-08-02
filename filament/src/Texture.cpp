@@ -120,6 +120,12 @@ void FTexture::terminate(FEngine& engine) {
     driver.destroyTexture(mHandle);
 }
 
+//DAZ Add
+uint32_t FTexture::getOGLId(FEngine& engine) const noexcept{
+    backend::Driver& driver = engine.getDriver();
+    return driver.getTextureOGLId(mHandle);
+}
+
 size_t FTexture::getWidth(size_t level) const noexcept {
     return valueForLevel(level, mWidth);
 }
@@ -581,6 +587,11 @@ size_t Texture::computeTextureDataSize(Texture::Format format, Texture::Type typ
 void Texture::generatePrefilterMipmap(Engine& engine, Texture::PixelBufferDescriptor&& buffer,
         const Texture::FaceOffsets& faceOffsets, PrefilterOptions const* options) {
     upcast(this)->generatePrefilterMipmap(upcast(engine), std::move(buffer), faceOffsets, options);
+}
+
+/*DAZ Add*/
+uint32_t Texture::getOGLId(Engine& engine)const noexcept {
+    return upcast(this)->getOGLId(upcast(engine));
 }
 
 } // namespace filament
