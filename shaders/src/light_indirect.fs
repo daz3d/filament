@@ -280,8 +280,15 @@ void isEvaluateClearCoatIBL(const PixelParams pixel, float specularAO, inout vec
     float clearCoatNoV = shading_NoV;
     vec3 clearCoatNormal = shading_normal;
 #endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    float reflectance = pixel.clearCoatReflectance;
+#else
     // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
-    float Fc = F_Schlick(0.04, 1.0, clearCoatNoV) * pixel.clearCoat;
+    float reflectance = 0.04;
+#endif
+
+    float Fc = F_Schlick(reflectance, 1.0, clearCoatNoV) * pixel.clearCoat;
     float attenuation = 1.0 - Fc;
     Fd *= attenuation;
     Fr *= sq(attenuation);
@@ -321,8 +328,15 @@ void evaluateClearCoatIBL(const PixelParams pixel, float specularAO, inout vec3 
     float clearCoatNoV = shading_NoV;
     vec3 clearCoatR = shading_reflected;
 #endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    float reflectance = pixel.clearCoatReflectance;
+#else
     // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
-    float Fc = F_Schlick(0.04, 1.0, clearCoatNoV) * pixel.clearCoat;
+    float reflectance = 0.04;
+#endif
+
+    float Fc = F_Schlick(reflectance, 1.0, clearCoatNoV) * pixel.clearCoat;
     float attenuation = 1.0 - Fc;
     Fr *= sq(attenuation);
     Fr += prefilteredRadiance(clearCoatR, pixel.clearCoatPerceptualRoughness) * (specularAO * Fc);
@@ -373,6 +387,10 @@ void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout v
 
     multiBounceAO(diffuseAO, pixel.diffuseColor, Fd);
     multiBounceSpecularAO(specularAO, pixel.f0, Fr);
+
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.specularAttenuation;
+#endif
 
     // Note: iblLuminance is already premultiplied by the exposure
     color.rgb += (Fd + Fr) * frameUniforms.iblLuminance;

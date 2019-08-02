@@ -57,6 +57,11 @@ struct MaterialInputs {
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR)
     vec4  postLightingColor;
 #endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    float clearCoatReflectance;
+    float specularAttenuation;
+#endif
 };
 
 void initMaterial(out MaterialInputs material) {
@@ -110,5 +115,10 @@ void initMaterial(out MaterialInputs material) {
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR)
     material.postLightingColor = vec4(0.0);
+#endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    material.clearCoatReflectance = 0.5;
+    material.specularAttenuation = 1.0;
 #endif
 }

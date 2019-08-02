@@ -307,6 +307,11 @@ const std::string ShaderGenerator::createFragmentProgram(filament::backend::Shad
     cg.generateDefine(fs, getShadingDefine(material.shading), true);
     generateMaterialDefines(fs, cg, mProperties);
 
+    //DAZ ADD
+    if (material.shading != Shading::UNLIT){
+        cg.generateDefine(fs, "DAZ_EXTENDED_PBR", true);
+    }
+
     cg.generateShaderInputs(fs, ShaderType::FRAGMENT, material.requiredAttributes, interpolation);
 
     // custom material variables

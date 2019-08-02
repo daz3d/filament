@@ -34,6 +34,10 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
     // The effect is fairly subtle and not deemed worth the cost for mobile
     vec3 Fd = diffuse * pixel.diffuseColor;
 
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.specularAttenuation;
+#endif
+
 #if defined(MATERIAL_HAS_SUBSURFACE_COLOR)
     // Cheap subsurface scatter
     Fd *= saturate(pixel.subsurfaceColor + NoL);

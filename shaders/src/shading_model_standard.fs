@@ -12,7 +12,15 @@ float clearCoatLobe(const PixelParams pixel, const vec3 h, float NoH, float LoH,
     // clear coat specular lobe
     float D = distributionClearCoat(pixel.clearCoatRoughness, clearCoatNoH, h);
     float V = visibilityClearCoat(LoH);
-    float F = F_Schlick(0.04, 1.0, LoH) * pixel.clearCoat; // fix IOR to 1.5
+
+#if defined(DAZ_EXTENDED_PBR)
+    float reflectance = pixel.clearCoatReflectance;
+#else
+    // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
+    float reflectance = 0.04;	
+#endif
+
+    float F = F_Schlick(reflectance, 1.0, LoH) * pixel.clearCoat; // fix IOR to 1.5
 
     Fcc = F;
     return D * V * F;
@@ -100,6 +108,10 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
 
     vec3 Fr = specularLobe(pixel, light, h, NoV, NoL, NoH, LoH);
     vec3 Fd = diffuseLobe(pixel, NoV, NoL, LoH);
+
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.specularAttenuation;
+#endif
 
 #if defined(MATERIAL_HAS_CLEAR_COAT)
     float Fcc;

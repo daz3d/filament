@@ -24,6 +24,10 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
     // diffuse BRDF
     vec3 Fd = pixel.diffuseColor * diffuse(pixel.roughness, shading_NoV, NoL, LoH);
 
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.specularAttenuation;
+#endif
+
     // NoL does not apply to transmitted light
     vec3 color = (Fd + Fr) * (NoL * occlusion);
 

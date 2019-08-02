@@ -34,6 +34,11 @@ struct PixelParams {
 #if defined(SHADING_MODEL_CLOTH) && defined(MATERIAL_HAS_SUBSURFACE_COLOR)
     vec3  subsurfaceColor;
 #endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    float clearCoatReflectance;
+    float specularAttenuation;
+#endif
 };
 
 float computeMicroShadowing(float NoL, float visibility) {
