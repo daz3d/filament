@@ -54,8 +54,11 @@ fragment {
             if (materialParams.normalIndex > -1) {
                 float2 uv = uvs[materialParams.normalIndex];
                 uv = (vec3(uv, 1.0) * materialParams.normalUvMatrix).xy;
-                material.normal = texture(materialParams_normalMap, uv).xyz * 2.0 - 1.0;
-                material.normal.xy *= materialParams.normalScale;
+
+            #if defined(MATERIAL_HAS_NORMAL)
+                    material.normal = texture(materialParams_normalMap, uv).xyz * 2.0 - 1.0;
+                    material.normal.xy *= materialParams.normalScale;
+            #endif
             }
         #endif
 

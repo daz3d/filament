@@ -34,7 +34,9 @@ material {
 
 fragment {
     void material(inout MaterialInputs material) {
+#if defined(MATERIAL_HAS_NORMAL)
         material.normal = texture(materialParams_normal, getUV0()).xyz * 2.0 - 1.0;
+#endif
         prepareMaterial(material);
         material.baseColor = texture(materialParams_albedo, getUV0());
         material.roughness = texture(materialParams_roughness, getUV0()).r;
