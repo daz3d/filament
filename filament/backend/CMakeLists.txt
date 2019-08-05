@@ -264,3 +264,10 @@ target_link_libraries(${TARGET} PRIVATE
 set(INSTALL_TYPE ARCHIVE)
 install(TARGETS ${TARGET} ${INSTALL_TYPE} DESTINATION lib/${DIST_DIR})
 install(DIRECTORY ${PUBLIC_HDR_DIR}/backend DESTINATION include)
+
+# ===DAZ Change=====================================================================================
+# need this for custom gl platform
+install(DIRECTORY ${PUBLIC_HDR_DIR}/private DESTINATION include/backend)
+install(FILES "src/opengl/OpenGLDriverFactory.h" DESTINATION include/backend/private/backend)
+# ==================================================================================================
+
