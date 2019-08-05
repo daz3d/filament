@@ -113,10 +113,11 @@ void getClearCoatPixelParams(const MaterialInputs material, inout PixelParams pi
     // by using the correct interface
     pixel.f0 = mix(pixel.f0, f0ClearCoatToSurface(pixel.f0), pixel.clearCoat);
 #endif
-#endif
 
 #if defined(DAZ_EXTENDED_PBR)
     pixel.clearCoatReflectance = computeDielectricF0(material.clearCoatReflectance);
+#endif
+
 #endif
 }
 
