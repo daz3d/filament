@@ -28,8 +28,6 @@ fragment {
         material.baseColor.rgb = materialParams.baseColor;
         material.roughness = materialParams.roughness;
         material.sheenColor = materialParams.sheenColor;
-#if defined(MATERIAL_HAS_SUBSURFACE_COLOR)
         material.subsurfaceColor = materialParams.subsurfaceColor;
-#endif
     }
 }
