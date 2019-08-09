@@ -32,6 +32,7 @@ add_mesh("assets/models/monkey/monkey.obj" "suzanne.filamesh")
 set(MATERIAL_SRCS
         materials/bakedColor.mat
         materials/bakedTexture.mat
+        materials/pointSprites.mat
         materials/aoPreview.mat
         materials/aiDefaultMat.mat
         materials/aiDefaultTrans.mat
@@ -248,6 +249,7 @@ if (NOT ANDROID)
     add_assimp_demo(material_sandbox)
     add_assimp_demo(sample_full_pbr)
 
+    add_filamesh_demo(point_sprites)
     add_filamesh_demo(sample_cloth)
     add_filamesh_demo(sample_normal_map)
     add_filamesh_demo(suzanne)
@@ -258,7 +260,7 @@ if (NOT ANDROID)
     target_link_libraries(frame_generator PRIVATE imageio)
     target_link_libraries(suzanne PRIVATE suzanne-resources)
     target_link_libraries(gltf_viewer PRIVATE gltf-resources gltfio)
-    target_link_libraries(gltf_baker PRIVATE gltf-resources gltfio imageio)
+    target_link_libraries(gltf_baker PRIVATE gltf-resources gltfio_pipeline imageio)
 
     add_executable(lucy_bloom lucy_bloom.cpp lucy_utils.h lucy_utils.cpp)
     target_compile_options(lucy_bloom PRIVATE ${COMPILER_FLAGS})

@@ -16,6 +16,8 @@
 
 #include "PlatformEGL.h"
 
+#include "OpenGLDriver.h"
+
 #include <jni.h>
 
 #include <assert.h>
@@ -286,6 +288,8 @@ Driver* PlatformEGL::createDriver(void* sharedContext) noexcept {
         goto error;
     }
 
+    initializeGlExtensions();
+
     // success!!
     return OpenGLDriverFactory::create(this, sharedContext);
 
@@ -488,6 +492,31 @@ void PlatformEGL::destroyExternalTextureStorage(
 
 int PlatformEGL::getOSVersion() const noexcept {
     return mOSVersion;
+}
+
+void PlatformEGL::createExternalImageTexture(void* texture) noexcept {
+    auto* t = (OpenGLDriver::GLTexture*) texture;
+    glGenTextures(1, &t->gl.id);
+    if (ext.OES_EGL_image_external_essl3) {
+        t->gl.targetIndex = (uint8_t)
+                OpenGLDriver::getIndexForTextureTarget(t->gl.target = GL_TEXTURE_EXTERNAL_OES);
+    }
+}
+
+void PlatformEGL::destroyExternalImage(void* texture) noexcept {
+    auto* t = (OpenGLDriver::GLTexture*) texture;
+    glDeleteTextures(1, &t->gl.id);
+}
+
+void PlatformEGL::initializeGlExtensions() noexcept {
+    unordered_string_set glExtensions;
+    GLint n;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &n);
+    for (GLint i = 0; i < n; ++i) {
+        const char * const extension = (const char*)glGetStringi(GL_EXTENSIONS, (GLuint)i);
+        glExtensions.insert(extension);
+    }
+    ext.OES_EGL_image_external_essl3 = glExtensions.has("GL_OES_EGL_image_external_essl3");
 }
 
 // This must called when the library is loaded. We need this to get a reference to the global VM

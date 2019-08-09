@@ -45,14 +45,15 @@ struct VulkanTexture;
 struct VulkanRenderTarget : private HwRenderTarget {
 
     // Creates an offscreen render target.
-    VulkanRenderTarget(VulkanContext& context, uint32_t w, uint32_t h, uint32_t miplevel) :
-            HwRenderTarget(w, h), mContext(context), mOffscreen(true), mColorLevel(miplevel) {}
+    VulkanRenderTarget(VulkanContext& context, uint32_t w, uint32_t h, uint32_t miplevel,
+            VulkanTexture* color, VulkanTexture* depth);
 
     // Creates a special "default" render target (i.e. associated with the swap chain)
     explicit VulkanRenderTarget(VulkanContext& context) : HwRenderTarget(0, 0), mContext(context),
             mOffscreen(false), mColorLevel(0) {}
 
     ~VulkanRenderTarget();
+
     bool isOffscreen() const { return mOffscreen; }
     void transformClientRectToPlatform(VkRect2D* bounds) const;
     void transformClientRectToPlatform(VkViewport* bounds) const;
@@ -60,16 +61,12 @@ struct VulkanRenderTarget : private HwRenderTarget {
     VulkanAttachment getColor() const;
     VulkanAttachment getDepth() const;
     uint32_t getColorLevel() const { return mColorLevel; }
-    void setColorImage(VulkanAttachment c);
-    void setDepthImage(VulkanAttachment d);
 private:
     VulkanAttachment mColor = {};
     VulkanAttachment mDepth = {};
     VulkanContext& mContext;
     bool mOffscreen;
     uint32_t mColorLevel;
-    bool mSharedColorImage = true;
-    bool mSharedDepthImage = true;
 };
 
 struct VulkanSwapChain : public HwSwapChain {

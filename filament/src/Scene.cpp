@@ -124,6 +124,7 @@ void FScene::prepare(const mat4f& worldOriginTransform) {
                     rcm.getBonesUbh(ri),
                     worldAABB.center,
                     0,
+                    rcm.getMorphWeights(ri),
                     rcm.getLayerMask(ri),
                     worldAABB.halfExtent,
                     {}, {});
@@ -196,6 +197,18 @@ void FScene::updateUBOs(utils::Range<uint32_t> visibleRenderables, backend::Hand
 
         UniformBuffer::setUniform(buffer,
                 offset + offsetof(PerRenderableUib, worldFromModelNormalMatrix), m);
+
+        // Note that we cast bools to uint32. Booleans are byte-sized in C++, but we need to
+        // initialize all 32 bits in the UBO field.
+
+        UniformBuffer::setUniform(buffer, offset + offsetof(PerRenderableUib, skinningEnabled),
+                uint32_t(sceneData.elementAt<VISIBILITY_STATE>(i).skinning));
+
+        UniformBuffer::setUniform(buffer, offset + offsetof(PerRenderableUib, morphingEnabled),
+                uint32_t(sceneData.elementAt<VISIBILITY_STATE>(i).morphing));
+
+        UniformBuffer::setUniform(buffer,
+                offset + offsetof(PerRenderableUib, morphWeights), sceneData.elementAt<MORPH_WEIGHTS>(i));
     }
 
     // TODO: handle static objects separately

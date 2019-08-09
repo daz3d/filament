@@ -42,6 +42,14 @@ static constexpr uint32_t SAMPLER_GROUP_COUNT = Program::UNIFORM_BINDING_COUNT;
 static constexpr uint32_t SAMPLER_BINDING_COUNT = backend::MAX_SAMPLER_COUNT;
 static constexpr uint32_t VERTEX_BUFFER_START = Program::UNIFORM_BINDING_COUNT;
 
+// The "zero" buffer is a small buffer for missing attributes that resides in the vertex slot
+// immediately following any user-provided vertex buffers.
+static constexpr uint32_t ZERO_VERTEX_BUFFER = MAX_VERTEX_ATTRIBUTE_COUNT;
+
+// The total number of vertex buffers "slots" that the Metal backend can bind.
+// + 1 to account for the zero buffer.
+static constexpr uint32_t VERTEX_BUFFER_COUNT = MAX_VERTEX_ATTRIBUTE_COUNT + 1;
+
 // Forward declarations necessary here, definitions at end of file.
 inline bool operator==(const MTLViewport& lhs, const MTLViewport& rhs);
 inline bool operator!=(const MTLViewport& lhs, const MTLViewport& rhs);
@@ -52,15 +60,16 @@ inline bool operator!=(const MTLViewport& lhs, const MTLViewport& rhs);
 // MTLVertexFormatInvalid, which is the default.
 struct VertexDescription {
     struct Attribute {
-        MTLVertexFormat format;
-        uint32_t buffer;
-        uint32_t offset;
+        MTLVertexFormat format;     // 8 bytes
+        uint32_t buffer;            // 4 bytes
+        uint32_t offset;            // 4 bytes
     };
     struct Layout {
-        uint32_t stride;
+        MTLVertexStepFunction step; // 8 bytes
+        uint64_t stride;            // 8 bytes
     };
-    Attribute attributes[MAX_VERTEX_ATTRIBUTE_COUNT] = {};
-    Layout layouts[MAX_VERTEX_ATTRIBUTE_COUNT] = {};
+    Attribute attributes[MAX_VERTEX_ATTRIBUTE_COUNT] = {};      // 256 bytes
+    Layout layouts[VERTEX_BUFFER_COUNT] = {};                   // 272 bytes
 
     bool operator==(const VertexDescription& rhs) const noexcept {
         bool result = true;
@@ -82,15 +91,19 @@ struct VertexDescription {
     }
 };
 
+// This assert checks that the struct is the size we expect without any "hidden" padding bytes
+// inserted by the compiler.
+static_assert(sizeof(VertexDescription) == 256 + 272, "VertexDescription unexpected size.");
+
 struct BlendState {
-    MTLBlendOperation alphaBlendOperation = MTLBlendOperationAdd;
-    MTLBlendOperation rgbBlendOperation = MTLBlendOperationAdd;
-    MTLBlendFactor destinationAlphaBlendFactor = MTLBlendFactorZero;
-    MTLBlendFactor destinationRGBBlendFactor = MTLBlendFactorZero;
-    MTLBlendFactor sourceAlphaBlendFactor = MTLBlendFactorOne;
-    MTLBlendFactor sourceRGBBlendFactor = MTLBlendFactorOne;
-    bool blendingEnabled = false;
-    char padding[3] = { 0 };
+    MTLBlendOperation alphaBlendOperation = MTLBlendOperationAdd;       // 8 bytes
+    MTLBlendOperation rgbBlendOperation = MTLBlendOperationAdd;         // 8 bytes
+    MTLBlendFactor destinationAlphaBlendFactor = MTLBlendFactorZero;    // 8 bytes
+    MTLBlendFactor destinationRGBBlendFactor = MTLBlendFactorZero;      // 8 bytes
+    MTLBlendFactor sourceAlphaBlendFactor = MTLBlendFactorOne;          // 8 bytes
+    MTLBlendFactor sourceRGBBlendFactor = MTLBlendFactorOne;            // 8 bytes
+    bool blendingEnabled = false;                                       // 1 byte
+    char padding[7] = { 0 };                                            // 7 bytes
 
     bool operator==(const BlendState& rhs) const noexcept {
         return (
@@ -108,6 +121,10 @@ struct BlendState {
         return !operator==(rhs);
     }
 };
+
+// This assert checks that the struct is the size we expect without any "hidden" padding bytes
+// inserted by the compiler.
+static_assert(sizeof(BlendState) == 56, "BlendState is unexpected size.");
 
 // StateCache caches Metal state objects using StateType as a key.
 // MetalType is the corresponding Metal API type.
@@ -204,13 +221,13 @@ private:
 // Pipeline state
 
 struct PipelineState {
-    id<MTLFunction> vertexFunction = nil;
-    id<MTLFunction> fragmentFunction = nil;
-    VertexDescription vertexDescription;
-    MTLPixelFormat colorAttachmentPixelFormat = MTLPixelFormatInvalid;
-    MTLPixelFormat depthAttachmentPixelFormat = MTLPixelFormatInvalid;
-    NSUInteger sampleCount = 1;
-    BlendState blendState;
+    id<MTLFunction> vertexFunction = nil;                               // 8 bytes
+    id<MTLFunction> fragmentFunction = nil;                             // 8 bytes
+    VertexDescription vertexDescription;                                // 528 bytes
+    MTLPixelFormat colorAttachmentPixelFormat = MTLPixelFormatInvalid;  // 8 bytes
+    MTLPixelFormat depthAttachmentPixelFormat = MTLPixelFormatInvalid;  // 8 bytes
+    NSUInteger sampleCount = 1;                                         // 8 bytes
+    BlendState blendState;                                              // 56 bytes
 
     bool operator==(const PipelineState& rhs) const noexcept {
         return (
@@ -229,6 +246,10 @@ struct PipelineState {
     }
 };
 
+// This assert checks that the struct is the size we expect without any "hidden" padding bytes
+// inserted by the compiler.
+static_assert(sizeof(PipelineState) == 624, "PipelineState unexpected size.");
+
 struct PipelineStateCreator {
     id<MTLRenderPipelineState> operator()(id<MTLDevice> device, const PipelineState& state)
             noexcept;
@@ -242,8 +263,9 @@ using PipelineStateCache = StateCache<PipelineState, id<MTLRenderPipelineState>,
 // Depth-stencil State
 
 struct DepthStencilState {
-    MTLCompareFunction compareFunction = MTLCompareFunctionNever;
-    bool depthWriteEnabled = false;
+    MTLCompareFunction compareFunction = MTLCompareFunctionNever;       // 8 bytes
+    bool depthWriteEnabled = false;                                     // 1 byte
+    char padding[7] = { 0 };                                            // 7 bytes
 
     bool operator==(const DepthStencilState& rhs) const noexcept {
         return this->compareFunction == rhs.compareFunction &&
@@ -254,6 +276,10 @@ struct DepthStencilState {
         return !operator==(rhs);
     }
 };
+
+// This assert checks that the struct is the size we expect without any "hidden" padding bytes
+// inserted by the compiler.
+static_assert(sizeof(DepthStencilState) == 16, "DepthStencilState unexpected size.");
 
 struct DepthStateCreator {
     id<MTLDepthStencilState> operator()(id<MTLDevice> device, const DepthStencilState& state)
@@ -268,9 +294,10 @@ using DepthStencilStateCache = StateCache<DepthStencilState, id<MTLDepthStencilS
 // Uniform buffers
 
 struct UniformBufferState {
-    bool bound = false;
-    Handle<HwUniformBuffer> ubh;
-    uint64_t offset = 0;
+    uint64_t offset = 0;            // 8 bytes
+    Handle<HwUniformBuffer> ubh;    // 4 bytes
+    bool bound = false;             // 1 byte
+    char padding[3] = { 0 };        // 3 bytes
 
     bool operator==(const UniformBufferState& rhs) const noexcept {
         return this->bound == rhs.bound &&
@@ -282,6 +309,8 @@ struct UniformBufferState {
         return !operator==(rhs);
     }
 };
+
+static_assert(sizeof(UniformBufferState) == 16, "UniformBufferState unexpected size.");
 
 using UniformBufferStateTracker = StateTracker<UniformBufferState>;
 

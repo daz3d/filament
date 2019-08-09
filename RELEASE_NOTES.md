@@ -3,8 +3,17 @@
 This file contains one line summaries of commits that are worthy of mentioning in release notes.
 A new header is inserted each time a *tag* is created.
 
+## v1.3.1
+
+- Unified Filament Sceneform and npm releases.
+- Improved cmgen SH with HDR images.
+- IndirectLight can now be queried for dominant direction and color.
+- Added support for vertex morphing.
+- Introduced custom attributes, accessible from the vertex shader.
 - Added Java / Kotlin bindings for KtxLoader.
 - Added JavaScript / Typescript bindings for the new `RenderTarget` class.
+- Added base path to glTF loadResources method for JavaScript.
+- Added support for iOS `CVPixelBuffer` external images with the OpenGL backend.
 
 ## sceneform-1.9pr4
 

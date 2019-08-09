@@ -108,7 +108,8 @@ static void importSkinningData(Skin& dstSkin, const cgltf_skin& srcSkin) {
     dstSkin.inverseBindMatrices.resize(srcSkin.joints_count);
     if (srcMatrices) {
         auto dstMatrices = (uint8_t*) dstSkin.inverseBindMatrices.data();
-        auto srcBuffer = srcMatrices->buffer_view->buffer->data;
+        uint8_t* bytes = (uint8_t*) srcMatrices->buffer_view->buffer->data;
+        auto srcBuffer = (void*) (bytes + srcMatrices->offset + srcMatrices->buffer_view->offset);
         memcpy(dstMatrices, srcBuffer, srcSkin.joints_count * sizeof(mat4f));
     }
 }
@@ -286,7 +287,7 @@ bool ResourceLoader::createTextures(details::FFilamentAsset* asset) const {
                 size_t(w * h * 4),
                 Texture::Format::RGBA,
                 Texture::Type::UBYTE,
-                (Texture::PixelBufferDescriptor::Callback) &free);
+                [] (void* buffer, size_t, void*) { free(buffer); });
 
         tex->setImage(*mConfig.engine, 0, std::move(pbd));
         tex->generateMipmaps(*mConfig.engine);
@@ -365,7 +366,10 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     std::vector<float2> fp32TexCoords;
     std::vector<uint3> ui32Triangles;
 
-    auto computeQuats = [&](const cgltf_primitive& prim, VertexBuffer* vb, uint8_t slot) {
+    constexpr int kMorphTargetUnused = -1;
+
+    auto computeQuats = [&](const cgltf_primitive& prim, VertexBuffer* vb, uint8_t slot,
+            int morphTargetIndex) {
 
         cgltf_size vertexCount = 0;
 
@@ -374,11 +378,22 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
         const cgltf_accessor* accessors[NUM_ATTRIBUTES] = {};
 
         // Collect accessors for normals, tangents, etc.
-        for (cgltf_size aindex = 0; aindex < prim.attributes_count; aindex++) {
-            const cgltf_attribute& attr = prim.attributes[aindex];
-            if (attr.index == 0) {
-                accessors[attr.type] = attr.data;
-                vertexCount = attr.data->count;
+        if (morphTargetIndex == kMorphTargetUnused) {
+            for (cgltf_size aindex = 0; aindex < prim.attributes_count; aindex++) {
+                const cgltf_attribute& attr = prim.attributes[aindex];
+                if (attr.index == 0) {
+                    accessors[attr.type] = attr.data;
+                    vertexCount = attr.data->count;
+                }
+            }
+        } else {
+            const cgltf_morph_target& morphTarget = prim.targets[morphTargetIndex];
+            for (cgltf_size aindex = 0; aindex < morphTarget.attributes_count; aindex++) {
+                const cgltf_attribute& attr = prim.attributes[aindex];
+                if (attr.index == 0) {
+                    accessors[attr.type] = attr.data;
+                    vertexCount = attr.data->count;
+                }
             }
         }
 
@@ -476,12 +491,17 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     };
 
     // Collect all TANGENT vertex attribute slots that need to be populated.
-    tsl::robin_map<VertexBuffer*, uint8_t> tangents;
+    tsl::robin_map<VertexBuffer*, uint8_t> baseTangents;
+    tsl::robin_map<VertexBuffer*, uint8_t> morphTangents[4];
     const BufferBinding* bindings = asset->getBufferBindings();
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
         if (bb.vertexBuffer && bb.generateTangents) {
-            tangents[bb.vertexBuffer] = bb.bufferIndex;
+            if (bb.isMorphTarget) {
+                morphTangents[bb.morphTargetIndex][bb.vertexBuffer] = bb.bufferIndex;
+            } else {
+                baseTangents[bb.vertexBuffer] = bb.bufferIndex;
+            }
         }
     }
 
@@ -492,9 +512,16 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
             cgltf_size nprims = mesh->primitives_count;
             for (cgltf_size index = 0; index < nprims; ++index) {
                 VertexBuffer* vb = asset->mPrimMap.at(mesh->primitives + index);
-                auto iter = tangents.find(vb);
-                if (iter != tangents.end()) {
-                    computeQuats(mesh->primitives[index], vb, iter->second);
+                auto iter = baseTangents.find(vb);
+                if (iter != baseTangents.end()) {
+                    computeQuats(mesh->primitives[index], vb, iter->second, kMorphTargetUnused);
+                }
+                for (int morphTarget = 0; morphTarget < 4; morphTarget++) {
+                    const auto& tangents = morphTangents[morphTarget];
+                    auto iter = tangents.find(vb);
+                    if (iter != tangents.end()) {
+                        computeQuats(mesh->primitives[index], vb, iter->second, morphTarget);
+                    }
                 }
             }
         }

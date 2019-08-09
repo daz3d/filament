@@ -142,11 +142,6 @@ void PostProcessManager::setSource(uint32_t viewportWidth, uint32_t viewportHeig
     ub.setUniform(offsetof(PostProcessingUib, time), fraction);
     ub.setUniform(offsetof(PostProcessingUib, uvScale), uvScale);
 
-    // The shader may need to know the offset between the top of the texture and the top
-    // of the rectangle that it actually needs to sample from.
-    const float yOffset = textureHeight - viewportHeight;
-    ub.setUniform(offsetof(PostProcessingUib, yOffset), yOffset);
-
     driver.updateSamplerGroup(mPostProcessSbh, std::move(group));
     driver.loadUniformBuffer(mPostProcessUbh, ub.toBufferDescriptor(driver));
 }
@@ -412,7 +407,6 @@ FrameGraphResource PostProcessManager::ssao(FrameGraph& fg, RenderPass& pass,
                 pInstance->setParameter("power", data.options.power);
                 pInstance->setParameter("maxLevel", uint32_t(levelCount - 1));
                 pInstance->commit(driver);
-                pInstance->use(driver);
 
                 PipelineState pipeline;
                 pipeline.program = mSSAO.getProgram();
@@ -420,6 +414,7 @@ FrameGraphResource PostProcessManager::ssao(FrameGraph& fg, RenderPass& pass,
                 pipeline.rasterState.depthFunc = RasterState::DepthFunc::G;
 
                 driver.beginRenderPass(ssao.target, ssao.params);
+                pInstance->use(driver);
                 driver.draw(pipeline, fullScreenRenderPrimitive);
                 driver.endRenderPass();
             });
@@ -513,13 +508,13 @@ FrameGraphResource PostProcessManager::mipmapPass(FrameGraph& fg,
                 pInstance->setParameter("depth", in, params);
                 pInstance->setParameter("level", uint32_t(level));
                 pInstance->commit(driver);
-                pInstance->use(driver);
 
                 PipelineState pipeline;
                 pipeline.program = mMipmapDepth.getProgram();
                 pipeline.rasterState = mMipmapDepth.getMaterial()->getRasterState();
 
                 driver.beginRenderPass(out.target, out.params);
+                pInstance->use(driver);
                 driver.draw(pipeline, fullScreenRenderPrimitive);
                 driver.endRenderPass();
             });
@@ -573,7 +568,6 @@ FrameGraphResource PostProcessManager::blurPass(FrameGraph& fg, FrameGraphResour
                 pInstance->setParameter("resolution",
                         float4{ desc.width, desc.height, 1.0f / desc.width, 1.0f / desc.height });
                 pInstance->commit(driver);
-                pInstance->use(driver);
 
                 PipelineState pipeline;
                 pipeline.program = mBlur.getProgram();
@@ -581,6 +575,7 @@ FrameGraphResource PostProcessManager::blurPass(FrameGraph& fg, FrameGraphResour
                 pipeline.rasterState.depthFunc = RasterState::DepthFunc::G;
 
                 driver.beginRenderPass(blurred.target, blurred.params);
+                pInstance->use(driver);
                 driver.draw(pipeline, fullScreenRenderPrimitive);
                 driver.endRenderPass();
             });

@@ -393,24 +393,10 @@ void VulkanDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
         TargetBufferFlags targets, uint32_t width, uint32_t height, uint8_t samples,
         TargetBufferInfo color, TargetBufferInfo depth,
         TargetBufferInfo stencil) {
+    auto colorTexture = color.handle ? handle_cast<VulkanTexture>(mHandleMap, color.handle) : nullptr;
+    auto depthTexture = depth.handle ? handle_cast<VulkanTexture>(mHandleMap, depth.handle) : nullptr;
     auto renderTarget = construct_handle<VulkanRenderTarget>(mHandleMap, rth, mContext,
-            width, height, color.level);
-    if (color.handle) {
-        auto colorTexture = handle_cast<VulkanTexture>(mHandleMap, color.handle);
-        renderTarget->setColorImage({
-            .image = colorTexture->textureImage,
-            .view = colorTexture->imageView,
-            .format = colorTexture->vkformat
-        });
-    }
-    if (depth.handle) {
-        auto depthTexture = handle_cast<VulkanTexture>(mHandleMap, depth.handle);
-        renderTarget->setDepthImage({
-            .image = depthTexture->textureImage,
-            .view = depthTexture->imageView,
-            .format = depthTexture->vkformat
-        });
-    }
+            width, height, color.level, colorTexture, depthTexture);
     mDisposer.createDisposable(renderTarget, [this, rth] () {
         destruct_handle<VulkanRenderTarget>(mHandleMap, rth);
     });
@@ -583,6 +569,10 @@ FenceStatus VulkanDriver::wait(Handle<HwFence> fh, uint64_t timeout) {
 bool VulkanDriver::isTextureFormatSupported(TextureFormat format) {
     assert(mContext.physicalDevice);
     VkFormat vkformat = getVkFormat(format);
+    // We automatically use an alternative format when the client requests DEPTH24.
+    if (format == TextureFormat::DEPTH24) {
+        vkformat = mContext.depthFormat;
+    }
     if (vkformat == VK_FORMAT_UNDEFINED) {
         return false;
     }
@@ -591,9 +581,26 @@ bool VulkanDriver::isTextureFormatSupported(TextureFormat format) {
     return info.optimalTilingFeatures != 0;
 }
 
+bool VulkanDriver::isTextureFormatMipmappable(backend::TextureFormat format) {
+    switch (format) {
+        case TextureFormat::DEPTH16:
+        case TextureFormat::DEPTH24:
+        case TextureFormat::DEPTH32F:
+        case TextureFormat::DEPTH24_STENCIL8:
+        case TextureFormat::DEPTH32F_STENCIL8:
+            return false;
+        default:
+            return isRenderTargetFormatSupported(format);
+    }
+}
+
 bool VulkanDriver::isRenderTargetFormatSupported(TextureFormat format) {
     assert(mContext.physicalDevice);
     VkFormat vkformat = getVkFormat(format);
+    // We automatically use an alternative format when the client requests DEPTH24.
+    if (format == TextureFormat::DEPTH24) {
+        vkformat = mContext.depthFormat;
+    }
     if (vkformat == VK_FORMAT_UNDEFINED) {
         return false;
     }
@@ -678,13 +685,15 @@ void VulkanDriver::beginRenderPass(Handle<HwRenderTarget> rth,
     const VkExtent2D extent = rt->getExtent();
     assert(extent.width > 0 && extent.height > 0);
 
-    mDisposer.acquire(rt, mContext.currentCommands->resources);
-
     const auto color = rt->getColor();
     const auto depth = rt->getDepth();
     const bool hasColor = color.format != VK_FORMAT_UNDEFINED;
     const bool hasDepth = depth.format != VK_FORMAT_UNDEFINED;
     const bool depthOnly = hasDepth && !hasColor;
+
+    mDisposer.acquire(rt, mContext.currentCommands->resources);
+    mDisposer.acquire(color.offscreen, mContext.currentCommands->resources);
+    mDisposer.acquire(depth.offscreen, mContext.currentCommands->resources);
 
     VkImageLayout finalLayout;
     if (!rt->isOffscreen()) {

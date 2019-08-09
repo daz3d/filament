@@ -69,6 +69,7 @@
 #include <math/mat4.h>
 
 #include <utils/EntityManager.h>
+#include <utils/NameComponentManager.h>
 #include <utils/Log.h>
 
 #include <emscripten.h>
@@ -465,6 +466,7 @@ class_<View>("View")
     .function("setPostProcessingEnabled", &View::setPostProcessingEnabled)
     .function("setAntiAliasing", &View::setAntiAliasing)
     .function("getAntiAliasing", &View::getAntiAliasing)
+    .function("setSampleCount", &View::setSampleCount)
     .function("setRenderTarget", EMBIND_LAMBDA(void, (View* self, RenderTarget* renderTarget), {
         self->setRenderTarget(renderTarget);
     }), allow_raw_pointers());
@@ -648,6 +650,9 @@ class_<RenderableBuilder>("RenderableManager$Builder")
         return &builder->skinning(matrices.size(), matrices.data());
     })
 
+    .BUILDER_FUNCTION("morphing", RenderableBuilder, (RenderableBuilder* builder, bool enable), {
+        return &builder->morphing(enable); })
+
     .BUILDER_FUNCTION("blendOrder", RenderableBuilder,
             (RenderableBuilder* builder, size_t index, uint16_t order), {
         return &builder->blendOrder(index, order); })
@@ -690,13 +695,19 @@ class_<RenderableManager>("RenderableManager")
     }), allow_raw_pointers())
 
     .function("setBonesFromMatrices", EMBIND_LAMBDA(void, (RenderableManager* self,
-        RenderableManager::Instance instance, emscripten::val transforms, size_t offset), {
+            RenderableManager::Instance instance, emscripten::val transforms, size_t offset), {
         auto nbones = transforms["length"].as<size_t>();
         std::vector<filament::math::mat4f> bones(nbones);
         for (size_t i = 0; i < nbones; i++) {
             bones[i] = transforms[i].as<flatmat4>().m;
         }
         self->setBones(instance, bones.data(), bones.size(), offset);
+    }), allow_raw_pointers())
+
+    // NOTE: this cannot take a float4 due to a binding issue.
+    .function("setMorphWeights", EMBIND_LAMBDA(void, (RenderableManager* self,
+            RenderableManager::Instance instance, float x, float y, float z, float w), {
+        self->setMorphWeights(instance, {x, y, z, w});
     }), allow_raw_pointers())
 
     .function("getAxisAlignedBoundingBox", &RenderableManager::getAxisAlignedBoundingBox)
@@ -865,7 +876,10 @@ class_<Material>("Material")
     .function("getDefaultInstance",
             select_overload<MaterialInstance*(void)>(&Material::getDefaultInstance),
             allow_raw_pointers())
-    .function("createInstance", &Material::createInstance, allow_raw_pointers());
+    .function("createInstance", &Material::createInstance, allow_raw_pointers())
+    .function("getName", EMBIND_LAMBDA(std::string, (Material* self), {
+        return std::string(self->getName());
+    }), allow_raw_pointers());
 
 class_<MaterialInstance>("MaterialInstance")
     .function("setFloatParameter", EMBIND_LAMBDA(void,
@@ -936,7 +950,12 @@ class_<IndirectLight>("IndirectLight")
     .function("getIntensity", &IndirectLight::getIntensity)
     .function("setRotation", EMBIND_LAMBDA(void, (IndirectLight* self, flatmat3 value), {
         return self->setRotation(value.m);
-    }), allow_raw_pointers());
+    }), allow_raw_pointers())
+    .function("getRotation", EMBIND_LAMBDA(flatmat3, (IndirectLight* self), {
+        return flatmat3 { self->getRotation() };
+    }), allow_raw_pointers())
+    .function("getDirectionEstimate", &IndirectLight::getDirectionEstimate)
+    .function("getColorEstimate", &IndirectLight::getColorEstimate);
 
 class_<IblBuilder>("IndirectLight$Builder")
     .function("_build", EMBIND_LAMBDA(IndirectLight*, (IblBuilder* builder, Engine* engine), {
@@ -1307,6 +1326,9 @@ class_<FilamentAsset>("gltfio$FilamentAsset")
     }), allow_raw_pointers())
 
     .function("getBoundingBox", &FilamentAsset::getBoundingBox)
+    .function("getName", EMBIND_LAMBDA(std::string, (FilamentAsset* self, utils::Entity entity), {
+        return std::string(self->getName(entity));
+    }), allow_raw_pointers())
     .function("getAnimator", &FilamentAsset::getAnimator, allow_raw_pointers())
     .function("getWireframe", &FilamentAsset::getWireframe)
     .function("getEngine", &FilamentAsset::getEngine, allow_raw_pointers())
@@ -1327,7 +1349,7 @@ class_<UbershaderLoader>("gltfio$UbershaderLoader")
 class_<AssetLoader>("gltfio$AssetLoader")
 
     .constructor(EMBIND_LAMBDA(AssetLoader*, (Engine* engine, UbershaderLoader materials), {
-        utils::NameComponentManager* names = nullptr;
+        auto names = new utils::NameComponentManager(utils::EntityManager::get());
         return AssetLoader::create({ engine, materials.provider, names });
     }), allow_raw_pointers())
 

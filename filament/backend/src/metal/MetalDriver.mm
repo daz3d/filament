@@ -55,6 +55,7 @@ MetalDriver::MetalDriver(backend::MetalPlatform* platform) noexcept
     mContext->driverPool = [[NSAutoreleasePool alloc] init];
     mContext->device = MTLCreateSystemDefaultDevice();
     mContext->commandQueue = [mContext->device newCommandQueue];
+    mContext->commandQueue.label = @"Filament";
     mContext->pipelineStateCache.setDevice(mContext->device);
     mContext->depthStencilStateCache.setDevice(mContext->device);
     mContext->samplerStateCache.setDevice(mContext->device);
@@ -402,6 +403,51 @@ FenceStatus MetalDriver::wait(Handle<HwFence> fh, uint64_t timeout) {
 bool MetalDriver::isTextureFormatSupported(TextureFormat format) {
     return getMetalFormat(format) != MTLPixelFormatInvalid ||
            TextureReshaper::canReshapeTextureFormat(format);
+}
+
+bool MetalDriver::isTextureFormatMipmappable(TextureFormat format) {
+    // Derived from the Metal 3.0 Feature Set Tables.
+    // In order for a format to be mipmappable, it must be color-renderable and filterable.
+    auto isMipmappable = [](TextureFormat format) {
+        switch (format) {
+            // Mipmappable across all devices:
+            case TextureFormat::R8:
+            case TextureFormat::R8_SNORM:
+            case TextureFormat::R16F:
+            case TextureFormat::RG8:
+            case TextureFormat::RG8_SNORM:
+            case TextureFormat::RG16F:
+            case TextureFormat::RGBA8:
+            case TextureFormat::SRGB8_A8:
+            case TextureFormat::RGBA8_SNORM:
+            case TextureFormat::RGB10_A2:
+            case TextureFormat::R11F_G11F_B10F:
+            case TextureFormat::RGBA16F:
+                return true;
+
+#if !defined(IOS)
+            // Mipmappable only on desktop:
+            case TextureFormat::R32F:
+            case TextureFormat::RG32F:
+            case TextureFormat::RGBA32F:
+                return true;
+#endif
+
+#if defined(IOS)
+            // Mipmappable only on iOS:
+            case TextureFormat::RGB9_E5:
+                return true;
+#endif
+
+            default:
+                return false;
+        }
+    };
+
+    // Certain Filament formats aren't natively supported by Metal, but can be reshaped into
+    // supported Formats.
+    TextureReshaper reshaper(format);
+    return isMipmappable(format) || isMipmappable(reshaper.getReshapedFormat());
 }
 
 bool MetalDriver::isRenderTargetFormatSupported(TextureFormat format) {
@@ -879,6 +925,12 @@ void MetalDriver::draw(backend::PipelineState ps, Handle<HwRenderPrimitive> rph)
     [mContext->currentCommandEncoder setVertexBuffers:primitive->buffers.data()
                                             offsets:primitive->offsets.data()
                                           withRange:bufferRange];
+
+    // Bind the zero buffer, used for missing vertex attributes.
+    static const char bytes[4] = { 0 };
+    [mContext->currentCommandEncoder setVertexBytes:bytes
+                                             length:4
+                                            atIndex:(VERTEX_BUFFER_START + ZERO_VERTEX_BUFFER)];
 
     MetalIndexBuffer* indexBuffer = primitive->indexBuffer;
 

@@ -1580,11 +1580,12 @@ type aliases:
 
 The following APIs are only available from the vertex block:
 
-                 Name               |   Type   |            Description
-:-----------------------------------|:--------:|:------------------------------------
-**getPosition()**                   | float4   |  Vertex position in the domain defined by the material (default: object/model space)
-**getWorldFromModelMatrix()**       | float4x4 |  Matrix that converts from model (object) space to world space
-**getWorldFromModelNormalMatrix()** | float3x3 |  Matrix that converts normals from model (object) space to world space
+                 Name                |   Type   |            Description
+:------------------------------------|:--------:|:------------------------------------
+**getPosition()**                    | float4   |  Vertex position in the domain defined by the material (default: object/model space)
+**getCustom0()** to **getCustom7()** | float4   |  Custom vertex attribute
+**getWorldFromModelMatrix()**        | float4x4 |  Matrix that converts from model (object) space to world space
+**getWorldFromModelNormalMatrix()**  | float3x3 |  Matrix that converts normals from model (object) space to world space
 
 ### Fragment only
 
@@ -1716,7 +1717,7 @@ variants:
 - `directionalLighting`, used when a directional light is present in the scene
 - `dynamicLighting`, used when a non-directional light (point, spot, etc.) is present in the scene
 - `shadowReceiver`, used when an object can receive shadows
-- `skinning`, used when an object is animated using GPU skinning
+- `skinning`, used when an object is animated using GPU skinning or vertex morphing
 
 Example:
 ```

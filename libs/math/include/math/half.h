@@ -114,7 +114,7 @@ public:
  *
  * minimum (denormal) value: 2^-24 = 5.96e-8
  * minimum (normal) value:   2^-14 = 6.10e-5
- * maximum value:            2-2^-10 = 65504
+ * maximum value:            (2 - 2^-10) * 2^15 = 65504
  *
  * Integers between 0 and 2048 can be represented exactly
  */
@@ -167,10 +167,13 @@ inline constexpr half operator "" _h(long double v) {
 
 namespace std {
 
-template<> struct is_floating_point< filament::math::half> : public std::true_type {};
+template<> struct is_floating_point<filament::math::half> : public std::true_type {};
+
+// note: this shouldn't be needed (is_floating_point<> is enough) but some version of msvc need it
+template<> struct is_arithmetic<filament::math::half> : public std::true_type {};
 
 template<>
-class numeric_limits< filament::math::half> {
+class numeric_limits<filament::math::half> {
 public:
     typedef filament::math::half type;
 

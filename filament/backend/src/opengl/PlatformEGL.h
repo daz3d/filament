@@ -65,10 +65,14 @@ public:
             uint32_t w, uint32_t h, backend::TextureFormat format) noexcept final;
     void destroyExternalTextureStorage(ExternalTexture* ets) noexcept final;
 
+    void createExternalImageTexture(void* texture) noexcept final;
+    void destroyExternalImage(void* texture) noexcept final;
+
     int getOSVersion() const noexcept final;
 
 private:
     EGLBoolean makeCurrent(EGLSurface drawSurface, EGLSurface readSurface) noexcept;
+    void initializeGlExtensions() noexcept;
 
     EGLDisplay mEGLDisplay = EGL_NO_DISPLAY;
     EGLContext mEGLContext = EGL_NO_CONTEXT;
@@ -78,6 +82,11 @@ private:
     EGLConfig mEGLConfig;
     EGLConfig mEGLTransparentConfig;
     int mOSVersion;
+
+    // supported extensions detected at runtime
+    struct {
+        bool OES_EGL_image_external_essl3 = false;
+    } ext;
 
     ExternalStreamManagerAndroid& mExternalStreamManager;
     ExternalTextureManagerAndroid& mExternalTextureManager;

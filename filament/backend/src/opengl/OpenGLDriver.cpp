@@ -227,6 +227,12 @@ OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform) noexcept
     disable(GL_DITHER);
     enable(GL_DEPTH_TEST);
 
+    // With desktop GL, the application must enable point size to allow vertex shaders to set it,
+    // but with OpenGL ES, this is always on and there is no enable flag.
+#if GL41_HEADERS
+    enable(GL_PROGRAM_POINT_SIZE);
+#endif
+
     // TODO: Don't enable scissor when it is not necessary. This optimization could be done here in
     // the driver by simply deferring the enable until the scissor rect is smaller than the window.
     enable(GL_SCISSOR_TEST);
@@ -761,10 +767,10 @@ default_case:
 //    GLRenderTarget            : 56        few
 // -- less than 64 bytes
 
-//    GLVertexBuffer            : 80        moderate
+//    GLVertexBuffer            : 208       moderate
 //    GLStream                  : 120       few
 //    GLUniformBuffer           : 128       many
-// -- less than 128 bytes
+// -- less than or equal to 208 bytes
 
 
 OpenGLDriver::HandleAllocator::HandleAllocator(const utils::HeapArea& area)
@@ -818,7 +824,7 @@ template<typename D, typename B, typename ... ARGS>
 typename std::enable_if<std::is_base_of<B, D>::value, D>::type*
 OpenGLDriver::construct(Handle<B> const& handle, ARGS&& ... args) noexcept {
     assert(handle);
-    static_assert(sizeof(D) <= 128, "Handle<> too large");
+    static_assert(sizeof(D) <= 208, "Handle<> too large");
     D* addr = handle_cast<D *>(const_cast<Handle<B>&>(handle));
     new(addr) D(std::forward<ARGS>(args)...);
 #if !defined(NDEBUG) && UTILS_HAS_RTTI
@@ -1028,18 +1034,17 @@ void OpenGLDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint
 
     GLTexture* t = construct<GLTexture>(th, target, levels, samples, w, h, depth, format, usage);
     if (UTILS_LIKELY(usage & TextureUsage::SAMPLEABLE)) {
-        glGenTextures(1, &t->gl.id);
 
         // below we're using the a = foo(b = C) pattern, this is on purpose, to make sure
         // we don't forget to update targetIndex, and that we do it with the correct value.
         // We DO NOT update targetIndex at function exit to take advantage of the fact that
         // getIndexForTextureTarget() is constexpr -- so all of this disappears at compile time.
 
-        if (UTILS_UNLIKELY(t->target == SamplerType::SAMPLER_EXTERNAL &&
-                           ext.OES_EGL_image_external_essl3)) {
-            t->gl.targetIndex = (uint8_t)
-                    getIndexForTextureTarget(t->gl.target = GL_TEXTURE_EXTERNAL_OES);
+        if (UTILS_UNLIKELY(t->target == SamplerType::SAMPLER_EXTERNAL)) {
+            mPlatform.createExternalImageTexture(t);
         } else {
+            glGenTextures(1, &t->gl.id);
+
             t->gl.internalFormat = getInternalFormat(format);
             assert(t->gl.internalFormat);
 
@@ -1524,7 +1529,11 @@ void OpenGLDriver::destroyTexture(Handle<HwTexture> th) {
             if (t->gl.rb) {
                 glDeleteRenderbuffers(1, &t->gl.rb);
             }
-            glDeleteTextures(1, &t->gl.id);
+            if (UTILS_UNLIKELY(t->target == SamplerType::SAMPLER_EXTERNAL)) {
+                mPlatform.destroyExternalImage(t);
+            } else {
+                glDeleteTextures(1, &t->gl.id);
+            }
         } else {
             assert(t->gl.target == GL_RENDERBUFFER);
             assert(t->gl.rb == 0);
@@ -1668,6 +1677,21 @@ bool OpenGLDriver::isTextureFormatSupported(TextureFormat format) {
         return ext.texture_compression_s3tc;
     }
     return getInternalFormat(format) != 0;
+}
+
+bool OpenGLDriver::isTextureFormatMipmappable(TextureFormat format) {
+    // The OpenGL spec for GenerateMipmap stipulates that it returns INVALID_OPERATION unless
+    // the sized internal format is both color-renderable and texture-filterable.
+    switch (format) {
+        case TextureFormat::DEPTH16:
+        case TextureFormat::DEPTH24:
+        case TextureFormat::DEPTH32F:
+        case TextureFormat::DEPTH24_STENCIL8:
+        case TextureFormat::DEPTH32F_STENCIL8:
+            return false;
+        default:
+            return isRenderTargetFormatSupported(format);
+    }
 }
 
 bool OpenGLDriver::isRenderTargetFormatSupported(TextureFormat format) {
@@ -2098,16 +2122,21 @@ void OpenGLDriver::setCompressedTextureData(GLTexture* t,
 }
 
 void OpenGLDriver::setupExternalImage(void* image) {
+    mPlatform.retainExternalImage(image);
 }
 
 void OpenGLDriver::cancelExternalImage(void* image) {
+    mPlatform.releaseExternalImage(image);
 }
 
 void OpenGLDriver::setExternalImage(Handle<HwTexture> th, void* image) {
+    GLTexture* t = handle_cast<GLTexture*>(th);
+
+    mPlatform.setExternalImage(image, t);
+
+    // TODO: move this logic to PlatformEGL.
     if (ext.OES_EGL_image_external_essl3) {
         DEBUG_MARKER()
-
-        GLTexture* t = handle_cast<GLTexture*>(th);
 
         assert(t->target == SamplerType::SAMPLER_EXTERNAL);
         assert(t->gl.target == GL_TEXTURE_EXTERNAL_OES);
@@ -2243,11 +2272,18 @@ void OpenGLDriver::beginRenderPass(Handle<HwRenderTarget> rth,
     setViewport(params.viewport.left, params.viewport.bottom,
             params.viewport.width, params.viewport.height);
 
-    setScissor(params.viewport.left, params.viewport.bottom,
-            params.viewport.width, params.viewport.height);
+    // Use scissor test if not told to ignore, and if the viewport doesn't cover the whole target.
+    const bool respectScissor = !(clearFlags & RenderPassFlags::IGNORE_SCISSOR) &&
+                                (params.viewport.left != 0 ||
+                                    params.viewport.bottom != 0 ||
+                                    params.viewport.width != rt->width ||
+                                    params.viewport.height != rt->height);
+    if (respectScissor) {
+        setScissor(params.viewport.left, params.viewport.bottom,
+                params.viewport.width, params.viewport.height);
+    }
 
     if (clearFlags & TargetBufferFlags::ALL) {
-        const bool respectScissor = !(clearFlags & RenderPassFlags::IGNORE_SCISSOR);
         const bool clearColor = clearFlags & TargetBufferFlags::COLOR;
         const bool clearDepth = clearFlags & TargetBufferFlags::DEPTH;
         const bool clearStencil = clearFlags & TargetBufferFlags::STENCIL;

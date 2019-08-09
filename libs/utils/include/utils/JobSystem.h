@@ -257,6 +257,8 @@ public:
         run(p);
     }
 
+    void signal() noexcept;
+
     /*
      * Add job to this thread's execution queue and and keep a reference to it.
      * Current thread must be owned by JobSystem's thread pool. See adopt().
@@ -303,7 +305,6 @@ public:
     };
 
     static void setThreadPriority(Priority priority) noexcept;
-    static void setThreadAffinity(uint32_t mask) noexcept;
     static void setThreadAffinityById(size_t id) noexcept;
 
     size_t getParallelSplitCount() const noexcept {
@@ -350,9 +351,11 @@ private:
 
     void requestExit() noexcept;
     bool exitRequested() const noexcept;
+    bool hasActiveJobs() const noexcept;
 
     void loop(ThreadState* state) noexcept;
     bool execute(JobSystem::ThreadState& state) noexcept;
+    Job* steal(JobSystem::ThreadState& state) noexcept;
     void finish(Job* job) noexcept;
 
     void put(WorkQueue& workQueue, Job* job) noexcept {
@@ -373,12 +376,13 @@ private:
         return !index ? nullptr : &mJobStorageBase[index - 1];
     }
 
-    // these have thread contention, keep them together
-    utils::Mutex mLooperLock;
-    utils::Condition mLooperCondition;
+    void wait(std::unique_lock<Mutex>& lock) noexcept;
+    void wake() noexcept;
 
+    // these have thread contention, keep them together
     utils::Mutex mWaiterLock;
     utils::Condition mWaiterCondition;
+    uint32_t mWaiterCount = 0;
 
     std::atomic<uint32_t> mActiveJobs = { 0 };
     utils::Arena<utils::ThreadSafeObjectPoolAllocator<Job>, LockingPolicy::NoLock> mJobPool;
@@ -465,20 +469,20 @@ struct ParallelForJobData {
 
         // We first split about the number of threads we have, and only then we split the rest
         // in a single thread (but execute the final cut in new jobs, see parallel() below),
-        // this way we save a lot of copies of JobData.
+        // this way we save a lot of copies of JobData and miss-predicted branches
         if (splits == js.getParallelSplitCount()) {
             parallel(js, parent);
             return;
         }
 
+        // this branch is often miss-predicted (it both sides happen 50% of the calls)
         if (splitter.split(splits, count)) {
             const size_type lc = count / 2;
             JobData ld(start, lc, splits + uint8_t(1), functor, splitter);
             JobSystem::Job* l = js.createJob<JobData, &JobData::parallelWithJobs>(parent, std::move(ld));
-
             if (UTILS_UNLIKELY(l == nullptr)) {
                 // couldn't create a job, just pretend we're done splitting
-                goto done;
+                goto execute;
             }
 
             // start the left side before attempting the right side, so we parallelize in case
@@ -488,56 +492,59 @@ struct ParallelForJobData {
             const size_type rc = count - lc;
             JobData rd(start + lc, rc, splits + uint8_t(1), functor, splitter);
             JobSystem::Job* r = js.createJob<JobData, &JobData::parallelWithJobs>(parent, std::move(rd));
-
             if (UTILS_UNLIKELY(r == nullptr)) {
                 // couldn't allocate right side job, execute it right now
-                functor(start + lc, rc);
-                return;
+                start += lc;
+                count = rc;
+                goto execute;
             }
 
             // All good, execute the right side, but don't signal it,
             // so it's more likely to be executed next on the same thread
             js.run(r, JobSystem::DONT_SIGNAL);
         } else {
-            done:
+execute:
             // we're done splitting, do the real work here!
             functor(start, count);
         }
     }
 
+private:
     void parallel(JobSystem& js, JobSystem::Job* parent) noexcept {
-        // here we split the data ona single thread, and launch jobs once we're completely
-        // done splitting
-        if (splitter.split(splits, count)) {
-            auto lc = count / 2;
-            auto rc = count - lc;
-            auto rd = start + lc;
-            auto s  = ++splits;
 
-            // left-side
-            count = lc;
-            parallel(js, parent);
-
-            // note: in practice the compiler is able to optimize out the call to parallel() below
-            // right-side
-            start = rd;
-            count = rc;
-            splits = s;
-            parallel(js, parent);
-        } else {
-            // only capture what we need
-            auto job = js.createJob(parent,
-                    [f = functor, s = start, c = count](JobSystem&, JobSystem::Job*) {
-                // we're done splitting, do the real work here!
-                f(s, c);
-            });
-            if (UTILS_LIKELY(job)) {
-                js.run(job);
-            } else {
-                // oops, no more job available
-                functor(start, count);
-            }
+        // figure out how many splits we need
+        size_type c = count;
+        uint8_t   s = splits;
+        while (splitter.split(s, c)) {
+            c /= 2u;
+            ++s;
         }
+
+        // then linearly create all jobs with number of elements required by the splitter
+        JobSystem::Job* job = nullptr;
+        auto& func = functor;
+        size_type const first = start;
+        size_type const end = first + count;
+        size_type curr = first;
+
+        while (curr + 2u * c < end) {
+            // this creates jobs from the end of the buffer because the WorkStealingDequeue
+            // is a LIFO, this could help streaming to the d-cache.
+            const size_type pos = end - (curr - first) - c;
+            job = js.createJob(parent, [func, pos, c](JobSystem&, JobSystem::Job*) {
+                func(pos, c);
+            });
+            if (UTILS_UNLIKELY(!job)) {
+                goto finish; // oops, no more job available
+            }
+            js.run(job, JobSystem::DONT_SIGNAL);
+            curr += c;
+        }
+    finish:
+        assert(end >= curr);
+        assert(end - curr >= c);
+        js.signal();
+        functor(start, end - curr);
     }
 
     size_type start;            // 4

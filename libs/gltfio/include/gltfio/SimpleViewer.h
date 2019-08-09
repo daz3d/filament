@@ -34,7 +34,6 @@
 #include <gltfio/FilamentAsset.h>
 
 #include <utils/Entity.h>
-#include <utils/NameComponentManager.h>
 
 #include <math/vec3.h>
 
@@ -75,10 +74,9 @@ public:
      * passing it in.
      *
      * @param asset The asset to view.
-     * @param names Optional name manager used to add glTF mesh names to nodes.
      * @param scale Adds a transform to the root to fit the asset into a unit cube at the origin.
      */
-    void setAsset(FilamentAsset* asset, utils::NameComponentManager* names, bool scale);
+    void setAsset(FilamentAsset* asset, bool scale);
 
     /**
      * Removes the current asset from the viewer.
@@ -129,6 +127,8 @@ public:
     void setIBLIntensity(float brightness) { mIblIntensity = brightness; }
 
 private:
+    void updateIndirectLight();
+
     // Immutable properties set from the constructor.
     filament::Engine* const mEngine;
     filament::Scene* const mScene;
@@ -137,7 +137,6 @@ private:
 
     // Properties that can be changed from the application.
     FilamentAsset* mAsset = nullptr;
-    utils::NameComponentManager* mNames = nullptr;
     Animator* mAnimator = nullptr;
     filament::IndirectLight* mIndirectLight = nullptr;
     std::function<void()> mCustomUI;
@@ -148,9 +147,11 @@ private:
     float mIblIntensity = 30000.0f;
     float mIblRotation = 0.0f;
     float mSunlightIntensity = 100000.0f;
+    filament::math::float3 mSunlightColor = filament::Color::toLinear<filament::ACCURATE>({ 0.98, 0.92, 0.89});
     filament::math::float3 mSunlightDirection = {0.6, -1.0, -0.8};
     bool mEnableWireframe = false;
     bool mEnableSunlight = true;
+    bool mEnableShadows = true;
     bool mEnableDithering = true;
     bool mEnablePrepass = true;
     bool mEnableFxaa = true;
@@ -198,12 +199,11 @@ SimpleViewer::SimpleViewer(filament::Engine* engine, filament::Scene* scene, fil
         uint32_t flags, int sidebarWidth) :
         mEngine(engine), mScene(scene), mView(view),
         mSunlight(utils::EntityManager::get().create()),
-        mNames(new utils::NameComponentManager(utils::EntityManager::get())),
         mSidebarWidth(sidebarWidth),
         mFlags(flags) {
     using namespace filament;
     LightManager::Builder(LightManager::Type::SUN)
-        .color(Color::toLinear<ACCURATE>({0.98, 0.92, 0.89}))
+        .color(mSunlightColor)
         .intensity(mSunlightIntensity)
         .direction(normalize(mSunlightDirection))
         .castShadows(true)
@@ -220,12 +220,11 @@ SimpleViewer::~SimpleViewer() {
     mEngine->destroy(mSunlight);
 }
 
-void SimpleViewer::setAsset(FilamentAsset* asset, utils::NameComponentManager* names, bool scale) {
+void SimpleViewer::setAsset(FilamentAsset* asset, bool scale) {
     using namespace filament::math;
     removeAsset();
     mAsset = asset;
     mAnimator = asset->getAnimator();
-    mNames = names;
     if (scale) {
         auto& tcm = mEngine->getTransformManager();
         auto root = tcm.getInstance(mAsset->getRoot());
@@ -245,12 +244,23 @@ void SimpleViewer::removeAsset() {
     }
     mAsset = nullptr;
     mAnimator = nullptr;
-    mNames = nullptr;
 }
 
 void SimpleViewer::setIndirectLight(filament::IndirectLight* ibl) {
     using namespace filament::math;
     mIndirectLight = ibl;
+    if (ibl) {
+        float3 d = ibl->getDirectionEstimate();
+        float4 c = ibl->getColorEstimate(d);
+        mSunlightDirection = d;
+        mSunlightColor = c.rgb;
+        mSunlightIntensity = c[3] * ibl->getIntensity();
+        updateIndirectLight();
+    }
+}
+
+void SimpleViewer::updateIndirectLight() {
+    using namespace filament::math;
     if (mIndirectLight) {
         mIndirectLight->setIntensity(mIblIntensity);
         mIndirectLight->setRotation(mat3f::rotation(mIblRotation, float3{ 0, 1, 0 }));
@@ -312,11 +322,8 @@ void SimpleViewer::updateUserInterface() {
         auto rinstance = rm.getInstance(entity);
         intptr_t treeNodeId = 1 + entity.getId();
 
-        const char* label = rinstance ? "Mesh" : "Node";
-        auto nameInstance = mNames->getInstance(entity);
-        if (nameInstance) {
-            label = mNames->getName(nameInstance);
-        }
+        const char* name = mAsset->getName(entity);
+        const char* label = name ? name : (rinstance ? "Mesh" : "Node");
 
         ImGuiTreeNodeFlags flags = rinstance ? 0 : ImGuiTreeNodeFlags_DefaultOpen;
         std::vector<utils::Entity> children(tm.getChildCount(tinstance));
@@ -383,8 +390,9 @@ void SimpleViewer::updateUserInterface() {
         ImGui::SliderFloat("IBL intensity", &mIblIntensity, 0.0f, 100000.0f);
         ImGui::SliderAngle("IBL rotation", &mIblRotation);
         ImGui::SliderFloat("Sun intensity", &mSunlightIntensity, 50000.0, 150000.0f);
-        ImGuiExt::DirectionWidget("Sun direction", &mSunlightDirection.x);
+        ImGuiExt::DirectionWidget("Sun direction", mSunlightDirection.v);
         ImGui::Checkbox("Enable sunlight", &mEnableSunlight);
+        ImGui::Checkbox("Enable shadows", &mEnableShadows);
     }
 
     if (mEnableSunlight) {
@@ -392,6 +400,8 @@ void SimpleViewer::updateUserInterface() {
         auto sun = lm.getInstance(mSunlight);
         lm.setIntensity(sun, mSunlightIntensity);
         lm.setDirection(sun, normalize(mSunlightDirection));
+        lm.setColor(sun, mSunlightColor);
+        lm.setShadowCaster(sun, mEnableShadows);
     } else {
         mScene->remove(mSunlight);
     }
@@ -420,7 +430,7 @@ void SimpleViewer::updateUserInterface() {
     mSidebarWidth = ImGui::GetWindowWidth();
     ImGui::End();
 
-    setIndirectLight(mIndirectLight);
+    updateIndirectLight();
 }
 
 } // namespace gltfio

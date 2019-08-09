@@ -119,37 +119,31 @@ public:
          * Sets the irradiance as Spherical Harmonics.
          *
          * The irradiance must be pre-convolved by \f$ \langle n \cdot l \rangle \f$ and
-         * specified as Spherical Harmonics coefficients \f$ L_{l}^{m} \f$ pre-scaled by the
-         * normalization factors \f$ \hat{K_{l}^{m}} \f$ and pre-multiplied by the Lambertian diffuse
-         * BRDF \f$ \frac{1}{\pi} \f$. The final coefficients can be generated using the `cmgen` tool.
+         * pre-multiplied by the Lambertian diffuse BRDF \f$ \frac{1}{\pi} \f$ and
+         * specified as Spherical Harmonics coefficients.
+         *
+         * Additionally, these Spherical Harmonics coefficients must be pre-scaled by the
+         * reconstruction factors \f$ A_{l}^{m} \f$ below.
+         *
+         * The final coefficients can be generated using the `cmgen` tool.
          *
          * The index in the \p sh array is given by:
          *
          *  `index(l, m) = l * (l + 1) + m`
          *
-         * and:
+         *  \f$ sh[index(l,m)] = L_{l}^{m} \frac{1}{\pi} A_{l}^{m} \hat{C_{l}} \f$
          *
-         * \f$ \hat{K_{l}^{m}}  =
-         * \begin{cases}
-         *      K_{l}^{m}          & \text{ if } m = 0 \\
-         *      \sqrt{2}K_{l}^{m}  & \text{ if } m \neq 0
-         * \end{cases}\f$
-         *
-         *  With \f$ K_{l}^{m} \f$ the SH basis normalization factors,
-         *
-         *  \f$ sh[index(l,m)] = L_{l}^{m} \frac{1}{\pi} \hat{K_{l}^{m}} \hat{C_{l}} \f$
-         *
-         *   index |  l  |  m  |  \f$ \hat{K_{l}^{m}} \f$ |  \f$ \hat{C_{l}} \f$  |  \f$ \frac{1}{\pi} \hat{K_{l}^{m}}\hat{C_{l}} \f$ |
-         *  :-----:|:---:|:---:|:------------------------:|:---------------------:|:-------------------------------------------------:
-         *     0   |  0  |  0  |         0.282095         |       3.1415926       |  0.282095
-         *     1   |  1  | -1  |         0.488603         |       2.0943951       |  0.325735
-         *     2   |  ^  |  0  |         0.488603         |       ^               |  0.325735
-         *     3   |  ^  |  1  |         0.488603         |       ^               |  0.325735
-         *     4   |  2  | -2  |         0.182091         |       0.785398        |  0.045523
-         *     5   |  ^  | -1  |         0.364183         |       ^               |  0.091046
-         *     6   |  ^  |  0  |         0.630783         |       ^               |  0.157696
-         *     7   |  ^  |  1  |         0.364183         |       ^               |  0.091046
-         *     8   |  ^  |  2  |         0.182091         |       ^               |  0.045523
+         *   index |  l  |  m  |  \f$ A_{l}^{m} \f$ |  \f$ \hat{C_{l}} \f$  |  \f$ \frac{1}{\pi} A_{l}^{m}\hat{C_{l}} \f$ |
+         *  :-----:|:---:|:---:|:------------------:|:---------------------:|:--------------------------------------------:
+         *     0   |  0  |  0  |      0.282095      |       3.1415926       |   0.282095
+         *     1   |  1  | -1  |     -0.488602      |       2.0943951       |  -0.325735
+         *     2   |  ^  |  0  |      0.488602      |       ^               |   0.325735
+         *     3   |  ^  |  1  |     -0.488602      |       ^               |  -0.325735
+         *     4   |  2  | -2  |      1.092548      |       0.785398        |   0.273137
+         *     5   |  ^  | -1  |     -1.092548      |       ^               |  -0.273137
+         *     6   |  ^  |  0  |      0.315392      |       ^               |   0.078848
+         *     7   |  ^  |  1  |     -1.092548      |       ^               |  -0.273137
+         *     8   |  ^  |  2  |      0.546274      |       ^               |   0.136569
          *
          *
          * Only 1, 2 or 3 bands are allowed.
@@ -170,7 +164,7 @@ public:
         /**
          * Sets the irradiance from the radiance expressed as Spherical Harmonics.
          *
-         * The radiance must be specified as Spherical Harmonics coefficients \f$ L_{l}^{m}
+         * The radiance must be specified as Spherical Harmonics coefficients \f$ L_{l}^{m} \f$
          *
          * The index in the \p sh array is given by:
          *
@@ -285,6 +279,44 @@ public:
      * Returns the rigid-body transformation applied to the IBL.
      */
     const math::mat3f& getRotation() const noexcept;
+
+    /**
+     * Helper to estimate the direction of the dominant light in the environment.
+     *
+     * This assumes that there is only a single dominant light (such as the sun in outdoors
+     * environments), if it's not the case the direction returned will be an average of the
+     * various lights based on their intensity.
+     *
+     * If there are no clear dominant light, as is often the case with low dynamic range (LDR)
+     * environments, this method may return a wrong or unexpected direction.
+     *
+     * The dominant light direction can be used to set a directional light's direction,
+     * for instance to produce shadows that match the environment.
+     *
+     * @return A unit vector representing the direction of the dominant light
+     *
+     * @see LightManager::Builder::direction()
+     * @see getColorEstimate()
+     */
+    math::float3 getDirectionEstimate() const noexcept;
+
+    /**
+     * Helper to estimate the color and relative intensity of the environment in a given direction.
+     *
+     * This can be used to set the color and intensity of a directional light. In this case
+     * make sure to multiply this relative intensity by the the intensity of this indirect light.
+     *
+     * @param direction a unit vector representing the direction of the light to estimate the
+     *                  color of. Typically this the value returned by getDirectionEstimate().
+     *
+     * @return A vector of 4 floats where the first 3 components represent the linear color and
+     *         the 4th component represents the intensity of the dominant light
+     *
+     * @see LightManager::Builder::color()
+     * @see LightManager::Builder::intensity()
+     * @see getDirectionEstimate, getIntensity, setIntensity
+     */
+    math::float4 getColorEstimate(math::float3 direction) const noexcept;
 };
 
 } // namespace filament

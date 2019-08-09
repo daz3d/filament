@@ -90,6 +90,7 @@ ISSUE_DESKTOP_BUILD=true
 ISSUE_WEBGL_BUILD=false
 
 ISSUE_ARCHIVES=false
+BUILD_JS_DOCS=false
 
 ISSUE_CMAKE_ALWAYS=false
 
@@ -119,8 +120,9 @@ LC_UNAME=`echo ${UNAME} | tr '[:upper:]' '[:lower:]'`
 function build_clean {
     echo "Cleaning build directories..."
     rm -Rf out
-    rm -Rf android/filament-android/build
-    rm -Rf android/filament-android/.externalNativeBuild
+    rm -Rf android/filament-android/build android/filament-android/.externalNativeBuild
+    rm -Rf android/filamat-android/build android/filamat-android/.externalNativeBuild
+    rm -Rf android/gltfio-android/build android/gltfio-android/.externalNativeBuild
 }
 
 function build_desktop_target {
@@ -203,18 +205,17 @@ function build_webgl_with_target {
     fi
 
     if [[ -d "web/filament-js" ]]; then
+
+        if [[ "$BUILD_JS_DOCS" == "true" ]]; then
+            echo "Generating JavaScript documentation..."
+            local DOCS_FOLDER="web/docs"
+            local DOCS_SCRIPT="../../web/docs/build.py"
+            python3 ${DOCS_SCRIPT} --disable-demo \
+                --output-folder ${DOCS_FOLDER} \
+                --build-folder ${PWD}
+        fi
+
         if [[ "$ISSUE_ARCHIVES" == "true" ]]; then
-
-            which -s python3
-            if [[ $? == 0 ]]; then
-                echo "Generating JavaScript documentation..."
-                local DOCS_FOLDER="web/docs"
-                local DOCS_SCRIPT="../../web/docs/build.py"
-                python3 ${DOCS_SCRIPT} --disable-demo \
-                    --output-folder ${DOCS_FOLDER} \
-                    --build-folder ${PWD}
-            fi
-
             echo "Generating out/filament-${lc_target}-web.tgz..."
             # The web archive has the following subfolders:
             # dist...core WASM module and accompanying JS file.
@@ -224,7 +225,6 @@ function build_webgl_with_target {
                     filament-js/filament.js
             tar -rvf ../../filament-${lc_target}-web.tar -s /^filament-js/dist/ \
                     filament-js/filament.wasm
-            tar -rvf ../../filament-${lc_target}-web.tar docs
             cd -
             gzip -c ../filament-${lc_target}-web.tar > ../filament-${lc_target}-web.tgz
             rm ../filament-${lc_target}-web.tar
@@ -415,7 +415,8 @@ function build_android {
     cd android/gltfio-android
 
     if [[ "$ISSUE_DEBUG_BUILD" == "true" ]]; then
-        ./gradlew -Pfilament_dist_dir=../../out/android-debug/filament assembleDebug
+        ./gradlew -Pfilament_dist_dir=../../out/android-debug/filament assembleDebug \
+                    -Pextra_cmake_args=${VULKAN_ANDROID_OPTION}
 
         if [[ "$INSTALL_COMMAND" ]]; then
             echo "Installing out/gltfio-android-debug.aar..."
@@ -424,7 +425,8 @@ function build_android {
     fi
 
     if [[ "$ISSUE_RELEASE_BUILD" == "true" ]]; then
-        ./gradlew -Pfilament_dist_dir=../../out/android-release/filament assembleRelease
+        ./gradlew -Pfilament_dist_dir=../../out/android-release/filament assembleRelease \
+                -Pextra_cmake_args=${VULKAN_ANDROID_OPTION}
 
         if [[ "$INSTALL_COMMAND" ]]; then
             echo "Installing out/gltfio-android-release.aar..."
@@ -638,7 +640,6 @@ while getopts ":hacfijmp:tuvslw" opt; do
         a)
             ISSUE_ARCHIVES=true
             INSTALL_COMMAND=install
-            JS_DOCS_OPTION="-DGENERATE_JS_DOCS=ON"
             ;;
         c)
             ISSUE_CLEAN=true

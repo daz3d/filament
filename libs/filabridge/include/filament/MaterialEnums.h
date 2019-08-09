@@ -115,8 +115,30 @@ enum VertexAttribute : uint8_t {
     UV1             = 4, //!< texture coordinates (float2)
     BONE_INDICES    = 5, //!< indices of 4 bones, as unsigned integers (uvec4)
     BONE_WEIGHTS    = 6, //!< weights of the 4 bones (normalized float4)
+    // -- we have 1 unused slot here --
+    CUSTOM0         = 8,
+    CUSTOM1         = 9,
+    CUSTOM2         = 10,
+    CUSTOM3         = 11,
+    CUSTOM4         = 12,
+    CUSTOM5         = 13,
+    CUSTOM6         = 14,
+    CUSTOM7         = 15,
+
+    // Aliases for vertex morphing.
+    MORPH_POSITION_0 = CUSTOM0,
+    MORPH_POSITION_1 = CUSTOM1,
+    MORPH_POSITION_2 = CUSTOM2,
+    MORPH_POSITION_3 = CUSTOM3,
+    MORPH_TANGENTS_0 = CUSTOM4,
+    MORPH_TANGENTS_1 = CUSTOM5,
+    MORPH_TANGENTS_2 = CUSTOM6,
+    MORPH_TANGENTS_3 = CUSTOM7,
+
     // this is limited by driver::MAX_VERTEX_ATTRIBUTE_COUNT
 };
+
+static constexpr size_t MAX_CUSTOM_ATTRIBUTES = 8;
 
 /**
  * Material domains
