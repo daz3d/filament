@@ -24,6 +24,7 @@
 
 #include <filamat/Enums.h>
 
+#include "DirIncluder.h"
 #include "MaterialLexeme.h"
 #include "MaterialLexer.h"
 #include "JsonishLexer.h"
@@ -267,11 +268,19 @@ bool MaterialCompiler::run(const Config& config) {
             return reflectParameters(builder);
     }
 
+    // Set the root include directory to the directory containing the material file.
+    DirIncluder includer;
+    utils::Path materialFilePath = utils::Path(input->getName()).getAbsolutePath();
+    assert(materialFilePath.isFile());
+    includer.setIncludeDirectory(materialFilePath.getParent());
+
     builder
+        .includeCallback(includer)
         .platform(config.getPlatform())
         .targetApi(config.getTargetApi())
         .optimization(config.getOptimizationLevel())
         .printShaders(config.printShaders())
+        .generateDebugInfo(config.isDebug())
         .variantFilter(config.getVariantFilter() | builder.getVariantFilter());
 
     // Write builder.build() to output.

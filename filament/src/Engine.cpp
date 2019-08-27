@@ -160,6 +160,13 @@ void FEngine::init() {
     mCommandStream = CommandStream(*mDriver, mCommandBufferQueue.getCircularBuffer());
     DriverApi& driverApi = getDriverApi();
 
+#if FILAMENT_ENABLE_MATDBG
+    // Disable the web server for regression tests that occur in hermetic environments.
+    if (mBackend != backend::Backend::NOOP) {
+        debug.server = new matdbg::DebugServer(matdbg::ENGINE);
+    }
+#endif
+
     mResourceAllocator = new fg::ResourceAllocator(driverApi);
 
     // Parse all post process shaders now, but create them lazily
@@ -255,6 +262,7 @@ void FEngine::shutdown() {
      */
 
     mPostProcessManager.terminate(driver);  // free-up post-process manager resources
+    mResourceAllocator->terminate();
     mDFG->terminate();                      // free-up the DFG
     mRenderableManager.terminate();         // free-up all renderables
     mLightManager.terminate();              // free-up all lights
@@ -338,6 +346,8 @@ void FEngine::prepare() {
 }
 
 void FEngine::gc() {
+    // Note: this runs in a Job
+
     JobSystem& js = mJobSystem;
     auto parent = js.createJob();
     auto em = std::ref(mEntityManager);

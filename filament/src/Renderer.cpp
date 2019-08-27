@@ -302,17 +302,15 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
                             .format = TextureFormat::DEPTH24,
                             .samples = msaa
                     });
+                    data.depth = builder.write(builder.read(data.depth, true));
                 }
 
-                FrameGraphRenderTarget::Descriptor desc{
+                data.color = builder.write(builder.read(data.color, true));
+                builder.createRenderTarget("Color Pass Target", {
                         .samples = msaa,
                         .attachments.color = data.color,
                         .attachments.depth = data.depth
-                };
-
-                auto attachments = builder.useRenderTarget("Color Pass Target", desc, clearFlags);
-                data.color = attachments.color;
-                data.depth = attachments.depth;
+                }, clearFlags);
             },
             [&pass, &ppm, colorPassBegin, colorPassEnd, jobFroxelize, &js, &view]
                     (FrameGraphPassResources const& resources,
@@ -488,7 +486,7 @@ bool FRenderer::beginFrame(FSwapChain* swapChain) {
 
     // latch the frame time
     std::chrono::duration<double> time{ getUserTime() };
-    float h = (float)time.count();
+    float h = float(time.count());
     float l = float(time.count() - h);
     mShaderUserTime = { h, l, 0, 0 };
 
@@ -523,6 +521,9 @@ void FRenderer::endFrame() {
 
     driver.endFrame(mFrameId);
 
+    // do this before engine.flush()
+    engine.getResourceAllocator().gc();
+
     // Run the component managers' GC in parallel
     // WARNING: while doing this we can't access any component manager
     auto& js = engine.getJobSystem();
@@ -533,7 +534,6 @@ void FRenderer::endFrame() {
 
     // make sure we're done with the gcs
     js.waitAndRelease(job);
-
 
 #if EXTRA_TIMING_INFO
     if (UTILS_UNLIKELY(frameInfoManager.isLapRecordsEnabled())) {

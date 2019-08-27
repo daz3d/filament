@@ -70,6 +70,7 @@ export class TextureSampler {
 }
 
 export class MaterialInstance {
+    public setBoolParameter(name: string, value: boolean): void;
     public setFloatParameter(name: string, value: number): void;
     public setFloat2Parameter(name: string, value: float2): void;
     public setFloat3Parameter(name: string, value: float3): void;
@@ -283,7 +284,7 @@ export class View {
 export class TransformManager {
     public hasComponent(entity: Entity): boolean;
     public getInstance(entity: Entity): TransformManager$Instance;
-    public create(entity: Entity, parent: TransformManager$Instance, xform: mat4): void;
+    public create(entity: Entity): void;
     public destroy(entity: Entity): void;
     public setParent(instance: TransformManager$Instance, parent: TransformManager$Instance): void;
     public setTransform(instance: TransformManager$Instance, xform: mat4): void;
@@ -667,4 +668,20 @@ export enum WrapMode {
     CLAMP_TO_EDGE,
     REPEAT,
     MIRRORED_REPEAT,
+}
+
+export function _malloc(size: number): number;
+export function _free(size: number);
+
+interface HeapInterface {
+    set(buffer: any, pointer: number): any;
+    subarray(buffer: any, offset: number): any;
+}
+
+export const HEAPU8 : HeapInterface;
+
+export class SurfaceOrientation$Builder {
+    public vertexCount(count: number): SurfaceOrientation$Builder;
+    public normals(count: number, stride: number): SurfaceOrientation$Builder;
+    public build(): any;
 }

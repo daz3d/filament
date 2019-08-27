@@ -23,6 +23,10 @@
 
 #include "private/backend/DriverApiForward.h"
 
+#include <utils/Hash.h>
+
+#include <vector>
+
 #include <stdint.h>
 
 namespace filament {
@@ -31,6 +35,9 @@ namespace fg {
 class ResourceAllocator {
 public:
     explicit ResourceAllocator(backend::DriverApi& driverApi) noexcept;
+    ~ResourceAllocator() noexcept;
+
+    void terminate() noexcept;
 
     backend::RenderTargetHandle createRenderTarget(
             backend::TargetBufferFlags targetBufferFlags,
@@ -43,23 +50,116 @@ public:
 
     void destroyRenderTarget(backend::RenderTargetHandle h) noexcept;
 
-    backend::TextureHandle createTexture(
-            backend::SamplerType target,
+    backend::TextureHandle createTexture(const char* name, backend::SamplerType target,
             uint8_t levels,
-            backend::TextureFormat format,
-            uint8_t samples,
-            uint32_t width,
-            uint32_t height,
-            uint32_t depth,
-            backend::TextureUsage usage) noexcept;
+            backend::TextureFormat format, uint8_t samples, uint32_t width, uint32_t height,
+            uint32_t depth, backend::TextureUsage usage) noexcept;
 
     void destroyTexture(backend::TextureHandle h) noexcept;
 
+    void gc() noexcept;
+
 private:
+    // TODO: these should be settings of the engine
+    static constexpr size_t CACHE_CAPACITY = 64u << 20u;   // 64 MiB
+    static constexpr size_t CACHE_MAX_AGE  = 30u;          // 64 MiB
+
+    struct TextureKey {
+        const char* name; // doesn't participate in the hash
+        backend::SamplerType target;
+        uint8_t levels;
+        backend::TextureFormat format;
+        uint8_t samples;
+        uint32_t width;
+        uint32_t height;
+        uint32_t depth;
+        backend::TextureUsage usage;
+
+        size_t getSize() const noexcept;
+
+        bool operator==(const TextureKey& other) const noexcept {
+            return target == other.target &&
+                   levels == other.levels &&
+                   format == other.format &&
+                   samples == other.samples &&
+                   width == other.width &&
+                   height == other.height &&
+                   depth == other.depth &&
+                   usage == other.usage;
+        }
+
+        friend size_t hash_value(TextureKey const& k) {
+            size_t seed = 0;
+            utils::hash::combine_fast(seed, k.target);
+            utils::hash::combine_fast(seed, k.levels);
+            utils::hash::combine_fast(seed, k.format);
+            utils::hash::combine_fast(seed, k.samples);
+            utils::hash::combine_fast(seed, k.width);
+            utils::hash::combine_fast(seed, k.height);
+            utils::hash::combine_fast(seed, k.depth);
+            utils::hash::combine_fast(seed, k.usage);
+            return seed;
+        }
+    };
+
+    struct TextureCachePayload {
+        backend::TextureHandle handle;
+        size_t age = 0;
+        uint32_t size = 0;
+    };
+
+    template<typename T>
+    struct Hasher {
+        std::size_t operator()(T const& s) const noexcept {
+            return hash_value(s);
+        }
+    };
+
+    template<typename T>
+    struct Hasher<backend::Handle<T>> {
+        std::size_t operator()(backend::Handle<T> const& s) const noexcept {
+            std::hash<typename backend::Handle<T>::HandleId> hash{};
+            return hash(s.getId());
+        }
+    };
+
+    inline void dump() const noexcept;
+
+    template<typename Key, typename Value, typename Hasher = Hasher<Key>>
+    class AssociativeContainer {
+        // We use a std::vector instead of a std::multimap because we don't expect many items
+        // in the cache and std::multimap generates tons of code. Even with more items, we
+        // could improve this trivially by using a sorted std::vector.
+        using Container = std::vector<std::pair<Key, Value>>;
+        Container mContainer;
+    public:
+        using iterator = typename Container::iterator;
+        using const_iterator = typename Container::const_iterator;
+        using key_type = typename Container::value_type::first_type;
+        using value_type = typename Container::value_type::second_type;
+
+        size_t size() const { return mContainer.size(); }
+        iterator begin() { return mContainer.begin(); }
+        const_iterator begin() const { return mContainer.begin(); }
+        iterator end() { return mContainer.end(); }
+        const_iterator end() const  { return mContainer.end(); }
+        iterator erase(iterator it);
+        const_iterator find(key_type const& key) const;
+        iterator find(key_type const& key);
+        template<typename ... ARGS>
+        void emplace(ARGS&&... args);
+    };
+
     backend::DriverApi& mBackend;
+    AssociativeContainer<TextureKey, TextureCachePayload> mTextureCache;
+    AssociativeContainer<backend::TextureHandle, TextureKey> mInUseTextures;
+    size_t mAge = 0;
+    uint32_t mCacheSize = 0;
+    const bool mEnabled = true;
 };
 
 }// namespace fg
 } // namespace filament
+
 
 #endif //TNT_FILAMENT_FG_RESOURCEALLOCATOR_H

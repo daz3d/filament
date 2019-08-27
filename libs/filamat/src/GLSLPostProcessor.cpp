@@ -37,9 +37,10 @@ using namespace spvtools;
 
 namespace filamat {
 
-GLSLPostProcessor::GLSLPostProcessor(MaterialBuilder::Optimization optimization, bool printShaders)
-        : mOptimization(optimization), mPrintShaders(printShaders) {
-
+GLSLPostProcessor::GLSLPostProcessor(MaterialBuilder::Optimization optimization, uint32_t flags)
+        : mOptimization(optimization),
+          mPrintShaders(flags & PRINT_SHADERS),
+          mGenerateDebugInfo(flags & GENERATE_DEBUG_INFO) {
 }
 
 GLSLPostProcessor::~GLSLPostProcessor() {
@@ -218,7 +219,9 @@ bool GLSLPostProcessor::process(const std::string& inputShader,
     switch (mOptimization) {
         case MaterialBuilder::Optimization::NONE:
             if (mSpirvOutput) {
-                GlslangToSpv(*program.getIntermediate(mShLang), *mSpirvOutput);
+                SpvOptions options;
+                options.generateDebugInfo = mGenerateDebugInfo;
+                GlslangToSpv(*program.getIntermediate(mShLang), *mSpirvOutput, &options);
                 if (mMslOutput) {
                     SpvToMsl(mSpirvOutput, mMslOutput);
                 }
@@ -276,7 +279,9 @@ void GLSLPostProcessor::preprocessOptimization(glslang::TShader& tShader,
         if (!ok || !linkOk) {
             utils::slog.e << spirvShader.getInfoLog() << utils::io::endl;
         } else {
-            GlslangToSpv(*program.getIntermediate(mShLang), *mSpirvOutput);
+            SpvOptions options;
+            options.generateDebugInfo = mGenerateDebugInfo;
+            GlslangToSpv(*program.getIntermediate(mShLang), *mSpirvOutput, &options);
         }
     }
 
@@ -294,7 +299,9 @@ void GLSLPostProcessor::fullOptimization(const TShader& tShader,
     SpirvBlob spirv;
 
     // Compile GLSL to to SPIR-V
-    GlslangToSpv(*tShader.getIntermediate(), spirv);
+    SpvOptions options;
+    options.generateDebugInfo = mGenerateDebugInfo;
+    GlslangToSpv(*tShader.getIntermediate(), spirv, &options);
 
     // Run the SPIR-V optimizer
     Optimizer optimizer(SPV_ENV_UNIVERSAL_1_3);

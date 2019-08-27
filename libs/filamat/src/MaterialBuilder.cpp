@@ -41,6 +41,8 @@
 #include "eiff/DictionaryTextChunk.h"
 #include "eiff/DictionarySpirvChunk.h"
 
+#include "Includes.h"
+
 #ifndef FILAMAT_LITE
 #include "GLSLPostProcessor.h"
 #include "sca/GLSLTools.h"
@@ -125,14 +127,19 @@ MaterialBuilder& MaterialBuilder::name(const char* name) noexcept {
 }
 
 MaterialBuilder& MaterialBuilder::material(const char* code, size_t line) noexcept {
-    mMaterialCode = CString(code);
-    mMaterialLineOffset = line;
+    mMaterialCode.setUnresolved(CString(code));
+    mMaterialCode.setLineOffset(line);
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::includeCallback(IncludeCallback callback) noexcept {
+    mIncludeCallback = callback;
     return *this;
 }
 
 MaterialBuilder& MaterialBuilder::materialVertex(const char* code, size_t line) noexcept {
-    mMaterialVertexCode = CString(code);
-    mMaterialVertexLineOffset = line;
+    mMaterialVertexCode.setUnresolved(CString(code));
+    mMaterialVertexCode.setLineOffset(line);
     return *this;
 }
 
@@ -317,6 +324,11 @@ MaterialBuilder& MaterialBuilder::printShaders(bool printShaders) noexcept {
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::generateDebugInfo(bool generateDebugInfo) noexcept {
+    mGenerateDebugInfo = generateDebugInfo;
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::variantFilter(uint8_t variantFilter) noexcept {
     mVariantFilter = variantFilter;
     return *this;
@@ -414,7 +426,7 @@ bool MaterialBuilder::findProperties() noexcept {
     return true;
 #else
     GLSLToolsLite glslTools;
-    return glslTools.findProperties(mMaterialCode, mProperties);
+    return glslTools.findProperties(mMaterialCode.getResolved(), mProperties);
 #endif
 }
 
@@ -462,6 +474,17 @@ bool MaterialBuilder::checkLiteRequirements() noexcept {
     return true;
 }
 
+bool MaterialBuilder::ShaderCode::resolveIncludes(IncludeCallback callback) noexcept {
+    if (!mCode.empty()) {
+        if (!::filamat::resolveIncludes(utils::CString(""), mCode, callback)) {
+            return false;
+        }
+    }
+
+    mIncludesResolved = true;
+    return true;
+}
+
 static void showErrorMessage(const char* materialName, uint8_t variant,
         MaterialBuilder::TargetApi targetApi, filament::backend::ShaderType shaderType,
         const std::string& shaderCode) {
@@ -482,7 +505,10 @@ bool MaterialBuilder::generateShaders(const std::vector<Variant>& variants, Chun
         const MaterialInfo& info) const noexcept {
     // Create a postprocessor to optimize / compile to Spir-V if necessary.
 #ifndef FILAMAT_LITE
-    GLSLPostProcessor postProcessor(mOptimization, mPrintShaders);
+    uint32_t flags = 0;
+    flags |= mPrintShaders ? GLSLPostProcessor::PRINT_SHADERS : 0;
+    flags |= mGenerateDebugInfo ? GLSLPostProcessor::GENERATE_DEBUG_INFO : 0;
+    GLSLPostProcessor postProcessor(mOptimization, flags);
 #endif
 
     // Generate all shaders.
@@ -497,10 +523,11 @@ bool MaterialBuilder::generateShaders(const std::vector<Variant>& variants, Chun
     std::vector<uint32_t> spirv;
     std::string msl;
 
-    ShaderGenerator sg(mProperties, mVariables, mMaterialCode, mMaterialLineOffset,
-            mMaterialVertexCode, mMaterialVertexLineOffset, mMaterialDomain);
+    ShaderGenerator sg(mProperties, mVariables, mMaterialCode.getResolved(),
+            mMaterialCode.getLineOffset(), mMaterialVertexCode.getResolved(),
+            mMaterialVertexCode.getLineOffset(), mMaterialDomain);
 
-    bool emptyVertexCode = mMaterialVertexCode.empty();
+    bool emptyVertexCode = mMaterialVertexCode.getResolved().empty();
     bool customDepth = sg.hasCustomDepthShader() ||
             mBlendingMode == BlendingMode::MASKED || !emptyVertexCode;
     container.addSimpleChild<bool>(ChunkType::MaterialHasCustomDepthShader, customDepth);
@@ -597,7 +624,8 @@ bool MaterialBuilder::generateShaders(const std::vector<Variant>& variants, Chun
     // Emit SPIRV chunks (SpirvDictionaryReader and MaterialSpirvChunk).
 #ifndef FILAMAT_LITE
     if (!spirvEntries.empty()) {
-        container.addChild<filamat::DictionarySpirvChunk>(std::move(spirvDictionary));
+        const bool stripInfo = !mGenerateDebugInfo;
+        container.addChild<filamat::DictionarySpirvChunk>(std::move(spirvDictionary), stripInfo);
         container.addChild<MaterialSpirvChunk>(std::move(spirvEntries));
     }
 
@@ -618,6 +646,12 @@ Package MaterialBuilder::build() noexcept {
         utils::slog.e << "Error: MaterialBuilder::init() must be called before build()."
             << utils::io::endl;
         // Return an empty package to signal a failure to build the material.
+        return Package::invalidPackage();
+    }
+
+    // Resolve all the #include directives within user code.
+    if (!mMaterialCode.resolveIncludes(mIncludeCallback) ||
+        !mMaterialVertexCode.resolveIncludes(mIncludeCallback)) {
         return Package::invalidPackage();
     }
 
@@ -662,9 +696,9 @@ Package MaterialBuilder::build() noexcept {
 
 const std::string MaterialBuilder::peek(filament::backend::ShaderType type,
         const CodeGenParams& params, const PropertyList& properties) noexcept {
-
-    ShaderGenerator sg(properties, mVariables, mMaterialCode, mMaterialLineOffset,
-            mMaterialVertexCode, mMaterialVertexLineOffset, mMaterialDomain);
+    ShaderGenerator sg(properties, mVariables, mMaterialCode.getResolved(),
+            mMaterialCode.getLineOffset(), mMaterialVertexCode.getResolved(),
+            mMaterialVertexCode.getLineOffset(), mMaterialDomain);
 
     MaterialInfo info;
     prepareToBuild(info);
