@@ -109,6 +109,7 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
     vec3 Fr = specularLobe(pixel, light, h, NoV, NoL, NoH, LoH);
     vec3 Fd = diffuseLobe(pixel, NoV, NoL, LoH);
 
+    // TODO: attenuate the diffuse lobe to avoid energy gain
 #if defined(DAZ_EXTENDED_PBR)
     Fr *= pixel.specularAttenuation;
 #endif
