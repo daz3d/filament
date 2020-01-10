@@ -47,6 +47,7 @@
 #include <atomic>
 #include <functional>
 #include <fstream>
+#include <iostream>
 #include <string>
 
 #include "generated/resources/resources.h"
@@ -432,7 +433,7 @@ static void loadAssetFromDisk(BakerApp& app) {
     delete app.pipeline;
     app.pipeline = pipeline;
 
-    app.viewer->setIndirectLight(FilamentApp::get().getIBL()->getIndirectLight());
+    app.viewer->setIndirectLight(FilamentApp::get().getIBL()->getIndirectLight(), nullptr);
     app.flattenedAsset = handle;
     app.requestViewerUpdate = true;
 

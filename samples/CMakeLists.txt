@@ -38,10 +38,13 @@ set(MATERIAL_SRCS
         materials/aiDefaultTrans.mat
         materials/depthVisualizer.mat
         materials/groundShadow.mat
+        materials/heightfield.mat
         materials/sandboxCloth.mat
         materials/sandboxLit.mat
         materials/sandboxLitFade.mat
         materials/sandboxLitTransparent.mat
+        materials/sandboxLitThinRefraction.mat
+        materials/sandboxLitSolidRefraction.mat
         materials/sandboxSpecGloss.mat
         materials/sandboxSubsurface.mat
         materials/sandboxUnlit.mat
@@ -97,7 +100,7 @@ add_library(common-resources ${DUMMY_SRC} ${RESGEN_SOURCE})
 # Invoke cmgen to build KTX files for the default IBL and skybox
 # ==================================================================================================
 
-set(CMGEN_ARGS --quiet -x . --format=ktx --size=256 --extract-blur=0.1)
+set(CMGEN_ARGS --quiet --format=ktx --size=256 --extract-blur=0.1)
 
 function(add_envmap SOURCE TARGET)
     set(source_envmap "${ROOT_DIR}/${SOURCE}")
@@ -109,7 +112,7 @@ function(add_envmap SOURCE TARGET)
     set(target_envmaps ${target_envmaps} ${target_envmap} PARENT_SCOPE)
 
     add_custom_command(OUTPUT ${target_skybox} ${target_envmap}
-        COMMAND cmgen ${CMGEN_ARGS} ${source_envmap}
+        COMMAND cmgen -x ${TARGET} ${CMGEN_ARGS} ${source_envmap}
         MAIN_DEPENDENCY ${source_envmap}
         DEPENDS cmgen)
 endfunction()
@@ -218,13 +221,12 @@ target_sources(gltf-resources PRIVATE ${RESGEN_SOURCE})
 # Common library
 # ==================================================================================================
 
-set(APP_LIBS filament sdl2 stb math filamat utils getopt imgui filagui image common-resources)
+set(APP_LIBS filament sdl2 stb math filamat utils getopt imgui filagui image camutils common-resources)
 if (WIN32)
     list(APPEND APP_LIBS sdl2main)
 endif()
 
 set(APP_SRCS
-        app/CameraManipulator.cpp
         app/Cube.cpp
         app/FilamentApp.cpp
         app/IBL.cpp
@@ -328,6 +330,10 @@ if (NOT ANDROID)
     target_link_libraries(lucy_bloom PRIVATE ${APP_LIBS} gltf-resources gltfio)
 endif()
 
+add_executable(heightfield heightfield.cpp)
+target_link_libraries(heightfield PRIVATE ${APP_LIBS})
+target_compile_options(heightfield PRIVATE ${COMPILER_FLAGS})
+
 # ==================================================================================================
 # Copy the MoltenVK dylibs and JSON on MacOS
 # ==================================================================================================
@@ -391,3 +397,9 @@ add_dependencies(filament assets)
 
 add_custom_target(envs DEPENDS ${target_envmaps})
 add_dependencies(filament envs)
+
+add_custom_target(run_gltf_viewer DEPENDS gltf_viewer assets
+        COMMAND gltf_viewer)
+
+add_custom_target(run_material_sandbox DEPENDS material_sandbox assets
+        COMMAND material_sandbox --ibl=venetian_crossroads_2k assets/models/material_sphere/material_sphere.obj)

@@ -34,6 +34,7 @@
 #include <utils/NameComponentManager.h>
 
 #include <fstream>
+#include <iostream>
 #include <string>
 
 #include "generated/resources/gltf_viewer.h"
@@ -209,7 +210,7 @@ int main(int argc, char** argv) {
 
         auto ibl = FilamentApp::get().getIBL();
         if (ibl) {
-            app.viewer->setIndirectLight(ibl->getIndirectLight());
+            app.viewer->setIndirectLight(ibl->getIndirectLight(), ibl->getSphericalHarmonics());
         }
     };
 

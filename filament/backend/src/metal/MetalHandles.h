@@ -23,6 +23,7 @@
 #include <Metal/Metal.h>
 #include <QuartzCore/QuartzCore.h> // for CAMetalLayer
 
+#include "MetalBuffer.h"
 #include "MetalContext.h"
 #include "MetalDefines.h"
 #include "MetalEnums.h"
@@ -54,50 +55,23 @@ struct MetalSwapChain : public HwSwapChain {
 };
 
 struct MetalVertexBuffer : public HwVertexBuffer {
-    MetalVertexBuffer(id<MTLDevice> device, uint8_t bufferCount, uint8_t attributeCount,
+    MetalVertexBuffer(MetalContext& context, uint8_t bufferCount, uint8_t attributeCount,
             uint32_t vertexCount, AttributeArray const& attributes);
+    ~MetalVertexBuffer();
 
-    std::vector<id<MTLBuffer>> buffers;
+    std::vector<MetalBuffer*> buffers;
 };
 
 struct MetalIndexBuffer : public HwIndexBuffer {
-    MetalIndexBuffer(id<MTLDevice> device, uint8_t elementSize, uint32_t indexCount);
+    MetalIndexBuffer(MetalContext& context, uint8_t elementSize, uint32_t indexCount);
 
-    id<MTLBuffer> buffer;
+    MetalBuffer buffer;
 };
 
-class MetalUniformBuffer : public HwUniformBuffer {
-public:
+struct MetalUniformBuffer : public HwUniformBuffer {
     MetalUniformBuffer(MetalContext& context, size_t size);
-    ~MetalUniformBuffer();
 
-    size_t getSize() const { return uniformSize; }
-
-    /**
-     * Update the uniform with data inside src. Potentially allocates a new buffer allocation to
-     * hold the bytes which will be released when the current frame is finished.
-     */
-    void copyIntoBuffer(void* src, size_t size);
-
-    /**
-     * Denotes that this uniform is used for a draw call ensuring that its allocation remains valid
-     * until the end of the current frame.
-     *
-     * @return The MTLBuffer representing the current state of the uniform to bind, or nil if there
-     * is no device allocation.
-     */
-    id<MTLBuffer> getGpuBufferForDraw();
-
-    /**
-     * @return A pointer to the CPU buffer holding the uniform data or nullptr if there isn't one.
-     */
-    void* getCpuBuffer() const;
-
-private:
-    size_t uniformSize = 0;
-    const MetalBufferPoolEntry* bufferPoolEntry = nullptr;
-    void* cpuBuffer = nullptr;
-    MetalContext& context;
+    MetalBuffer buffer;
 };
 
 struct MetalRenderPrimitive : public HwRenderPrimitive {
@@ -112,7 +86,7 @@ struct MetalRenderPrimitive : public HwRenderPrimitive {
     // This struct is used to create the pipeline description to describe vertex assembly.
     VertexDescription vertexDescription = {};
 
-    std::vector<id<MTLBuffer>> buffers;
+    std::vector<MetalBuffer*> buffers;
     std::vector<NSUInteger> offsets;
 };
 
@@ -131,18 +105,21 @@ struct MetalTexture : public HwTexture {
     ~MetalTexture();
 
     void load2DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-            uint32_t height, PixelBufferDescriptor& data) noexcept;
-    void loadCubeImage(const PixelBufferDescriptor& data, const FaceOffsets& faceOffsets,
-            int miplevel);
-
-    NSUInteger getBytesPerRow(PixelDataType type, NSUInteger width) const noexcept;
+            uint32_t height, PixelBufferDescriptor&& p) noexcept;
+    void loadCubeImage(const FaceOffsets& faceOffsets, int miplevel, PixelBufferDescriptor&& p);
+    void loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
+            uint32_t height, uint32_t byteOffset, uint32_t slice,
+            PixelBufferDescriptor& data, id<MTLBlitCommandEncoder> blitCommandEncoder,
+            id<MTLCommandBuffer> blitCommandBuffer) noexcept;
 
     MetalContext& context;
     MetalExternalImage externalImage;
     id<MTLTexture> texture = nil;
     uint8_t bytesPerElement; // The number of bytes per pixel, or block (for compressed texture formats).
     uint8_t blockWidth; // The number of horizontal pixels per block (only for compressed texture formats).
+    uint8_t blockHeight; // The number of vertical pixels per block (only for compressed texture formats).
     TextureReshaper reshaper;
+    MTLPixelFormat metalPixelFormat;
 };
 
 struct MetalSamplerGroup : public HwSamplerGroup {

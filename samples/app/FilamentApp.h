@@ -27,9 +27,10 @@
 #include <filament/Engine.h>
 #include <filament/Viewport.h>
 
+#include <camutils/Manipulator.h>
+
 #include <utils/Path.h>
 
-#include "CameraManipulator.h"
 #include "Config.h"
 #include "IBL.h"
 
@@ -103,6 +104,8 @@ public:
 private:
     FilamentApp();
 
+    using CameraManipulator = filament::camutils::Manipulator<float>;
+
     class CView {
     public:
         CView(filament::Renderer& renderer, std::string name);
@@ -121,8 +124,6 @@ private:
         filament::View const* getView() const { return view; }
         filament::View* getView() { return view; }
 
-        CameraManipulator* getCameraManipulator() const { return mCameraManipulator; }
-
     private:
         enum class Mode : uint8_t {
             NONE, ROTATE, TRACK
@@ -132,8 +133,6 @@ private:
         filament::Viewport mViewport;
         filament::View* view = nullptr;
         CameraManipulator* mCameraManipulator = nullptr;
-        filament::math::double2 mLastMousePosition;
-        Mode mMode = Mode::NONE;
         std::string mName;
     };
 
@@ -172,9 +171,8 @@ private:
         filament::Renderer* mRenderer = nullptr;
         filament::Engine::Backend mBackend;
 
-        CameraManipulator mMainCameraMan;
-        CameraManipulator mOrthoCameraMan;
-        CameraManipulator mDebugCameraMan;
+        CameraManipulator* mMainCameraMan;
+        CameraManipulator* mDebugCameraMan;
         filament::SwapChain* mSwapChain = nullptr;
 
         filament::Camera* mCameras[4] = { nullptr };

@@ -124,8 +124,8 @@ add_mesh("assets/models/monkey/monkey.obj" "suzanne.filamesh")
 add_mesh("third_party/models/shader_ball/shader_ball.obj" "shader_ball.filamesh")
 
 # Generate IBL and skybox images using cmgen.
-set(CMGEN_ARGS --quiet -x . --format=ktx --size=256 --extract-blur=0.1)
-set(CMGEN_ARGS_TINY --quiet -x . --format=ktx --size=64 --extract-blur=0.1)
+set(CMGEN_ARGS --quiet --format=ktx --size=256 --extract-blur=0.1)
+set(CMGEN_ARGS_TINY --quiet --format=ktx --size=64 --extract-blur=0.1)
 function(add_envmap SOURCE TARGET)
     set(source_envmap "${ROOT_DIR}/${SOURCE}")
 
@@ -142,12 +142,11 @@ function(add_envmap SOURCE TARGET)
 
     add_custom_command(OUTPUT ${target_skybox} ${target_skybox_tiny} ${target_envmap}
 
-        # Create a low-resolution skybox, then rename it.
-        COMMAND cmgen ${CMGEN_ARGS_TINY} ${source_envmap}
-        COMMAND mv ${target_skybox} ${target_skybox_tiny}
+        # Create a low-resolution skybox.
+        COMMAND cmgen -x ${TARGET}_skybox_tiny ${CMGEN_ARGS_TINY} ${source_envmap}
 
         # Finally, create KTX files for the uncompressed envmap.
-        COMMAND cmgen ${CMGEN_ARGS} ${source_envmap}
+        COMMAND cmgen -x ${TARGET} ${CMGEN_ARGS} ${source_envmap}
 
         MAIN_DEPENDENCY ${source_envmap}
         DEPENDS cmgen)
@@ -185,7 +184,6 @@ add_custom_target(filamentjs_public DEPENDS ${SERVER_DIR}/filament.js ${SERVER_D
 set(HTML_FILES
     animation.html
     helmet.html
-    leaks.html
     morphing.html
     parquet.html
     skinning.html

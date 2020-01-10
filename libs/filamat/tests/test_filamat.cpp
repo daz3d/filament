@@ -41,7 +41,8 @@ static ::testing::AssertionResult PropertyListsMatch(const MaterialBuilder::Prop
 
 std::string shaderWithAllProperties(ShaderType type,
         const std::string fragmentCode, const std::string vertexCode = "",
-        filamat::MaterialBuilder::Shading shadingModel = filamat::MaterialBuilder::Shading::LIT) {
+        filamat::MaterialBuilder::Shading shadingModel = filamat::MaterialBuilder::Shading::LIT,
+        filamat::MaterialBuilder::RefractionMode refractionMode = filamat::MaterialBuilder::RefractionMode::NONE) {
     MockIncluder includer;
     includer
         .sourceForInclude("modify_normal.h", "material.normal = vec3(0.8);");
@@ -53,6 +54,7 @@ std::string shaderWithAllProperties(ShaderType type,
     builder.optimization(filamat::MaterialBuilder::Optimization::NONE);
     builder.shading(shadingModel);
     builder.includeCallback(includer);
+    builder.materialRefraction(refractionMode);
 
     MaterialBuilder::PropertyList allProperties;
     std::fill_n(allProperties, MaterialBuilder::MATERIAL_PROPERTIES_COUNT, true);
@@ -414,6 +416,30 @@ TEST_F(MaterialCompiler, StaticCodeAnalyzerClearCoat) {
     EXPECT_TRUE(PropertyListsMatch(expected, properties));
 }
 
+TEST_F(MaterialCompiler, StaticCodeAnalyzerTransmission) {
+    std::string fragmentCode(R"(
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            material.absorption = vec3(0.0);
+            material.transmission = 0.96;
+            material.ior = 1.33;
+        }
+    )");
+
+    std::string shaderCode = shaderWithAllProperties(ShaderType::FRAGMENT, fragmentCode, "",
+            filamat::MaterialBuilder::Shading::LIT,
+            filamat::MaterialBuilder::RefractionMode::CUBEMAP);
+
+    GLSLTools glslTools;
+    MaterialBuilder::PropertyList properties {false};
+    glslTools.findProperties(filament::backend::FRAGMENT, shaderCode, properties);
+    MaterialBuilder::PropertyList expected {false};
+    expected[size_t(filamat::MaterialBuilder::Property::ABSORPTION)] = true;
+    expected[size_t(filamat::MaterialBuilder::Property::TRANSMISSION)] = true;
+    expected[size_t(filamat::MaterialBuilder::Property::IOR)] = true;
+    EXPECT_TRUE(PropertyListsMatch(expected, properties));
+}
+
 TEST_F(MaterialCompiler, StaticCodeAnalyzerClearCoatRoughness) {
     std::string fragmentCode(R"(
         void material(inout MaterialInputs material) {
@@ -436,6 +462,7 @@ TEST_F(MaterialCompiler, StaticCodeAnalyzerClearCoatNormal) {
     std::string fragmentCode(R"(
         void material(inout MaterialInputs material) {
             prepareMaterial(material);
+            material.clearCoat = 0.8;
             material.clearCoatNormal = vec3(1.0, 1.0, 1.0);
         }
     )");
@@ -446,6 +473,7 @@ TEST_F(MaterialCompiler, StaticCodeAnalyzerClearCoatNormal) {
     MaterialBuilder::PropertyList properties {false};
     glslTools.findProperties(filament::backend::FRAGMENT, shaderCode, properties);
     MaterialBuilder::PropertyList expected {false};
+    expected[size_t(filamat::MaterialBuilder::Property::CLEAR_COAT)] = true;
     expected[size_t(filamat::MaterialBuilder::Property::CLEAR_COAT_NORMAL)] = true;
     EXPECT_TRUE(PropertyListsMatch(expected, properties));
 }

@@ -21,6 +21,14 @@ Android devices and as the renderer inside the Android Studio plugin.
 Make sure you always use tools from the same release as the runtime library. This is particularly
 important for `matc` (material compiler).
 
+If you prefer to live on the edge, you can download a continuous build by following the following
+steps:
+
+1. Find the [commit](https://github.com/bejado/filament/commits/master) you're interested in.
+2. Click the green check mark under the commit message.
+3. Click on the _Details_ link for the platform you're interested in.
+4. On the top right, click on the _Artifacts_ dropdown and choose an artifact.
+
 ## Documentation
 
 - [Filament](https://google.github.io/filament/Filament.html), an in-depth explanation of
@@ -113,9 +121,9 @@ This repository not only contains the core Filament engine, but also its support
 and tools.
 
 - `android`:               Android libraries and projects
-  - `build`:               Custom Gradle tasks for Android builds
   - `filamat-android`:     Filament material generation library (AAR) for Android
   - `filament-android`:    Filament library (AAR) for Android
+  - `gltfio-android`:      Filament glTF loading library (AAR) for Android
   - `samples`:             Android-specific Filament samples
 - `art`:                   Source for various artworks (logos, PDF manuals, etc.)
 - `assets`:                3D assets to use with sample applications
@@ -360,13 +368,17 @@ See [ios/samples/README.md](./ios/samples/README.md) for more information.
 
 ### Windows
 
-#### Building on Windows with the Visual Studio 2019 compiler
+#### Building on Windows with Visual Studio 2019
 
 Install the following components:
 
 - [Visual Studio 2019](https://www.visualstudio.com/downloads)
+- [Windows 10 SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk)
 - [Python 3.7](https://www.python.org/ftp/python/3.7.0/python-3.7.0.exe)
 - [CMake 3.14 or later](https://github.com/Kitware/CMake/releases/download/v3.14.7/cmake-3.14.7-win64-x64.msi)
+
+The latest Windows SDK can also by installed by opening Visual Studio and selecting _Get Tools and
+Features..._ under the _Tools_ menu.
 
 Open the `x64 Native Tools Command Prompt for VS 2019`.
 
@@ -378,120 +390,15 @@ Create a working directory, and run cmake in it:
 > cmake ..
 ```
 
-Then, you should be able to load the generated solution file `TNT.sln` in Visual Studio and build the `material_sandbox` project.
+Open the generated solution file `TNT.sln` in Visual Studio.
 
-Run it from the `out` directory with:
+To build all targets, run _Build Solution_ from the _Build_ menu. Alternatively, right click on a
+target in the _Solution Explorer_ and choose _Build_ to build a specific target.
+
+For example, build the `material_sandbox` sample and run it from the `out` directory with:
+
 ```
 > samples\Debug\material_sandbox.exe ..\assets\models\monkey\monkey.obj
-```
-
-#### Building on Windows with the Clang compiler
-
-The following instructions have been tested on a machine running Windows 10. They should take you
-from a machine with only the operating system to a machine able to build and run Filament.
-
-Google employees require additional steps which can be found here [go/filawin](http://go/filawin).
-
-Install the following components:
-
-- [Windows 10 SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk)
-- [Visual Studio 2015 or 2017](https://www.visualstudio.com/downloads)
-- [Clang 7](http://releases.llvm.org/download.html)
-- [Python 3.7](https://www.python.org/ftp/python/3.7.0/python-3.7.0.exe)
-- [Cmake 3.13 or later](https://github.com/Kitware/CMake/releases/download/v3.13.4/cmake-3.13.4-win64-x64.msi)
-
-If you're using Visual Studio 2017, you'll also need to install the [LLVM Compiler
-Toolchain](https://marketplace.visualstudio.com/items?itemName=LLVMExtensions.llvm-toolchain)
-extension.
-
-Open an appropriate Native Tools terminal for the version of Visual Studio you are using:
-- VS 2015: VS2015 x64 Native Tools Command Prompt
-- VS 2017: x64 Native Tools Command Prompt for VS 2017
-
-You can find these by clicking the start button and typing "x64 native tools".
-
-Create a working directory:
-```
-> mkdir out/cmake-release
-> cd out/cmake-release
-```
-
-Create the msBuild project:
-```
-# Visual Studio 2015:
-> cmake -T"LLVM-vs2014" -G "Visual Studio 14 2015 Win64" ../..
-
-# Visual Studio 2017
-> cmake ..\.. -T"LLVM" -G "Visual Studio 15 2017 Win64" ^
--DCMAKE_CXX_COMPILER:PATH="C:\Program Files\LLVM\bin\clang-cl.exe" ^
--DCMAKE_C_COMPILER:PATH="C:\Program Files\LLVM\bin\clang-cl.exe" ^
--DCMAKE_LINKER:PATH="C:\Program Files\LLVM\bin\lld-link.exe"
-```
-
-Check out the output and make sure Clang for Windows frontend was found. You should see a line
-showing the following output. Note that for Visual Studio 2017 this line may list Microsoft's
-compiler, but the build will still in fact use Clang and you can proceed.
-
-```
-Clang:C:/Program Files/LLVM/msbuild-bin/cl.exe
-```
-
-You are now ready to build:
-```
-> msbuild  TNT.sln /t:material_sandbox /m /p:configuration=Release
-```
-
-Run it:
-```
-> samples\Release\material_sandbox.exe ..\..\assets\models\monkey\monkey.obj
-```
-
-#### Tips
-
-- To troubleshoot an issue, use verbose mode via `/v:d` flag.
-- To build a specific project, use `/t:NAME` flag (e.g: `/t:material_sandbox`).
-- To build using more than one core, use parallel build flag: `/m`.
-- To build a specific profile, use `/p:configuration=` (e.g: `/p:configuration=Debug`,
-  `/p:configuration=Release`, and `/p:configuration=RelWithDebInfo`).
-- The msBuild project is what is used by Visual Studio behind the scene to build. Building from VS
-  or from the command-line is the same thing.
-
-#### Building with Ninja on Windows
-
-Alternatively, you can use [Ninja](https://ninja-build.org/) to build for Windows. An MSVC
-installation is still necessary.
-
-First, install the dependencies listed under [Windows](#Windows) as well as Ninja. Then open up a
-Native Tools terminal as before. Create a build directory inside Filament and run the
-following CMake command:
-
-```
-> cmake .. -G Ninja ^
--DCMAKE_CXX_COMPILER:PATH="C:\Program Files\LLVM\bin\clang-cl.exe" ^
--DCMAKE_C_COMPILER:PATH="C:\Program Files\LLVM\bin\clang-cl.exe" ^
--DCMAKE_LINKER:PATH="C:\Program Files\LLVM\bin\lld-link.exe" ^
--DCMAKE_BUILD_TYPE=Release
-```
-
-You should then be able to build by invoking Ninja:
-
-```
-> ninja
-```
-
-#### Development tips
-
-- Before shipping a binary, make sure you used Release profile and make sure you have no libc/libc++
-  dependencies with [Dependency Walker](http://www.dependencywalker.com).
-- Application Verifier and gflags.exe can be of great help to trackdown heap corruption. Application
-  Verifier is easy to setup with a GUI. For gflags, use: `gflags /p /enable pheap-buggy.exe`.
-
-#### Running a simple test
-
-To confirm Filament was properly built, run the following command from the build directory:
-
-```
-> samples\material_sandbox.exe --ibl=..\..\samples\envs\pillars ..\..\assets\models\sphere\sphere.obj
 ```
 
 ### Android
@@ -641,7 +548,7 @@ as explained in the sections above. You must have the following ABIs built in
 - `x86_64`
 - `x86`
 
-To build Filament's AAR simply open the Android Studio project in `android/filament-android`. The
+To build Filament's AAR simply open the Android Studio project in `android/`. The
 AAR is a universal AAR that contains all supported build targets:
 
 - `arm64-v8a`
@@ -652,8 +559,8 @@ AAR is a universal AAR that contains all supported build targets:
 To filter out unneeded ABIs, rely on the `abiFilters` of the project that links against Filament's
 AAR.
 
-Alternatively you can build the AAR from the command line by executing the following the
-`android/filament-android` directory:
+Alternatively you can build the AAR from the command line by executing the following in the
+`android/` directory:
 
 ```
 $ ./gradlew -Pfilament_dist_dir=../../out/android-release/filament assembleRelease

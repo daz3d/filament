@@ -887,6 +887,8 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     /*
      * The GLES 3.0 spec states:
      *
+     *                             --------------
+     *
      * GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE is returned
      * - if the value of GL_RENDERBUFFER_SAMPLES is not the same for all attached renderbuffers or,
      * - if the attached images are a mix of renderbuffers and textures,
@@ -906,6 +908,15 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
      *
      * 'features.multisample_texture' below is a proxy for "GLES3.1 or GL4.x".
      *
+     *                             --------------
+     *
+     * About the size of the attachments:
+     *
+     *  If the attachment sizes are not all identical, the results of rendering are defined only
+     *  within the largest area that can fit in all of the attachments. This area is defined as
+     *  the intersection of rectangles having a lower left of (0, 0) and an upper right of
+     *  (width, height) for each attachment. Contents of attachments outside this area are
+     *  undefined after execution of a rendering command.
      */
 
     rt->gl.samples = samples;
@@ -922,8 +933,8 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
         assert(color.handle);
         rt->gl.color.texture = handle_cast<GLTexture*>(color.handle);
         rt->gl.color.level = color.level;
-        assert(width == valueForLevel(color.level, rt->gl.color.texture->width) &&
-               height == valueForLevel(color.level, rt->gl.color.texture->height));
+        assert(width <= valueForLevel(color.level, rt->gl.color.texture->width) &&
+               height <= valueForLevel(color.level, rt->gl.color.texture->height));
 
         if (any(rt->gl.color.texture->usage & TextureUsage::SAMPLEABLE)) {
             framebufferTexture(color, rt, GL_COLOR_ATTACHMENT0);
@@ -946,8 +957,8 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
         assert(!stencil.handle || stencil.handle == depth.handle);
         rt->gl.depth.texture = handle_cast<GLTexture*>(depth.handle);
         rt->gl.depth.level = depth.level;
-        assert(width == valueForLevel(depth.level, rt->gl.depth.texture->width) &&
-               height == valueForLevel(depth.level, rt->gl.depth.texture->height));
+        assert(width <= valueForLevel(depth.level, rt->gl.depth.texture->width) &&
+               height <= valueForLevel(depth.level, rt->gl.depth.texture->height));
         if (any(rt->gl.depth.texture->usage & TextureUsage::SAMPLEABLE)) {
             // special case: depth & stencil requested, and both provided as the same texture
             specialCased = true;
@@ -964,8 +975,8 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
             assert(depth.handle);
             rt->gl.depth.texture = handle_cast<GLTexture*>(depth.handle);
             rt->gl.depth.level = depth.level;
-            assert(width == valueForLevel(depth.level, rt->gl.depth.texture->width) &&
-                   height == valueForLevel(depth.level, rt->gl.depth.texture->height));
+            assert(width <= valueForLevel(depth.level, rt->gl.depth.texture->width) &&
+                   height <= valueForLevel(depth.level, rt->gl.depth.texture->height));
             if (any(rt->gl.depth.texture->usage & TextureUsage::SAMPLEABLE)) {
                 framebufferTexture(depth, rt, GL_DEPTH_ATTACHMENT);
             } else {
@@ -976,8 +987,8 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
             assert(stencil.handle);
             rt->gl.stencil.texture = handle_cast<GLTexture*>(stencil.handle);
             rt->gl.stencil.level = stencil.level;
-            assert(width == valueForLevel(stencil.level, rt->gl.stencil.texture->width) &&
-                   height == valueForLevel(stencil.level, rt->gl.stencil.texture->height));
+            assert(width <= valueForLevel(stencil.level, rt->gl.stencil.texture->width) &&
+                   height <= valueForLevel(stencil.level, rt->gl.stencil.texture->height));
             if (any(rt->gl.stencil.texture->usage & TextureUsage::SAMPLEABLE)) {
                 framebufferTexture(stencil, rt, GL_STENCIL_ATTACHMENT);
             } else {
@@ -2442,7 +2453,7 @@ GLuint OpenGLDriver::getSamplerSlow(SamplerParams params) const noexcept {
 // TODO: Why does this fail with WebGL 2.0? The run-time check should suffice.
 #if defined(GL_EXT_texture_filter_anisotropic) && !defined(__EMSCRIPTEN__)
     auto& gl = mContext;
-    if (gl.ext.texture_filter_anisotropic) {
+    if (gl.ext.texture_filter_anisotropic && !gl.bugs.disable_texture_filter_anisotropic) {
         GLfloat anisotropy = float(1u << params.anisotropyLog2);
         glSamplerParameterf(s, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(gl.gets.maxAnisotropy, anisotropy));
     }

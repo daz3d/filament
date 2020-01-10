@@ -81,6 +81,15 @@ void PlatformCocoaGL::terminate() noexcept {
 Platform::SwapChain* PlatformCocoaGL::createSwapChain(void* nativewindow, uint64_t& flags) noexcept {
     // Transparent SwapChain is not supported
     flags &= ~backend::SWAP_CHAIN_CONFIG_TRANSPARENT;
+    NSView* nsView = (__bridge NSView*)nativewindow;
+
+    // If the SwapChain is being recreated (e.g. if the underlying surface has been resized),
+    // then we need to force an update to occur in the subsequent makeCurrent, which can be done by
+    // simply resetting the current view. In multi-window situations, this happens automatically.
+    if (pImpl->mCurrentView == nsView) {
+        pImpl->mCurrentView = nullptr;
+    }
+
     return (SwapChain*) nativewindow;
 }
 
@@ -108,26 +117,40 @@ void PlatformCocoaGL::makeCurrent(Platform::SwapChain* drawSwapChain,
     NSView *nsView = (__bridge NSView*) drawSwapChain;
     if (pImpl->mCurrentView != nsView) {
         pImpl->mCurrentView = nsView;
-        // Calling setView could change the viewport and/or scissor box state, but this isn't
-        // accounted for in our OpenGL driver- so we save their state and recall it afterwards.
-        GLint viewport[4];
-        GLint scissor[4];
-        glGetIntegerv(GL_VIEWPORT, viewport);
-        glGetIntegerv(GL_SCISSOR_BOX, scissor);
 
-        [pImpl->mGLContext setView:nsView];
+        // NOTE: This is not documented well (if at all) but NSOpenGLContext requires "setView"
+        // and "update" to be called from the UI thread. This became a hard requirement with the
+        // arrival of macOS 10.15 (Catalina). If we were to call these methods from the GL thread,
+        // we would see EXC_BAD_INSTRUCTION.
 
-        // Recall viewport and scissor state.
-        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-        glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+        // Create a copy of the current GL context pointer for the closure.
+        NSOpenGLContext* glContext = pImpl->mGLContext;
+
+        dispatch_sync(dispatch_get_main_queue(), ^(void) {
+            [glContext setView:nsView];
+            [glContext update];
+        });
     }
-    // this is needed only when the view resized. Not sure how to do only when needed.
-    [pImpl->mGLContext update];
 }
 
 void PlatformCocoaGL::commit(Platform::SwapChain* swapChain) noexcept {
     [pImpl->mGLContext flushBuffer];
 }
+
+bool PlatformCocoaGL::pumpEvents() noexcept {
+    if (![NSThread isMainThread]) {
+        return false;
+    }
+    while (true) {
+        NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast] inMode:NSDefaultRunLoopMode dequeue:YES];
+        if (event == nil) {
+            break;
+        }
+        [NSApp sendEvent:event];
+    }
+    return true;
+}
+
 
 } // namespace filament
 

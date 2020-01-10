@@ -16,9 +16,9 @@
 
 package com.google.android.filament;
 
-import android.support.annotation.IntRange;
-import android.support.annotation.NonNull;
-import android.support.annotation.Size;
+import androidx.annotation.IntRange;
+import androidx.annotation.NonNull;
+import androidx.annotation.Size;
 
 import com.google.android.filament.proguard.UsedByNative;
 
@@ -139,6 +139,31 @@ public class Material {
 
         /** Material brightens what's behind it. */
         SCREEN,
+    }
+
+    /**
+     * Supported refraction modes
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/blendingandtransparency:refraction">
+     * Blending and transparency: refractionMode</a>
+     */
+    public enum RefractionMode {
+        NONE,
+        CUBEMAP,
+        SCREEN_SPACE
+    }
+
+    /**
+     * Supported refraction types
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/blendingandtransparency:refractiontype">
+     * Blending and transparency: refractionType</a>
+     */
+    public enum RefractionType {
+        SOLID,
+        THIN
     }
 
     /**
@@ -352,12 +377,34 @@ public class Material {
     }
 
     /**
+     * Returns the refraction mode of this material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/blendingandtransparency:refraction">
+     * Blending and transparency: refraction</a>
+     */
+    public RefractionMode getRefractionMode() {
+        return RefractionMode.values()[nGetRefractionMode(getNativeObject())];
+    }
+
+    /**
+     * Returns the refraction type of this material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/blendingandtransparency:refractiontype">
+     * Blending and transparency: refractionType</a>
+     */
+    public RefractionType getRefractionType() {
+        return RefractionType.values()[nGetRefractionType(getNativeObject())];
+    }
+
+
+    /**
      * Returns the vertex domain of this material.
      *
-     * @se
+     * @see
      * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/vertexandattributes:vertexdomain">
      * Vertex and attributes: vertexDomain</a>
-     * @return
      */
     public VertexDomain getVertexDomain() {
         return VertexDomain.values()[nGetVertexDomain(getNativeObject())];
@@ -847,6 +894,9 @@ public class Material {
     private static native float nGetMaskThreshold(long nativeMaterial);
     private static native float nGetSpecularAntiAliasingVariance(long nativeMaterial);
     private static native float nGetSpecularAntiAliasingThreshold(long nativeMaterial);
+    private static native int nGetRefractionMode(long nativeMaterial);
+    private static native int nGetRefractionType(long nativeMaterial);
+
 
     private static native int nGetParameterCount(long nativeMaterial);
     private static native void nGetParameters(long nativeMaterial,

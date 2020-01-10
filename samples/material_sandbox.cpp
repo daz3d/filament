@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <iostream>
 #include <string>
 #include <map>
 #include <vector>
@@ -68,7 +69,7 @@ static void printUsage(char* name) {
     std::string usage(
             "SAMPLE_MATERIAL showcases all material models\n"
             "Usage:\n"
-            "    SAMPLE_MATERIAL [options] <mesh files (.obj, .fbx, COLLADA)>\n"
+            "    SAMPLE_MATERIAL [options] <mesh files (.obj, .fbx)>\n"
             "Options:\n"
             "   --help, -h\n"
             "       Prints this message\n\n"
@@ -266,8 +267,8 @@ static void setup(Engine* engine, View*, Scene* scene) {
     if (ibl) {
         auto& params = g_params;
         IndirectLight* const pIndirectLight = ibl->getIndirectLight();
-        params.lightDirection = pIndirectLight->getDirectionEstimate();
-        float4 c = pIndirectLight->getColorEstimate(params.lightDirection);
+        params.lightDirection = IndirectLight::getDirectionEstimate(ibl->getSphericalHarmonics());
+        float4 c = pIndirectLight->getColorEstimate(ibl->getSphericalHarmonics(), params.lightDirection);
         params.lightIntensity = c.w * pIndirectLight->getIntensity();
         params.lightColor = c.rgb;
     }
@@ -284,10 +285,13 @@ static void gui(filament::Engine* engine, filament::View*) {
 
             if (params.currentMaterialModel == MATERIAL_MODEL_LIT) {
                 ImGui::Combo("blending", &params.currentBlending,
-                        "opaque\0transparent\0fade\0\0");
+                        "opaque\0transparent\0fade\0thin refraction\0solid refraction\0\0");
             }
 
             ImGui::ColorEdit3("baseColor", &params.color.r);
+
+            bool hasRefraction = params.currentBlending == BLENDING_THIN_REFRACTION ||
+                    params.currentBlending == BLENDING_SOLID_REFRACTION;
 
             if (params.currentMaterialModel > MATERIAL_MODEL_UNLIT) {
                 if (params.currentBlending == BLENDING_TRANSPARENT ||
@@ -302,8 +306,10 @@ static void gui(filament::Engine* engine, filament::View*) {
                 }
                 if (params.currentMaterialModel != MATERIAL_MODEL_CLOTH &&
                         params.currentMaterialModel != MATERIAL_MODEL_SPECGLOSS) {
-                    ImGui::SliderFloat("metallic", &params.metallic, 0.0f, 1.0f);
-                    ImGui::SliderFloat("reflectance", &params.reflectance, 0.0f, 1.0f);
+                    if (!hasRefraction) {
+                        ImGui::SliderFloat("metallic", &params.metallic, 0.0f, 1.0f);
+                        ImGui::SliderFloat("reflectance", &params.reflectance, 0.0f, 1.0f);
+                    }
                 }
                 if (params.currentMaterialModel != MATERIAL_MODEL_CLOTH &&
                         params.currentMaterialModel != MATERIAL_MODEL_SUBSURFACE) {
@@ -319,6 +325,14 @@ static void gui(filament::Engine* engine, filament::View*) {
                 if (params.currentMaterialModel == MATERIAL_MODEL_CLOTH) {
                     ImGui::ColorEdit3("sheenColor", &params.sheenColor.r);
                     ImGui::ColorEdit3("subsurfaceColor", &params.subsurfaceColor.r);
+                }
+
+                if (hasRefraction) {
+                    ImGui::SliderFloat("ior", &params.ior, 1.0f, 3.0f);
+                    ImGui::SliderFloat("transmission", &params.transmission, 0.0f, 1.0f);
+                    ImGui::SliderFloat("thickness", &params.thickness, 0.0f, 1.0f);
+                    ImGui::ColorEdit3("transmittance", &params.transmittanceColor.r);
+                    ImGui::SliderFloat("distance", &params.distance, 0.0f, 4.0f);
                 }
             }
         }

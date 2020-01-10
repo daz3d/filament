@@ -21,7 +21,7 @@
 
 #include <cmath>            // for std:: namespace
 #include <functional>       // for appl() and map()
-#include <iostream>         // for operator<<
+#include <iosfwd>           // for operator<<
 
 #include <math.h>
 #include <stdint.h>
@@ -52,10 +52,10 @@ using arithmetic_result_t = typename arithmetic_result<T, U>::type;
 
 template<typename A, typename B = int, typename C = int, typename D = int>
 using enable_if_arithmetic_t = std::enable_if_t<
-        std::is_arithmetic<A>::value &&
-        std::is_arithmetic<B>::value &&
-        std::is_arithmetic<C>::value &&
-        std::is_arithmetic<D>::value>;
+        is_arithmetic<A>::value &&
+        is_arithmetic<B>::value &&
+        is_arithmetic<C>::value &&
+        is_arithmetic<D>::value>;
 
 /*
  * No user serviceable parts here.
@@ -472,6 +472,13 @@ private:
         return v;
     }
 
+    friend inline VECTOR<T> MATH_PURE log(VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = std::log(v[i]);
+        }
+        return v;
+    }
+
     friend inline constexpr VECTOR<T> MATH_PURE saturate(const VECTOR<T>& lv) {
         return clamp(lv, T(0), T(1));
     }
@@ -560,6 +567,9 @@ private:
     }
 };
 
+template<typename T>
+std::ostream& printVector(std::ostream& stream, const T* data, size_t count);
+
 /*
  * TVecDebug implements functions on a vector of type BASE<T>.
  *
@@ -578,12 +588,7 @@ private:
      * (the first one, BASE<T> being known).
      */
     friend std::ostream& operator<<(std::ostream& stream, const VECTOR<T>& v) {
-        stream << "< ";
-        for (size_t i = 0; i < v.size() - 1; i++) {
-            stream << T(v[i]) << ", ";
-        }
-        stream << T(v[v.size() - 1]) << " >";
-        return stream;
+        return printVector(stream, &v[0], v.size());
     }
 };
 

@@ -72,11 +72,14 @@ if (NOT USE_EXTERNAL_GLES3)
             src/opengl/OpenGLPlatform.cpp
             include/private/backend/OpenGLPlatform.h
     )
+    if (EGL)
+        list(APPEND SRCS src/opengl/PlatformEGL.cpp)
+    endif()
     if (ANDROID)
         list(APPEND SRCS src/android/ExternalStreamManagerAndroid.cpp)
         list(APPEND SRCS src/android/ExternalTextureManagerAndroid.cpp)
         list(APPEND SRCS src/android/VirtualMachineEnv.cpp)
-        list(APPEND SRCS src/opengl/PlatformEGL.cpp)
+        list(APPEND SRCS src/opengl/PlatformEGLAndroid.cpp)
     elseif (IOS)
         list(APPEND SRCS src/opengl/PlatformCocoaTouchGL.mm)
         list(APPEND SRCS src/opengl/CocoaTouchExternalImage.mm)
@@ -100,6 +103,7 @@ endif()
 if (FILAMENT_SUPPORTS_METAL)
     list(APPEND SRCS
             src/metal/MetalBlitter.mm
+            src/metal/MetalBuffer.mm
             src/metal/MetalBufferPool.mm
             src/metal/MetalContext.mm
             src/metal/MetalDriver.mm
@@ -296,7 +300,8 @@ if (APPLE)
         test/TrianglePrimitive.cpp
         test/Arguments.cpp
         test/test_MissingRequiredAttributes.cpp
-        test/test_ReadPixels.cpp)
+        test/test_ReadPixels.cpp
+        test/test_BufferUpdates.cpp)
 
     target_link_libraries(backend_test PRIVATE
         backend

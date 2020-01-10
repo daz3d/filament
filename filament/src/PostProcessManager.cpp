@@ -411,17 +411,16 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::ssao(FrameGraph& fg, RenderP
                         .format = TextureFormat::R8 });
 
                 // Here we use the depth test to skip pixels at infinity (i.e. the skybox)
-                // Note that we're not clearing the SAO buffer, which will leave skipped pixels
-                // in an undefined state -- this doesn't matter because the skybox material
-                // doesn't use SSAO and the bilateral filter in the blur pass will ignore those
-                // pixels at infinity.
+                // Note that we have to clear the SAO buffer because blended objects will end-up
+                // reading into it even though they were not written in the depth buffer.
+                // The bilateral filter in the blur pass will ignore pixels at infinity.
 
                 data.ssao = builder.write(data.ssao);
                 data.depth = builder.sample(data.depth);
 
                 data.rt = builder.createRenderTarget("SSAO Target",
                         { .attachments = { data.ssao, data.depth }
-                        }, TargetBufferFlags::NONE);
+                        }, TargetBufferFlags::COLOR);
             },
             [=](FrameGraphPassResources const& resources,
                     SSAOPassData const& data, DriverApi& driver) {
@@ -453,6 +452,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::ssao(FrameGraph& fg, RenderP
                 pipeline.rasterState.depthFunc = RasterState::DepthFunc::G;
                 pipeline.scissor = pInstance->getScissor();
 
+                ssao.params.clearColor = 1.0f;
                 driver.beginRenderPass(ssao.target, ssao.params);
                 pInstance->use(driver);
                 driver.draw(pipeline, fullScreenRenderPrimitive);
@@ -473,7 +473,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::ssao(FrameGraph& fg, RenderP
     return ssao;
 }
 
-FrameGraphId<FrameGraphTexture> PostProcessManager::depthPass(FrameGraph& fg, RenderPass& pass,
+FrameGraphId<FrameGraphTexture> PostProcessManager::depthPass(FrameGraph& fg, RenderPass const& pass,
         uint32_t width, uint32_t height,
         View::AmbientOcclusionOptions const& options) noexcept {
 
@@ -482,9 +482,6 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::depthPass(FrameGraph& fg, Re
         FrameGraphId<FrameGraphTexture> depth;
         FrameGraphRenderTargetHandle rt;
     };
-
-    RenderPass::Command const* first = pass.getCommands().begin();
-    RenderPass::Command const* last = pass.getCommands().end();
 
     // sanitize a bit the user provided scaling factor
     const float scale = std::min(std::abs(options.resolution), 1.0f);
@@ -510,10 +507,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::depthPass(FrameGraph& fg, Re
                 data.rt = builder.createRenderTarget("SSAO Depth Target", d,
                                                      TargetBufferFlags::DEPTH);
             },
-            [=, &pass](FrameGraphPassResources const& resources,
+            [pass](FrameGraphPassResources const& resources,
                     DepthPassData const& data, DriverApi& driver) {
                 auto out = resources.getRenderTarget(data.rt);
-                pass.execute(resources.getPassName(), out.target, out.params, first, last);
+                pass.execute(resources.getPassName(), out.target, out.params);
             });
 
     return ssaoDepthPass.getData().depth;

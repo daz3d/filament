@@ -43,9 +43,9 @@ using namespace details;
 struct IndirectLight::BuilderDetails {
     Texture const* mReflectionsMap = nullptr;
     Texture const* mIrradianceMap = nullptr;
-    float3 mIrradianceCoefs[9] = {};
+    float3 mIrradianceCoefs[9] = { 65504.0 }; // magic value (max fp16) to indicate sh are not set
     mat3f mRotation = {};
-    float mIntensity = 30000.0f;
+    float mIntensity = FIndirectLight::DEFAULT_INTENSITY;
 };
 
 using BuilderType = IndirectLight;
@@ -156,12 +156,6 @@ IndirectLight* IndirectLight::Builder::build(Engine& engine) {
             return nullptr;
         }
 
-        if (!ASSERT_POSTCONDITION_NON_FATAL(mImpl->mReflectionsMap->getLevels() ==
-                upcast(mImpl->mReflectionsMap)->getMaxLevelCount(),
-                "reflection map must have %u mipmap levels",
-                upcast(mImpl->mReflectionsMap)->getMaxLevelCount())) {
-            return nullptr;
-        }
         if (IBL_INTEGRATION == IBL_INTEGRATION_IMPORTANCE_SAMPLING) {
             mImpl->mReflectionsMap->generateMipmaps(engine);
         }
@@ -211,8 +205,8 @@ void FIndirectLight::terminate(FEngine& engine) {
     }
 }
 
-math::float3 FIndirectLight::getDirectionEstimate() const noexcept {
-    auto const& f = mIrradianceCoefs;
+
+math::float3 FIndirectLight::getDirectionEstimate(math::float3 const* f) noexcept {
     // The linear direction is found as normalize(-sh[3], -sh[1], sh[2]), but the coefficients
     // we store are already pre-normalized, so the negative sign disappears.
     // Note: we normalize the directions only after blending, this matches code used elsewhere --
@@ -224,16 +218,15 @@ math::float3 FIndirectLight::getDirectionEstimate() const noexcept {
     return -normalize(r * 0.2126f + g * 0.7152f + b * 0.0722f);
 }
 
-float4 FIndirectLight::getColorEstimate(float3 direction) const noexcept {
+math::float4 FIndirectLight::getColorEstimate(math::float3 const* Le, math::float3 direction) noexcept {
     // See: https://www.gamasutra.com/view/news/129689/Indepth_Extracting_dominant_light_from_Spherical_Harmonics.php
+
+    // note Le is our pre-convolved, pre-scaled SH coefficients for the environment
 
     // first get the direction
     const float3 s = -direction;
 
     // The light intensity on one channel is given by: dot(Ld, Le) / dot(Ld, Ld)
-
-    // our pre-convolved, pre-scaled SH coefficients for the environment
-    auto const& Le = mIrradianceCoefs;
 
     // SH coefficients of the directional light pre-scaled by 1/A[i]
     // (we pre-scale by 1/A[i] to undo Le's pre-scaling by A[i]
@@ -265,6 +258,14 @@ float4 FIndirectLight::getColorEstimate(float3 direction) const noexcept {
     return { LdDotLe / intensity, intensity };
 }
 
+math::float3 FIndirectLight::getDirectionEstimate() const noexcept {
+    return getDirectionEstimate(mIrradianceCoefs.data());
+}
+
+float4 FIndirectLight::getColorEstimate(float3 direction) const noexcept {
+   return getColorEstimate(mIrradianceCoefs.data(), direction);
+}
+
 } // namespace details
 
 // ------------------------------------------------------------------------------------------------
@@ -293,6 +294,14 @@ math::float3 IndirectLight::getDirectionEstimate() const noexcept {
 
 math::float4 IndirectLight::getColorEstimate(math::float3 direction) const noexcept {
     return upcast(this)->getColorEstimate(direction);
+}
+
+math::float3 IndirectLight::getDirectionEstimate(const math::float3* sh) noexcept {
+    return FIndirectLight::getDirectionEstimate(sh);
+}
+
+math::float4 IndirectLight::getColorEstimate(const math::float3* sh, math::float3 direction) noexcept {
+    return FIndirectLight::getColorEstimate(sh, direction);
 }
 
 } // namespace filament

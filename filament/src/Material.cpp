@@ -154,11 +154,14 @@ FMaterial::FMaterial(FEngine& engine, const Material::Builder& builder)
     mSamplerBindings.populate(&mSamplerInterfaceBlock);
 
     parser->getShading(&mShading);
+    parser->getMaterialProperties(&mMaterialProperties);
     parser->getBlendingMode(&mBlendingMode);
     parser->getInterpolation(&mInterpolation);
     parser->getVertexDomain(&mVertexDomain);
     parser->getMaterialDomain(&mMaterialDomain);
     parser->getRequiredAttributes(&mRequiredAttributes);
+    parser->getRefractionMode(&mRefractionMode);
+    parser->getRefractionType(&mRefractionType);
 
     if (mBlendingMode == BlendingMode::MASKED) {
         parser->getMaskThreshold(&mMaskThreshold);
@@ -598,6 +601,14 @@ size_t Material::getParameters(ParameterInfo* parameters, size_t count) const no
 
 AttributeBitset Material::getRequiredAttributes() const noexcept {
     return upcast(this)->getRequiredAttributes();
+}
+
+RefractionMode Material::getRefractionMode() const noexcept {
+    return upcast(this)->getRefractionMode();
+}
+
+RefractionType Material::getRefractionType() const noexcept {
+    return upcast(this)->getRefractionType();
 }
 
 bool Material::hasParameter(const char* name) const noexcept {

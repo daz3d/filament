@@ -55,7 +55,7 @@ struct RenderTarget;
 struct RenderTargetResource;
 struct PassNode;
 struct Alias;
-class ResourceAllocator;
+class ResourceAllocatorInterface;
 } // namespace fg
 
 class FrameGraphPassResources;
@@ -142,10 +142,12 @@ public:
         fg::PassNode& mPass;
     };
 
-    explicit FrameGraph(fg::ResourceAllocator& resourceAllocator);
+    explicit FrameGraph(fg::ResourceAllocatorInterface& resourceAllocator);
     FrameGraph(FrameGraph const&) = delete;
     FrameGraph& operator = (FrameGraph const&) = delete;
     ~FrameGraph();
+
+    struct Empty{};
 
     /*
      * Add a pass to the framegraph.
@@ -174,6 +176,16 @@ public:
 
     // Adds a reference to 'input', preventing it from being culled.
     void present(FrameGraphHandle input);
+
+    // Adds a simple execute-only pass with side effect (so it's not culled)
+    template<typename Execute>
+    void simpleSideEffectPass(const char* name, Execute&& execute) {
+        addPass<Empty>(name, [](FrameGraph::Builder& builder, auto& data) { builder.sideEffect(); },
+                [execute](FrameGraphPassResources const& resources, auto const& data,
+                        backend::DriverApi& driver) {
+                    execute();
+                });
+    }
 
     // Returns whether the resource handle is valid. A resource handle becomes invalid after
     // it's used to declare a resource write (see Builder::write()).
@@ -278,7 +290,7 @@ private:
 
     void executeInternal(fg::PassNode const& node, backend::DriverApi& driver) noexcept;
 
-    fg::ResourceAllocator& getResourceAllocator() noexcept { return mResourceAllocator; }
+    fg::ResourceAllocatorInterface& getResourceAllocator() noexcept { return mResourceAllocator; }
 
     void reset() noexcept;
 
@@ -310,7 +322,7 @@ private:
 
     FrameGraphHandle moveResource(FrameGraphHandle from, FrameGraphHandle to);
 
-    fg::ResourceAllocator& mResourceAllocator;
+    fg::ResourceAllocatorInterface& mResourceAllocator;
     details::LinearAllocatorArena mArena;
     Vector<fg::PassNode> mPassNodes;                    // list of frame graph passes
     Vector<fg::ResourceNode> mResourceNodes;            // list of resource nodes

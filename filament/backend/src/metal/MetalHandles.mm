@@ -47,17 +47,6 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     return MTLTextureUsage(u);
 }
 
-static inline MTLStorageMode getMetalStorageMode(TextureUsage usage) {
-    if (any(usage & TextureUsage::UPLOADABLE)) {
-#if defined(IOS)
-        return MTLStorageModeShared;
-#else
-        return MTLStorageModeManaged;
-#endif
-    }
-    return MTLStorageModePrivate;
-}
-
 MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow)
         : layer(nativeWindow) {
     layer.device = device;
@@ -69,8 +58,8 @@ MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow)
 MetalSwapChain::MetalSwapChain(int32_t width, int32_t height) : surfaceWidth(width),
         surfaceHeight(height) { }
 
-MetalVertexBuffer::MetalVertexBuffer(id<MTLDevice> device, uint8_t bufferCount, uint8_t attributeCount,
-            uint32_t vertexCount, AttributeArray const& attributes)
+MetalVertexBuffer::MetalVertexBuffer(MetalContext& context, uint8_t bufferCount,
+            uint8_t attributeCount, uint32_t vertexCount, AttributeArray const& attributes)
     : HwVertexBuffer(bufferCount, attributeCount, vertexCount, attributes) {
     buffers.reserve(bufferCount);
 
@@ -84,99 +73,26 @@ MetalVertexBuffer::MetalVertexBuffer(id<MTLDevice> device, uint8_t bufferCount, 
             }
         }
 
-        id<MTLBuffer> buffer = nil;
+        MetalBuffer* buffer = nullptr;
         if (size > 0) {
-            buffer = [device newBufferWithLength:size
-                                         options:MTLResourceStorageModeShared];
+            buffer = new MetalBuffer(context, size);
         }
         buffers.push_back(buffer);
     }
 }
 
-MetalIndexBuffer::MetalIndexBuffer(id<MTLDevice> device, uint8_t elementSize, uint32_t indexCount)
-    : HwIndexBuffer(elementSize, indexCount) {
-    buffer = [device newBufferWithLength:(elementSize * indexCount)
-                                 options:MTLResourceStorageModeShared];
+MetalVertexBuffer::~MetalVertexBuffer() {
+    for (auto* b : buffers) {
+        delete b;
+    }
+    buffers.clear();
 }
+
+MetalIndexBuffer::MetalIndexBuffer(MetalContext& context, uint8_t elementSize, uint32_t indexCount)
+    : HwIndexBuffer(elementSize, indexCount), buffer(context, elementSize * indexCount, true) { }
 
 MetalUniformBuffer::MetalUniformBuffer(MetalContext& context, size_t size) : HwUniformBuffer(),
-        uniformSize(size), context(context) {
-    ASSERT_PRECONDITION(size > 0, "Cannot create Metal uniform with size %d.", size);
-    // If the buffer is less than 4K in size, we don't use an explicit buffer and instead use
-    // immediate command encoder methods like setVertexBytes:length:atIndex:.
-    if (size <= 4 * 1024) {   // 4K
-        bufferPoolEntry = nullptr;
-        cpuBuffer = malloc(size);
-    }
-}
-
-MetalUniformBuffer::~MetalUniformBuffer() {
-    if (cpuBuffer) {
-        free(cpuBuffer);
-    }
-    // This uniform buffer is being destroyed. If we have a buffer, release it as it is no longer
-    // needed.
-    if (bufferPoolEntry) {
-        context.bufferPool->releaseBuffer(bufferPoolEntry);
-    }
-}
-
-void MetalUniformBuffer::copyIntoBuffer(void* src, size_t size) {
-    if (size <= 0) {
-        return;
-    }
-    ASSERT_PRECONDITION(size <= this->uniformSize, "Attempting to copy %d bytes into a uniform of size %d",
-            size, this->uniformSize);
-
-    // Either copy into the Metal buffer or into our cpu buffer.
-    if (cpuBuffer) {
-        memcpy(cpuBuffer, src, size);
-        return;
-    }
-
-    // We're about to acquire a new buffer to hold the new contents of the uniform. If we previously
-    // had obtained a buffer we release it, decrementing its reference count, as this uniform no
-    // longer needs it.
-    if (bufferPoolEntry) {
-        context.bufferPool->releaseBuffer(bufferPoolEntry);
-    }
-
-    bufferPoolEntry = context.bufferPool->acquireBuffer(this->uniformSize);
-    memcpy(static_cast<uint8_t*>(bufferPoolEntry->buffer.contents), src, size);
-}
-
-id<MTLBuffer> MetalUniformBuffer::getGpuBufferForDraw() {
-    if (!bufferPoolEntry) {
-        // If there's a CPU buffer, then we return nil here, as the CPU-side buffer will be bound
-        // separately.
-        if (cpuBuffer) {
-            return nil;
-        }
-
-        // If there isn't a CPU buffer, it means no data has been loaded into this uniform yet. To
-        // avoid an error, we'll allocate an empty buffer.
-        bufferPoolEntry = context.bufferPool->acquireBuffer(this->uniformSize);
-    }
-
-    // This uniform is being used in a draw call, so we retain it so it's not released back into the
-    // buffer pool until the frame has finished.
-    auto uniformDeleter = [bufferPool = context.bufferPool](const void* resource){
-        bufferPool->releaseBuffer((const MetalBufferPoolEntry*) resource);
-    };
-    id<MTLCommandBuffer> commandBuffer = context.currentCommandBuffer;
-    if (context.resourceTracker.trackResource((__bridge void*) commandBuffer, bufferPoolEntry,
-            uniformDeleter)) {
-        // We only want to retain the buffer once per command buffer- trackResource will return
-        // true if this is the first time tracking this uniform for this command buffer.
-        context.bufferPool->retainBuffer(bufferPoolEntry);
-    }
-
-    return bufferPoolEntry->buffer;
-}
-
-void* MetalUniformBuffer::getCpuBuffer() const {
-    return cpuBuffer;
-}
+        buffer(context, size) { }
 
 void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer*
         indexBuffer, uint32_t enabledAttributes) {
@@ -293,20 +209,21 @@ MetalTexture::MetalTexture(MetalContext& context, backend::SamplerType target, u
     // Metal does not natively support 3 component textures. We'll emulate support by reshaping the
     // image data and using a 4 component texture.
     const TextureFormat reshapedFormat = reshaper.getReshapedFormat();
-    const MTLPixelFormat pixelFormat = decidePixelFormat(context.device, reshapedFormat);
+    metalPixelFormat = decidePixelFormat(context.device, reshapedFormat);
 
     bytesPerElement = static_cast<uint8_t>(getFormatSize(reshapedFormat));
     assert(bytesPerElement > 0);
     blockWidth = static_cast<uint8_t>(getBlockWidth(reshapedFormat));
+    blockHeight = static_cast<uint8_t>(getBlockHeight(reshapedFormat));
 
-    ASSERT_POSTCONDITION(pixelFormat != MTLPixelFormatInvalid, "Pixel format not supported.");
+    ASSERT_POSTCONDITION(metalPixelFormat != MTLPixelFormatInvalid, "Pixel format not supported.");
 
     const BOOL mipmapped = levels > 1;
     const BOOL multisampled = samples > 1;
 
     MTLTextureDescriptor* descriptor;
     if (target == backend::SamplerType::SAMPLER_2D) {
-        descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixelFormat
+        descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
                                                                         width:width
                                                                        height:height
                                                                     mipmapped:mipmapped];
@@ -314,18 +231,18 @@ MetalTexture::MetalTexture(MetalContext& context, backend::SamplerType target, u
         descriptor.textureType = multisampled ? MTLTextureType2DMultisample : MTLTextureType2D;
         descriptor.sampleCount = multisampled ? samples : 1;
         descriptor.usage = getMetalTextureUsage(usage);
-        descriptor.storageMode = getMetalStorageMode(usage);
+        descriptor.storageMode = MTLStorageModePrivate;
         texture = [context.device newTextureWithDescriptor:descriptor];
         ASSERT_POSTCONDITION(texture != nil, "Could not create Metal texture. Out of memory?");
     } else if (target == backend::SamplerType::SAMPLER_CUBEMAP) {
         ASSERT_POSTCONDITION(!multisampled, "Multisampled cubemap faces not supported.");
         ASSERT_POSTCONDITION(width == height, "Cubemap faces must be square.");
-        descriptor = [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:pixelFormat
+        descriptor = [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:metalPixelFormat
                                                                            size:width
                                                                       mipmapped:mipmapped];
         descriptor.mipmapLevelCount = levels;
         descriptor.usage = getMetalTextureUsage(usage);
-        descriptor.storageMode = getMetalStorageMode(usage);
+        descriptor.storageMode = MTLStorageModePrivate;
         texture = [context.device newTextureWithDescriptor:descriptor];
         ASSERT_POSTCONDITION(texture != nil, "Could not create Metal texture. Out of memory?");
     } else if (target == backend::SamplerType::SAMPLER_EXTERNAL) {
@@ -342,60 +259,112 @@ MetalTexture::~MetalTexture() {
 }
 
 void MetalTexture::load2DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-        uint32_t height, PixelBufferDescriptor& data) noexcept {
-    void* buffer = reshaper.reshape(data.buffer, data.size);
+        uint32_t height, PixelBufferDescriptor&& p) noexcept {
+    PixelBufferDescriptor data = reshaper.reshape(std::move(p));
 
-    MTLRegion region {
-        .origin = {
-            .x = xoffset,
-            .y = yoffset,
-            .z =  0
-        },
-        .size = {
-            .height = height,
-            .width = width,
-            .depth = 1
-        }
-    };
-    const NSUInteger bytesPerRow = getBytesPerRow(data.type, width);
-    [texture replaceRegion:region
-               mipmapLevel:level
-                     slice:0
-                 withBytes:buffer
-               bytesPerRow:bytesPerRow
-             bytesPerImage:0];          // only needed for MTLTextureType3D
+    id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
 
-    reshaper.freeBuffer(buffer);
+    loadSlice(level, xoffset, yoffset, width, height, 0, 0, data, blitCommandEncoder,
+            blitCommandBuffer);
+
+    [blitCommandEncoder endEncoding];
 }
 
-void MetalTexture::loadCubeImage(const PixelBufferDescriptor& data, const FaceOffsets& faceOffsets,
-        int miplevel) {
-    const NSUInteger faceWidth = width >> miplevel;
-    const NSUInteger bytesPerRow = getBytesPerRow(data.type, faceWidth);
+void MetalTexture::loadCubeImage(const FaceOffsets& faceOffsets, int miplevel,
+        PixelBufferDescriptor&& p) {
+    PixelBufferDescriptor data = reshaper.reshape(std::move(p));
 
-    MTLRegion region = MTLRegionMake2D(0, 0, faceWidth, faceWidth);
+    id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
+
+    const NSUInteger faceWidth = width >> miplevel;
+
     for (NSUInteger slice = 0; slice < 6; slice++) {
         FaceOffsets::size_type faceOffset = faceOffsets.offsets[slice];
-        [texture replaceRegion:region
-                   mipmapLevel:static_cast<NSUInteger>(miplevel)
-                         slice:slice
-                     withBytes:static_cast<uint8_t*>(data.buffer) + faceOffset
-                   bytesPerRow:bytesPerRow
-                 bytesPerImage:0];
+        loadSlice(miplevel, 0, 0, faceWidth, faceWidth, faceOffset, slice, data, blitCommandEncoder,
+                blitCommandBuffer);
     }
+
+    [blitCommandEncoder endEncoding];
 }
 
-NSUInteger MetalTexture::getBytesPerRow(PixelDataType type, NSUInteger width) const noexcept {
-    // From https://developer.apple.com/documentation/metal/mtltexture/1515464-replaceregion:
-    // For an ordinary or packed pixel format, the stride, in bytes, between rows of source data.
-    // For a compressed pixel format, the stride is the number of bytes from the beginning of one
-    // row of blocks to the beginning of the next.
-    if (type == PixelDataType::COMPRESSED) {
+void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
+        uint32_t height, uint32_t byteOffset, uint32_t slice,
+        PixelBufferDescriptor& data, id<MTLBlitCommandEncoder> blitCommandEncoder,
+        id<MTLCommandBuffer> blitCommandBuffer) noexcept {
+    const size_t stride = data.stride ? data.stride : width;
+    size_t bytesPerRow = PixelBufferDescriptor::computeDataSize(data.format, data.type, stride, 1,
+            data.alignment);
+    size_t bytesPerPixel = PixelBufferDescriptor::computeDataSize(data.format, data.type, 1, 1, 1);
+    size_t bytesPerSlice = bytesPerRow * height;    // a slice is a 2D image, or face of a cubemap
+
+    const size_t sourceOffset = (data.left * bytesPerPixel) + (data.top * bytesPerRow) + byteOffset;
+
+    if (data.type == PixelDataType::COMPRESSED) {
         assert(blockWidth > 0);
+        assert(blockHeight > 0);
+        // From https://developer.apple.com/documentation/metal/mtltexture/1515464-replaceregion:
+        // For an ordinary or packed pixel format, the stride, in bytes, between rows of source
+        // data. For a compressed pixel format, the stride is the number of bytes from the
+        // beginning of one row of blocks to the beginning of the next.
         const NSUInteger blocksPerRow = std::ceil(width / (float) blockWidth);
-        return bytesPerElement * blocksPerRow;
+        const NSUInteger blocksPerCol = std::ceil(height / (float) blockHeight);
+        bytesPerRow = bytesPerElement * blocksPerRow;
+        bytesPerSlice = bytesPerRow * blocksPerCol;
+    }
+
+    ASSERT_PRECONDITION(data.size >= bytesPerSlice, "Expected buffer size of at least %d but "
+            "received PixelBufferDescriptor with size %d.", bytesPerSlice, data.size);
+
+    // Depending on the size of the required buffer, we either allocate a staging buffer or a
+    // staging texture. Then the texture data is blited to the "real" texture.
+    const size_t stagingBufferSize = bytesPerSlice;
+    if (UTILS_LIKELY(stagingBufferSize <= context.device.maxBufferLength)) {
+        auto entry = context.bufferPool->acquireBuffer(stagingBufferSize);
+        memcpy(entry->buffer.contents,
+                static_cast<uint8_t*>(data.buffer) + sourceOffset,
+                stagingBufferSize);
+        [blitCommandEncoder copyFromBuffer:entry->buffer
+                              sourceOffset:0
+                         sourceBytesPerRow:bytesPerRow
+                       sourceBytesPerImage:0
+                                sourceSize:MTLSizeMake(width, height, 1)
+                                 toTexture:texture
+                          destinationSlice:slice
+                          destinationLevel:level
+                         destinationOrigin:MTLOriginMake(xoffset, yoffset, 0)];
+        [blitCommandBuffer addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+            context.bufferPool->releaseBuffer(entry);
+        }];
     } else {
-        return bytesPerElement * width;
+       // The texture is too large to fit into a single buffer, create a staging texture instead.
+       MTLTextureDescriptor* descriptor =
+               [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
+                                                                  width:width
+                                                                 height:height
+                                                              mipmapped:NO];
+#if defined(IOS)
+       descriptor.storageMode = MTLStorageModeShared;
+#else
+       descriptor.storageMode = MTLStorageModeManaged;
+#endif
+       id<MTLTexture> stagingTexture = [context.device newTextureWithDescriptor:descriptor];
+       [stagingTexture replaceRegion:MTLRegionMake2D(0, 0, width, height)
+                         mipmapLevel:0
+                               slice:0
+                           withBytes:static_cast<uint8_t*>(data.buffer) + sourceOffset
+                         bytesPerRow:bytesPerRow
+                       bytesPerImage:0];
+       [blitCommandEncoder copyFromTexture:stagingTexture
+                               sourceSlice:0
+                               sourceLevel:0
+                              sourceOrigin:MTLOriginMake(0, 0, 0)
+                                sourceSize:MTLSizeMake(width, height, 1)
+                                 toTexture:texture
+                          destinationSlice:slice
+                          destinationLevel:level
+                         destinationOrigin:MTLOriginMake(xoffset, yoffset, 0)];
     }
 }
 
@@ -539,7 +508,7 @@ MetalFence::MetalFence(MetalContext& context) {
     cv = std::make_shared<std::condition_variable>();
     event = [context.device newSharedEvent];
     value = context.signalId++;
-    [context.currentCommandBuffer encodeSignalEvent:event value:value];
+    [getPendingCommandBuffer(&context) encodeSignalEvent:event value:value];
 
     // Using a weak_ptr here because the Fence could be deleted before the block executes.
     std::weak_ptr<std::condition_variable> weakCv = cv;

@@ -115,10 +115,16 @@ public:
     float getMaskThreshold() const noexcept { return mMaskThreshold; }
     bool hasShadowMultiplier() const noexcept { return mHasShadowMultiplier; }
     AttributeBitset getRequiredAttributes() const noexcept { return mRequiredAttributes; }
+    RefractionMode getRefractionMode() const noexcept { return mRefractionMode; }
+    RefractionType getRefractionType() const noexcept { return mRefractionType; }
 
     bool hasSpecularAntiAliasing() const noexcept { return mSpecularAntiAliasing; }
     float getSpecularAntiAliasingVariance() const noexcept { return mSpecularAntiAliasingVariance; }
     float getSpecularAntiAliasingThreshold() const noexcept { return mSpecularAntiAliasingThreshold; }
+
+    bool hasMaterialProperty(Property property) const noexcept {
+        return bool(mMaterialProperties & uint64_t(property));
+    }
 
     size_t getParameterCount() const noexcept {
         return mUniformInterfaceBlock.getUniformInfoList().size() +
@@ -166,6 +172,9 @@ private:
     MaterialDomain mMaterialDomain = MaterialDomain::SURFACE;
     CullingMode mCullingMode = CullingMode::NONE;
     AttributeBitset mRequiredAttributes;
+    RefractionMode mRefractionMode = RefractionMode::NONE;
+    RefractionType mRefractionType = RefractionType::SOLID;
+    uint64_t mMaterialProperties = 0;
 
     float mMaskThreshold = 0.4f;
     float mSpecularAntiAliasingVariance = 0.0f;

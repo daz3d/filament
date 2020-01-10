@@ -5,6 +5,21 @@ A new header is inserted each time a *tag* is created.
 
 ## Next release
 
+## v1.4.4
+
+- Added support for solid and thin layer cubemap and screen-space refraction.
+- Improved high roughness material rendering by default when regenerating environments maps.
+- Fix bad instruction exception with macOS Catalina.
+- Fixed bad state after removing an IBL from the Scene.
+- Fixed incorrect punctual light binning (affected Metal and Vulkan backends).
+- Fixed crash when using a Metal headless SwapChain with an Intel integrated GPU.
+- Added support for ASTC textures on iOS with Metal backend.
+- Added new heightfield sample.
+- Removed `<iostream>` from math headers.
+- cmgen now places KTX files directly in the specified deployment folder.
+
+## v1.4.3
+
 - Fixed an assertion when a parameter array occurs last in a material definition.
 - Fixed morph shapes not rendering in WebGL.
 - Added support for the latest version of emscripten.
@@ -26,6 +41,7 @@ A new header is inserted each time a *tag* is created.
 - gltfio: Added Java / Kotlin bindings for Animator.
 - gltfio: Fixed panic with the Android gltf-bloom demo.
 - gltfio: Java clients should no longer call Filament#init.
+- Improved IBL diffuse by allowing to use the specular cubemap at `roughness` = 1 instead of Spherical Harmonics
 
 ## v1.4.1
 

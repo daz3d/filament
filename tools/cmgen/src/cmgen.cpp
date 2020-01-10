@@ -53,11 +53,12 @@ using namespace image;
 // -----------------------------------------------------------------------------------------------
 
 enum class ShFile {
-    SH_NONE, SH_CROSS, SH_TEXT
+    SH_NONE, SH_FILE, SH_TEXT
 };
 
 static const size_t DFG_LUT_DEFAULT_SIZE = 128;
 static const size_t IBL_DEFAULT_SIZE = 256;
+static const size_t IBL_DEFAULT_MIN_LOD_SIZE = 16;
 
 enum class OutputType {
     FACES, KTX, EQUIRECT, OCTAHEDRON
@@ -71,6 +72,7 @@ static float g_extract_blur = 0.0;
 static utils::Path g_extract_dir;
 
 static size_t g_output_size = 0;
+static size_t g_min_lod_size = 0;
 
 static bool g_quiet = false;
 static bool g_debug = false;
@@ -210,6 +212,8 @@ static void printUsage(char* name) {
             "       Diffuse irradiance into <dir>\n\n"
             "   --ibl-no-prefilter\n"
             "       Use importance sampling instead of prefiltered importance sampling\n\n"
+            "   --ibl-min-lod-size\n"
+            "       Minimum LOD size [default: 16]\n\n"
             "   --sh=bands\n"
             "       SH decomposition of input cubemap\n\n"
             "   --sh-output=filename.[exr|hdr|psd|rgbm|rgb32f|png|dds|txt]\n"
@@ -240,7 +244,7 @@ static void license() {
 }
 
 static int handleCommandLineArgments(int argc, char* argv[]) {
-    static constexpr const char* OPTSTR = "hqidt:f:c:s:x:w:";
+    static constexpr const char* OPTSTR = "hqidt:f:c:s:x:w:S:";
     static const struct option OPTIONS[] = {
             { "help",                       no_argument, nullptr, 'h' },
             { "license",                    no_argument, nullptr, 'l' },
@@ -264,6 +268,7 @@ static int handleCommandLineArgments(int argc, char* argv[]) {
             { "ibl-dfg-multiscatter",       no_argument, nullptr, 'u' },
             { "ibl-dfg-cloth",              no_argument, nullptr, 'C' },
             { "ibl-no-prefilter",           no_argument, nullptr, 'n' },
+            { "ibl-min-lod-size",     required_argument, nullptr, 'S' },
             { "ibl-samples",          required_argument, nullptr, 'k' },
             { "deploy",               required_argument, nullptr, 'x' },
             { "no-mirror",                  no_argument, nullptr, 'm' },
@@ -353,6 +358,13 @@ static int handleCommandLineArgments(int argc, char* argv[]) {
                     exit(0);
                 }
                 break;
+            case 'S':
+                g_min_lod_size = std::stoul(arg);
+                if (!isPOT(g_min_lod_size)) {
+                    std::cerr << "min LOD size must be a power of two" << std::endl;
+                    exit(0);
+                }
+                break;
             case 'z':
                 g_sh_compute = 1;
                 g_sh_output = true;
@@ -365,7 +377,7 @@ static int handleCommandLineArgments(int argc, char* argv[]) {
             case 'o':
                 g_sh_compute = 1;
                 g_sh_output = true;
-                g_sh_file = ShFile::SH_CROSS;
+                g_sh_file = ShFile::SH_FILE;
                 g_sh_filename = arg;
                 if (g_sh_filename.getExtension() == "txt") {
                     g_sh_file = ShFile::SH_TEXT;
@@ -484,13 +496,18 @@ int main(int argc, char* argv[]) {
     utils::Path iname(command);
 
     if (g_deploy) {
-        utils::Path out_dir = g_deploy_dir + iname.getNameWithoutExtension();
+        utils::Path sh_dir = g_deploy_dir;
+
+        // KTX files are self-contained and do not need to live in a subfolder.
+        if (g_type != OutputType::KTX) {
+            sh_dir += iname.getNameWithoutExtension();
+        }
 
         // generate pre-scaled irradiance sh to text file
         g_sh_compute = 3;
         g_sh_shader = true;
         g_sh_irradiance = true;
-        g_sh_filename = out_dir + "sh.txt";
+        g_sh_filename = sh_dir + "sh.txt";
         g_sh_file = ShFile::SH_TEXT;
         g_sh_output = true;
 
@@ -501,13 +518,6 @@ int main(int argc, char* argv[]) {
         // prefilter
         g_prefilter = true;
         g_prefilter_dir = g_deploy_dir;
-    }
-
-    if (g_debug) {
-        if (g_prefilter && !g_is_mipmap) {
-            g_is_mipmap = true;
-            g_is_mipmap_dir = g_prefilter_dir;
-        }
     }
 
     // Images store the actual data
@@ -742,7 +752,22 @@ void sphericalHarmonics(utils::JobSystem& js, const utils::Path& iname, const Cu
                 CubemapSH::renderSH(js, cm, sh, g_sh_compute);
             }
 
-            if (g_sh_file == ShFile::SH_CROSS) {
+            cm.makeSeamless();
+
+            if (g_sh_file == ShFile::SH_FILE) {
+                Image image;
+                if (g_type == OutputType::EQUIRECT) {
+                    size_t dim = cm.getDimensions();
+                    image = Image(dim * 2, dim);
+                    CubemapUtils::cubemapToEquirectangular(js, image, cm);
+                }
+
+                if (g_type == OutputType::OCTAHEDRON) {
+                    size_t dim = cm.getDimensions();
+                    image = Image(dim, dim);
+                    CubemapUtils::cubemapToOctahedron(js, image, cm);
+                }
+
                 saveImage(g_sh_filename, ImageEncoder::chooseFormat(g_sh_filename.getName()),
                         image, g_compression);
             }
@@ -863,10 +888,26 @@ void iblMipmapPrefilter(utils::JobSystem& js, const utils::Path& iname,
     }
 }
 
+static float lodToPerceptualRoughness(float lod) noexcept {
+    // Inverse perceptualRoughness-to-LOD mapping:
+    // The LOD-to-perceptualRoughness mapping is a quadratic fit for
+    // log2(perceptualRoughness)+iblMaxMipLevel when iblMaxMipLevel is 4.
+    // We found empirically that this mapping works very well for a 256 cubemap with 5 levels used,
+    // but also scales well for other iblMaxMipLevel values.
+    const float a = 2.0f;
+    const float b = -1.0f;
+    return (lod != 0)
+            ? saturate((std::sqrt(a * a + 4.0f * b * lod) - a) / (2.0f * b))
+            : 0.0f;
+}
+
 void iblRoughnessPrefilter(
         utils::JobSystem& js, const utils::Path& iname, const std::vector<Cubemap>& levels,
         bool prefilter, const utils::Path& dir) {
-    utils::Path outputDir(dir.getAbsolutePath() + iname.getNameWithoutExtension());
+    utils::Path outputDir = dir.getAbsolutePath();
+    if (g_type != OutputType::KTX) {
+        outputDir += iname.getNameWithoutExtension();
+    }
     if (!outputDir.exists()) {
         outputDir.mkdirRecursive();
     }
@@ -877,8 +918,13 @@ void iblRoughnessPrefilter(
     const bool DEBUG_FULL_RESOLUTION = false;
 
     const size_t baseExp = utils::ctz(g_output_size ? g_output_size : IBL_DEFAULT_SIZE);
+    size_t minLod = utils::ctz(g_min_lod_size ? g_min_lod_size : IBL_DEFAULT_MIN_LOD_SIZE);
+    if (minLod >= baseExp) {
+        minLod = 0;
+    }
+
     size_t numSamples = g_num_samples;
-    const size_t numLevels = baseExp + 1;
+    const size_t numLevels = (baseExp + 1) - minLod;
 
     // It's convenient to create an empty KTX bundle on the stack in this scope, regardless of
     // whether KTX is requested. It does not consume memory if empty.
@@ -895,7 +941,7 @@ void iblRoughnessPrefilter(
         .pixelDepth = 0,
     };
 
-    for (ssize_t i = baseExp; i >= 0; --i) {
+    for (ssize_t i = baseExp; i >= ssize_t((baseExp + 1) - numLevels) ; --i) {
         const size_t dim = 1U << (DEBUG_FULL_RESOLUTION ? baseExp : i); // NOLINT
         const size_t level = baseExp - i;
         if (level >= 2) {
@@ -908,14 +954,13 @@ void iblRoughnessPrefilter(
         }
 
         const float lod = saturate(level / (numLevels - 1.0f));
-        // map the lod to a linear_roughness,  here we're using ^2, but other mappings are possible.
-        // ==> lod = sqrt(linear_roughness)
-        const float linear_roughness = lod * lod;
+        // map the lod to a perceptualRoughness
+        const float perceptualRoughness = lodToPerceptualRoughness(lod);
+        const float roughness = perceptualRoughness * perceptualRoughness;
         if (!g_quiet) {
-            std::cout << "Level " << level <<
-                    std::setprecision(3)
-                    << ", roughness(lin) = " << linear_roughness
-                    << ", roughness = " << sqrt(linear_roughness)
+            std::cout << "Level " << level << std::setprecision(3)
+                      << ", roughness = " << roughness
+                      << ", roughness (perceptual) = " << perceptualRoughness
                     << std::endl;
         }
         Image image;
@@ -925,7 +970,7 @@ void iblRoughnessPrefilter(
         if (!g_quiet) {
             updater.start();
         }
-        CubemapIBL::roughnessFilter(js, dst, levels, linear_roughness, numSamples,
+        CubemapIBL::roughnessFilter(js, dst, levels, roughness, numSamples,
                 float3{ 1, 1, 1 }, prefilter,
                 [&updater, quiet = g_quiet](size_t index, float v) {
                     if (!quiet) {
@@ -990,7 +1035,7 @@ void iblRoughnessPrefilter(
         }
         std::vector<uint8_t> fileContents(container.getSerializedLength());
         container.serialize(fileContents.data(), (uint32_t) fileContents.size());
-        std::string filename = iname.getNameWithoutExtension() + "_ibl.ktx";
+        std::string filename = dir.getNameWithoutExtension() + "_ibl.ktx";
         auto fullpath = outputDir + filename;
         std::ofstream outputStream(fullpath.c_str(), std::ios::out | std::ios::binary);
         outputStream.write((const char*) fileContents.data(), fileContents.size());
@@ -1025,11 +1070,33 @@ void iblDiffuseIrradiance(utils::JobSystem& js, const utils::Path& iname,
         updater.stop();
     }
 
+    dst.makeSeamless();
+
     std::string ext = ImageEncoder::chooseExtension(g_format);
-    for (size_t j = 0; j < 6; j++) {
-        Cubemap::Face face = (Cubemap::Face) j;
-        std::string filename = outputDir + ("i_" + std::string(CubemapUtils::getFaceName(face)) + ext);
-        saveImage(filename, g_format, dst.getImageForFace(face), g_compression);
+
+    if (g_type == OutputType::EQUIRECT) {
+        size_t dim = dst.getDimensions();
+        Image image(dim * 2, dim);
+        CubemapUtils::cubemapToEquirectangular(js, image, dst);
+        std::string filename = outputDir + ("irradiance" + ext);
+        saveImage(filename, g_format, image, g_compression);
+    }
+
+    if (g_type == OutputType::OCTAHEDRON) {
+        size_t dim = dst.getDimensions();
+        Image image(dim, dim);
+        CubemapUtils::cubemapToOctahedron(js, image, dst);
+        std::string filename = outputDir + ("irradiance" + ext);
+        saveImage(filename, g_format, image, g_compression);
+    }
+
+    if (g_type == OutputType::FACES) {
+        for (size_t j = 0; j < 6; j++) {
+            Cubemap::Face face = (Cubemap::Face)j;
+            std::string filename =
+                    outputDir + ("i_" + std::string(CubemapUtils::getFaceName(face)) + ext);
+            saveImage(filename, g_format, dst.getImageForFace(face), g_compression);
+        }
     }
 
     if (g_debug) {
@@ -1110,7 +1177,10 @@ void iblLutDfg(utils::JobSystem& js, const utils::Path& filename, size_t size, b
 
 void extractCubemapFaces(utils::JobSystem& js, const utils::Path& iname, const Cubemap& cm,
         const utils::Path& dir) {
-    utils::Path outputDir(dir.getAbsolutePath() + iname.getNameWithoutExtension());
+    utils::Path outputDir(dir.getAbsolutePath());
+    if (g_type != OutputType::KTX) {
+        outputDir += iname.getNameWithoutExtension();
+    }
     if (!outputDir.exists()) {
         outputDir.mkdirRecursive();
     }
@@ -1130,7 +1200,7 @@ void extractCubemapFaces(utils::JobSystem& js, const utils::Path& iname, const C
             .pixelDepth = 0,
         };
         exportKtxFaces(container, 0, cm);
-        std::string filename = iname.getNameWithoutExtension() + "_skybox.ktx";
+        std::string filename = dir.getNameWithoutExtension() + "_skybox.ktx";
         auto fullpath = outputDir + filename;
         std::vector<uint8_t> fileContents(container.getSerializedLength());
         container.serialize(fileContents.data(), (uint32_t) fileContents.size());

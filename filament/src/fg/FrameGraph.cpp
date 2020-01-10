@@ -154,6 +154,7 @@ FrameGraphPassResources::getRenderTarget(FrameGraphRenderTargetHandle handle, ui
     // overwrite discard flags with the per-rendertarget (per-pass) computed value
     info.params.flags.discardStart = renderTarget.targetFlags.discardStart;
     info.params.flags.discardEnd   = renderTarget.targetFlags.discardEnd;
+    info.params.flags.clear        = renderTarget.userClearFlags;
 
     // check that this FrameGraphRenderTarget is indeed declared by this pass
     ASSERT_POSTCONDITION_NON_FATAL(info.target,
@@ -170,7 +171,7 @@ FrameGraphPassResources::getRenderTarget(FrameGraphRenderTargetHandle handle, ui
 
 // ------------------------------------------------------------------------------------------------
 
-FrameGraph::FrameGraph(fg::ResourceAllocator& resourceAllocator)
+FrameGraph::FrameGraph(fg::ResourceAllocatorInterface& resourceAllocator)
         : mResourceAllocator(resourceAllocator),
           mArena("FrameGraph Arena", 32768), // TODO: the Area will eventually come from outside
           mPassNodes(mArena),
@@ -216,7 +217,7 @@ FrameGraphHandle FrameGraph::moveResource(FrameGraphHandle from, FrameGraphHandl
 }
 
 void FrameGraph::present(FrameGraphHandle input) {
-    addPass<std::tuple<>>("Present",
+    addPass<Empty>("Present",
             [&](Builder& builder, auto& data) {
                 builder.read(input);
                 builder.sideEffect();

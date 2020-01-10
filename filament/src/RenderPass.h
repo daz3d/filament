@@ -114,7 +114,9 @@ public:
         // objects that use alpha-testing or blending in the depth prepass.
         COLOR_WITH_DEPTH_PREPASS = DEPTH | COLOR | DEPTH_FILTER_TRANSLUCENT_OBJECTS | DEPTH_FILTER_ALPHA_MASKED_OBJECTS,
         // generate commands for shadow map
-        SHADOW = DEPTH | DEPTH_CONTAINS_SHADOW_CASTERS
+        SHADOW = DEPTH | DEPTH_CONTAINS_SHADOW_CASTERS,
+        // generate commands for SSAO
+        SSAO = DEPTH | DEPTH_FILTER_TRANSLUCENT_OBJECTS | DEPTH_FILTER_ALPHA_MASKED_OBJECTS,
     };
 
 
@@ -254,6 +256,8 @@ public:
     void setCamera(const CameraInfo& camera) noexcept;
     void setRenderFlags(RenderFlags flags) noexcept;
 
+    Command* newCommandBuffer() noexcept;
+
     // returns mCommands.end()
     Command* appendCommands(CommandTypeFlags commandTypeFlags) noexcept;
 
@@ -261,14 +265,13 @@ public:
     Command* appendCustomCommand(Pass pass, CustomCommand custom, uint32_t order,
             std::function<void()> command);
 
-    // sorts commands from curr to mCommands.end(), then trims sentinels and returns
+    // sorts commands, then trims sentinels and returns
     // the new mCommands.end()
-    Command* sortCommands(Command* curr) noexcept;
+    Command* sortCommands() noexcept;
 
     void execute(const char* name,
             backend::Handle<backend::HwRenderTarget> renderTarget,
-            backend::RenderPassParams params,
-            Command const* first, Command const* last) const noexcept;
+            backend::RenderPassParams params) const noexcept;
 
     utils::GrowingSlice<Command>& getCommands() { return mCommands; }
     utils::Slice<Command> const& getCommands() const { return mCommands; }
@@ -315,8 +318,7 @@ private:
     // a reference to the Engine, mostly to get to things like JobSystem
     FEngine& mEngine;
 
-    // a reference to the command vector (so we can for e.g. append to it)
-    utils::GrowingSlice<Command>& mCommands;
+    utils::GrowingSlice<Command> mCommands;
 
     // the SOA containing the renderables we're interested in
     FScene::RenderableSoa const* mRenderableSoa = nullptr;

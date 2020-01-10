@@ -64,6 +64,9 @@ OpenGLContext::OpenGLContext() noexcept {
             bugs.disable_shared_context_draws = true;
             bugs.texture_external_needs_rebind = true;
         }
+        if (strstr(renderer, "Mali-G")) {
+            bugs.disable_texture_filter_anisotropic = true;
+        }
     } else if (strstr(renderer, "Intel")) {
         bugs.vao_doesnt_store_element_array_buffer_binding = true;
     } else if (strstr(renderer, "PowerVR") || strstr(renderer, "Apple")) {
@@ -112,10 +115,11 @@ OpenGLContext::OpenGLContext() noexcept {
     disable(GL_DITHER);
     enable(GL_DEPTH_TEST);
 
-    // With desktop GL, the application must enable point size to allow vertex shaders to set it,
-    // but with OpenGL ES, this is always on and there is no enable flag.
+    // Point sprite size and seamless cubemap filtering are disabled by default in desktop GL.
+    // In OpenGL ES, these flags do not exist because they are always on.
 #if GL41_HEADERS
     enable(GL_PROGRAM_POINT_SIZE);
+    enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 #endif
 
     // TODO: Don't enable scissor when it is not necessary. This optimization could be done here in
@@ -127,7 +131,7 @@ OpenGLContext::OpenGLContext() noexcept {
 #endif
 
 #ifdef GL_EXT_texture_filter_anisotropic
-    if (ext.texture_filter_anisotropic) {
+    if (ext.texture_filter_anisotropic && !bugs.disable_texture_filter_anisotropic) {
         glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &gets.maxAnisotropy);
     }
 #endif

@@ -15,7 +15,7 @@ package com.google.android.filament;
  * limitations under the License.
  */
 
-import android.support.annotation.NonNull;
+import androidx.annotation.NonNull;
 
 public class Fence {
     private long mNativeObject;
@@ -37,6 +37,9 @@ public class Fence {
         TIMEOUT_EXPIRED
     }
 
+    /**
+     * Blocks the current thread until the Fence signals.
+     */
     public FenceStatus wait(@NonNull Mode mode, long timeoutNanoSeconds) {
         int nativeResult = nWait(getNativeObject(), mode.ordinal(), timeoutNanoSeconds);
         switch (nativeResult) {

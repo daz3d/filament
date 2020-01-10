@@ -28,6 +28,7 @@
 
 #include <array>
 #include <limits>
+#include <iomanip>
 
 using namespace filament::math;
 using namespace utils;
@@ -596,6 +597,7 @@ void CubemapSH::renderSH(JobSystem& js, Cubemap& cm,
                     for (size_t i = 0; i < numCoefs; i++) {
                         c += sh[i] * (K[i] * SHb[i]);
                     }
+                    c *= F_1_PI;
                     state.min = min(c, state.min);
                     Cubemap::writeAt(data, Cubemap::Texel(c));
                 }

@@ -29,8 +29,10 @@ struct MaterialInputs {
     float anisotropy;
     vec3  anisotropyDirection;
 
-#if defined(SHADING_MODEL_SUBSURFACE)
+#if defined(SHADING_MODEL_SUBSURFACE) || defined(HAS_REFRACTION)
     float thickness;
+#endif
+#if defined(SHADING_MODEL_SUBSURFACE)
     float subsurfacePower;
     vec3  subsurfaceColor;
 #endif
@@ -56,6 +58,20 @@ struct MaterialInputs {
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR)
     vec4  postLightingColor;
+#endif
+#if defined(HAS_REFRACTION)
+#if defined(MATERIAL_HAS_ABSORPTION)
+    vec3 absorption;
+#endif
+#if defined(MATERIAL_HAS_TRANSMISSION)
+    float transmission;
+#endif
+#if defined(MATERIAL_HAS_IOR)
+    float ior;
+#endif
+#if defined(MATERIAL_HAS_MICRO_THICKNESS) && (REFRACTION_TYPE == REFRACTION_TYPE_THIN)
+    float microThickness;
+#endif
 #endif
 
 #if defined(DAZ_EXTENDED_PBR)
@@ -88,8 +104,10 @@ void initMaterial(out MaterialInputs material) {
     material.anisotropyDirection = vec3(1.0, 0.0, 0.0);
 #endif
 
-#if defined(SHADING_MODEL_SUBSURFACE)
+#if defined(SHADING_MODEL_SUBSURFACE) || defined(HAS_REFRACTION)
     material.thickness = 0.5;
+#endif
+#if defined(SHADING_MODEL_SUBSURFACE)
     material.subsurfacePower = 12.234;
     material.subsurfaceColor = vec3(1.0);
 #endif
@@ -115,6 +133,21 @@ void initMaterial(out MaterialInputs material) {
 
 #if defined(MATERIAL_HAS_POST_LIGHTING_COLOR)
     material.postLightingColor = vec4(0.0);
+#endif
+
+#if defined(HAS_REFRACTION)
+#if defined(MATERIAL_HAS_ABSORPTION)
+    material.absorption = vec3(0.0);
+#endif
+#if defined(MATERIAL_HAS_TRANSMISSION)
+    material.transmission = 1.0;
+#endif
+#if defined(MATERIAL_HAS_IOR)
+    material.ior = 1.5;
+#endif
+#if defined(MATERIAL_HAS_MICRO_THICKNESS) && (REFRACTION_TYPE == REFRACTION_TYPE_THIN)
+    material.microThickness = 0.0;
+#endif
 #endif
 
 #if defined(DAZ_EXTENDED_PBR)
