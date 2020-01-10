@@ -110,7 +110,10 @@ FEngine* FEngine::create(Backend backend, Platform* platform, void* sharedGLCont
     // In the single-threaded case, we do so in the here and now.
     if (!UTILS_HAS_THREADING) {
         // we don't own the external context at that point, set it to null
-        instance->mPlatform = nullptr;
+
+        //DAZ TODO: Why set the member null? causes crash later
+        //instance->mPlatform = nullptr;
+
         if (platform == nullptr) {
             platform = DefaultPlatform::create(&instance->mBackend);
             instance->mPlatform = platform;
@@ -408,7 +411,9 @@ void FEngine::flushAndWait() {
 int FEngine::loop() {
     // we don't own the external context at that point, set it to null
     Platform* platform = mPlatform;
-    mPlatform = nullptr;
+
+    //DAZ TODO: Why set the member null? causes crash later
+    //mPlatform = nullptr;
 
     if (platform == nullptr) {
         platform = DefaultPlatform::create(&mBackend);
