@@ -23,7 +23,11 @@ vec3 computeF0(const vec4 baseColor, float metallic, float reflectance) {
 }
 
 float computeDielectricF0(float reflectance) {
+#if defined(DAZ_EXTENDED_PBR)
+    return 0.08 * reflectance;
+#else
     return 0.16 * reflectance * reflectance;
+#endif
 }
 
 float computeMetallicFromSpecularColor(const vec3 specularColor) {
