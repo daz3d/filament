@@ -503,6 +503,10 @@ void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout v
 #endif
     Fr *= singleBounceAO(specularAO) * pixel.energyCompensation;
 
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.specularAttenuation;
+#endif
+
     // diffuse layer
     float diffuseBRDF = singleBounceAO(diffuseAO); // Fd_Lambert() is baked in the SH below
     evaluateClothIndirectDiffuseBRDF(pixel, diffuseBRDF);
@@ -519,10 +523,6 @@ void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout v
     // extra ambient occlusion term
     multiBounceAO(diffuseAO, pixel.diffuseColor, Fd);
     multiBounceSpecularAO(specularAO, pixel.f0, Fr);
-
-#if defined(DAZ_EXTENDED_PBR)
-    Fr *= pixel.specularAttenuation;
-#endif
 
     // Note: iblLuminance is already premultiplied by the exposure
     combineDiffuseAndSpecular(pixel, n, E, Fd, Fr, color);
