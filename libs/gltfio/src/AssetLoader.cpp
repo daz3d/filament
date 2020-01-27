@@ -164,6 +164,7 @@ FFilamentAsset* FAssetLoader::createAssetFromJson(const uint8_t* bytes, uint32_t
     cgltf_data* sourceAsset;
     cgltf_result result = cgltf_parse(&options, bytes, nbytes, &sourceAsset);
     if (result != cgltf_result_success) {
+        slog.e << "Unable to parse JSON file." << io::endl;
         return nullptr;
     }
     createAsset(sourceAsset);
@@ -185,6 +186,7 @@ FilamentAsset* FAssetLoader::createAssetFromBinary(const uint8_t* bytes, uint32_
     cgltf_data* sourceAsset;
     cgltf_result result = cgltf_parse(&options, glbdata.data(), nbytes, &sourceAsset);
     if (result != cgltf_result_success) {
+        slog.e << "Unable to parse glb file." << io::endl;
         return nullptr;
     }
     createAsset(sourceAsset);
@@ -497,8 +499,12 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             utils::slog.e << "Unrecognized vertex semantic in " << name << utils::io::endl;
             return false;
         }
-        UvSet uvset = uvmap[inputAttribute.index];
         if (inputAttribute.type == cgltf_attribute_type_texcoord) {
+            if (inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0])) {
+                utils::slog.e << "Too many texture coordinate sets in " << name << utils::io::endl;
+                continue;
+            }
+            UvSet uvset = uvmap[inputAttribute.index];
             switch (uvset) {
                 case UV0:
                     semantic = VertexAttribute::UV0;
@@ -647,6 +653,11 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 uvmap[inputAttribute.index] == UNUSED)) {
             continue;
         }
+        if (inputAttribute.type == cgltf_attribute_type_texcoord &&
+                inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0])) {
+            continue;
+        }
+
         if (inputAttribute.type == cgltf_attribute_type_normal) {
             mResult->mBufferBindings.push_back({
                 .uri = bv->buffer->uri,

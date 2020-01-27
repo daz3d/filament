@@ -18,9 +18,9 @@
 #define TNT_FILAMENT_FRAMEGRAPH_H
 
 
+#include "Blackboard.h"
 #include "FrameGraphPass.h"
 #include "FrameGraphHandle.h"
-#include "FrameGraphPassResources.h"
 
 #include <fg/fg/ResourceEntry.h>
 
@@ -93,7 +93,7 @@ public:
 
         // Write to a resource (i.e. add a reference to that pass)
         template<typename T>
-        FrameGraphId<T> write(FrameGraphId<T> output) {
+        [[nodiscard]] FrameGraphId<T> write(FrameGraphId<T> output) {
             return FrameGraphId<T>(write(FrameGraphHandle(output)));
         }
 
@@ -137,7 +137,7 @@ public:
         Builder(FrameGraph& fg, fg::PassNode& pass) noexcept;
         ~Builder() noexcept;
         FrameGraphHandle read(FrameGraphHandle input);
-        FrameGraphHandle write(FrameGraphHandle output);
+        [[nodiscard]] FrameGraphHandle write(FrameGraphHandle output);
         FrameGraph& mFrameGraph;
         fg::PassNode& mPass;
     };
@@ -146,6 +146,12 @@ public:
     FrameGraph(FrameGraph const&) = delete;
     FrameGraph& operator = (FrameGraph const&) = delete;
     ~FrameGraph();
+
+    // returns the default Blackboard
+    Blackboard& getBlackboard() noexcept { return mBlackboard; }
+
+    // returns the default Blackboard
+    Blackboard const& getBlackboard() const noexcept { return mBlackboard; }
 
     struct Empty{};
 
@@ -190,6 +196,8 @@ public:
     // Returns whether the resource handle is valid. A resource handle becomes invalid after
     // it's used to declare a resource write (see Builder::write()).
     bool isValid(FrameGraphHandle r) const noexcept;
+
+    bool equal(FrameGraphHandle lhs, FrameGraphHandle rhs) const noexcept;
 
     // Return the Descriptor associated to this resource handle. The handle must be valid.
     template<typename T>
@@ -322,6 +330,7 @@ private:
 
     FrameGraphHandle moveResource(FrameGraphHandle from, FrameGraphHandle to);
 
+    Blackboard mBlackboard;
     fg::ResourceAllocatorInterface& mResourceAllocator;
     details::LinearAllocatorArena mArena;
     Vector<fg::PassNode> mPassNodes;                    // list of frame graph passes

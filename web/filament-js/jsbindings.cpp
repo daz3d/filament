@@ -36,6 +36,7 @@
 
 #include <filament/Camera.h>
 #include <filament/Engine.h>
+#include <filament/Frustum.h>
 #include <filament/IndexBuffer.h>
 #include <filament/IndirectLight.h>
 #include <filament/LightManager.h>
@@ -51,12 +52,14 @@
 #include <filament/TransformManager.h>
 #include <filament/VertexBuffer.h>
 #include <filament/View.h>
+#include <filament/Viewport.h>
 
 #include <geometry/SurfaceOrientation.h>
 
 #include <gltfio/Animator.h>
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
+#include <gltfio/Image.h>
 #include <gltfio/MaterialProvider.h>
 #include <gltfio/ResourceLoader.h>
 
@@ -74,10 +77,6 @@
 
 #include <emscripten.h>
 #include <emscripten/bind.h>
-
-#define STBI_NO_STDIO
-#define STBI_ONLY_PNG
-#include <stb_image.h>
 
 using namespace emscripten;
 using namespace filament;
@@ -200,7 +199,7 @@ struct PixelBufferDescriptor {
 };
 
 // Small structure whose sole purpose is to return decoded image data to JavaScript.
-struct DecodedPng {
+struct DecodedImage {
     int width;
     int height;
     int encoded_ncomp;
@@ -209,8 +208,8 @@ struct DecodedPng {
 };
 
 // JavaScript clients should call [createTextureFromPng] rather than calling this directly.
-DecodedPng decodePng(BufferDescriptor encoded_data, int requested_ncomp) {
-    DecodedPng result;
+DecodedImage decodeImage(BufferDescriptor encoded_data, int requested_ncomp) {
+    DecodedImage result;
     stbi_uc* decoded_data = stbi_load_from_memory(
             (stbi_uc const *) encoded_data.bd->buffer,
             encoded_data.bd->size,
@@ -1287,13 +1286,14 @@ class_<MeshReader::Mesh>("MeshReader$Mesh")
         return mesh.indexBuffer;
     }), allow_raw_pointers());
 
-// Clients should call [createTextureFromPng] rather than using decodePng and DecodedPng directly.
+// Clients should call [createTextureFromPng] (et al) rather than using decodeImage directly.
 
-function("decodePng", &decodePng);
-class_<DecodedPng>("DecodedPng")
-    .property("width", &DecodedPng::width)
-    .property("height", &DecodedPng::height)
-    .property("data", &DecodedPng::decoded_data);
+function("decodeImage", &decodeImage);
+
+class_<DecodedImage>("DecodedImage")
+    .property("width", &DecodedImage::width)
+    .property("height", &DecodedImage::height)
+    .property("data", &DecodedImage::decoded_data);
 
 class_<SurfaceBuilder>("SurfaceOrientation$Builder")
 

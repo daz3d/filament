@@ -129,6 +129,8 @@ function build_clean {
     rm -Rf android/filamat-android/build android/filamat-android/.cxx
     rm -Rf android/gltfio-android/build android/gltfio-android/.externalNativeBuild
     rm -Rf android/gltfio-android/build android/gltfio-android/.cxx
+    rm -Rf android/filament-utils-android/build android/filament-utils-android/.externalNativeBuild
+    rm -Rf android/filament-utils-android/build android/filament-utils-android/.cxx
 }
 
 function build_desktop_target {
@@ -372,9 +374,13 @@ function build_android {
         ./gradlew \
             -Pfilament_dist_dir=../out/android-debug/filament \
             -Pextra_cmake_args=${VULKAN_ANDROID_OPTION} \
-            :filamat-android:assembleDebug \
             :filament-android:assembleDebug \
-            :gltfio-android:assembleDebug
+            :gltfio-android:assembleDebug \
+            :filament-utils-android:assembleDebug
+
+        ./gradlew \
+            -Pfilament_dist_dir=../out/android-debug/filament \
+            :filamat-android:assembleDebug
 
         if [[ "$INSTALL_COMMAND" ]]; then
             echo "Installing out/filamat-android-debug.aar..."
@@ -386,16 +392,22 @@ function build_android {
 
             echo "Installing out/gltfio-android-debug.aar..."
             cp gltfio-android/build/outputs/aar/gltfio-android-debug.aar ../out/
+
+            echo "Installing out/filament-utils-android-debug.aar..."
+            cp filament-utils-android/build/outputs/aar/filament-utils-android-debug.aar ../out/
         fi
     fi
 
     if [[ "$ISSUE_RELEASE_BUILD" == "true" ]]; then
         ./gradlew \
             -Pfilament_dist_dir=../out/android-release/filament \
-            -Pextra_cmake_args=${VULKAN_ANDROID_OPTION} \
-            :filamat-android:assembleRelease \
             :filament-android:assembleRelease \
-            :gltfio-android:assembleRelease
+            :gltfio-android:assembleRelease \
+            :filament-utils-android:assembleRelease
+
+        ./gradlew \
+            -Pfilament_dist_dir=../out/android-release/filament \
+            :filamat-android:assembleRelease
 
         if [[ "$INSTALL_COMMAND" ]]; then
             echo "Installing out/filamat-android-release.aar..."
@@ -407,6 +419,9 @@ function build_android {
 
             echo "Installing out/gltfio-android-release.aar..."
             cp gltfio-android/build/outputs/aar/gltfio-android-release.aar ../out/
+
+            echo "Installing out/filament-utils-android-release.aar..."
+            cp filament-utils-android/build/outputs/aar/filament-utils-android-release.aar ../out/
         fi
     fi
 
@@ -447,10 +462,17 @@ function ensure_ios_toolchain {
     local REPLACE='SET(PLATFORM_NAME "iphoneos" CACHE STRING "iOS platform to build for")'
     sed -i '' "s/${FIND}/${REPLACE}/g" ./${toolchain_path}
 
-    # Append Filament-specific settings.
-    cat build/toolchain-mac-ios.filament.cmake >> ${toolchain_path}
+    # Apple's toolchain specifies isysroot based on an environment variable, which we don't set.
+    # The toolchain doesn't need to do this, however, as isysroot is implicitly set in the toolchain
+    # via CMAKE_OSX_SYSROOT.
+    local FIND='SET(IOS_COMMON_FLAGS "-isysroot $ENV{SDKROOT} '
+    local REPLACE='SET(IOS_COMMON_FLAGS "'
+    sed -i '' "s/${FIND}/${REPLACE}/g" ./${toolchain_path}
 
-    echo "Successfully downloaded iOS toolchain file and appended Filament-specific settings."
+    # Prepend Filament-specific settings.
+    (cat build/toolchain-mac-ios.filament.cmake; cat ${toolchain_path}) > tmp && mv tmp ${toolchain_path}
+
+    echo "Successfully downloaded iOS toolchain file and prepended Filament-specific settings."
 }
 
 function build_ios_target {
@@ -471,6 +493,7 @@ function build_ios_target {
             -DCMAKE_INSTALL_PREFIX=../ios-${lc_target}/filament \
             -DIOS_ARCH=${arch} \
             -DPLATFORM_NAME=${platform} \
+            -DIOS_MIN_TARGET=12.0 \
             -DIOS=1 \
             -DCMAKE_TOOLCHAIN_FILE=../../build/toolchain-mac-ios.cmake \
             ../..

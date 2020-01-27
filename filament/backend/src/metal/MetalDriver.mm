@@ -19,7 +19,6 @@
 #include "metal/MetalDriver.h"
 
 #include "MetalContext.h"
-#include "MetalDefines.h"
 #include "MetalDriverFactory.h"
 #include "MetalEnums.h"
 #include "MetalHandles.h"
@@ -65,10 +64,10 @@ MetalDriver::MetalDriver(backend::MetalPlatform* platform) noexcept
             nullptr, &mContext->textureCache);
     ASSERT_POSTCONDITION(success == kCVReturnSuccess, "Could not create Metal texture cache.");
 
-#if METAL_FENCES_SUPPORTED
-    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0);
-    mContext->eventListener = [[MTLSharedEventListener alloc] initWithDispatchQueue:queue];
-#endif
+    if (@available(macOS 10.14, iOS 12, *)) {
+        dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0);
+        mContext->eventListener = [[MTLSharedEventListener alloc] initWithDispatchQueue:queue];
+    }
 }
 
 MetalDriver::~MetalDriver() noexcept {
@@ -155,6 +154,12 @@ void MetalDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint8
         uint32_t depth, TextureUsage usage) {
     construct_handle<MetalTexture>(mHandleMap, th, *mContext, target, levels, format, samples,
             width, height, depth, usage);
+}
+
+void MetalDriver::importTextureR(Handle<HwTexture> th, intptr_t id,
+        SamplerType target, uint8_t levels,
+        TextureFormat format, uint8_t samples, uint32_t width, uint32_t height,
+        uint32_t depth, TextureUsage usage) {
 }
 
 void MetalDriver::createSamplerGroupR(Handle<HwSamplerGroup> sbh, size_t size) {
@@ -244,6 +249,10 @@ Handle<HwIndexBuffer> MetalDriver::createIndexBufferS() noexcept {
 }
 
 Handle<HwTexture> MetalDriver::createTextureS() noexcept {
+    return alloc_handle<MetalTexture, HwTexture>();
+}
+
+Handle<HwTexture> MetalDriver::importTextureS() noexcept {
     return alloc_handle<MetalTexture, HwTexture>();
 }
 
@@ -491,12 +500,11 @@ bool MetalDriver::isRenderTargetFormatSupported(TextureFormat format) {
 }
 
 bool MetalDriver::isFrameTimeSupported() {
-    // Frame time is calculated via hard fences.
-#if METAL_FENCES_SUPPORTED
-    return true;
-#else
+    // Frame time is calculated via hard fences, which are only available on iOS 12 and above.
+    if (@available(macOS 10.14, iOS 12, *)) {
+        return true;
+    }
     return false;
-#endif
 }
 
 void MetalDriver::updateVertexBuffer(Handle<HwVertexBuffer> vbh, size_t index,

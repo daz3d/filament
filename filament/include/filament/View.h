@@ -19,9 +19,7 @@
 #ifndef TNT_FILAMENT_VIEW_H
 #define TNT_FILAMENT_VIEW_H
 
-#include <filament/Camera.h>
 #include <filament/Color.h>
-#include <filament/Viewport.h>
 #include <filament/FilamentAPI.h>
 
 #include <backend/DriverEnums.h>
@@ -37,6 +35,7 @@ class Camera;
 class MaterialInstance;
 class RenderTarget;
 class Scene;
+class Viewport;
 
 /**
  * A View encompasses all the state needed for rendering a Scene.
@@ -223,6 +222,8 @@ public:
 
     /**
      * Sets whether this view is rendered with or without a depth pre-pass.
+     *
+     * NOTE: this setting is ignored and will be removed in future versions of Filament.
      *
      * By default, the system picks the most appropriate strategy, this method lets the
      * application override that strategy.
