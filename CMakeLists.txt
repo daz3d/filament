@@ -551,3 +551,6 @@ endif()
 if (NOT CMAKE_CROSSCOMPILING)
     export(TARGETS matc cmgen filamesh mipgen resgen glslminifier FILE ${IMPORT_EXECUTABLES})
 endif()
+
+# Daz3d Change: add daz3d cmake directory
+add_subdirectory(daz3d)
