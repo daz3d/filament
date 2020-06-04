@@ -31,8 +31,26 @@ const Entity* FilamentAsset::getEntities() const noexcept {
     return upcast(this)->getEntities();
 }
 
+const Entity* FilamentAsset::getLightEntities() const noexcept {
+    return upcast(this)->getLightEntities();
+}
+
+size_t FilamentAsset::getLightEntityCount() const noexcept {
+    return upcast(this)->getLightEntityCount();
+}
+
 Entity FilamentAsset::getRoot() const noexcept {
     return upcast(this)->getRoot();
+}
+
+Entity FilamentAsset::popRenderable() noexcept {
+    Entity result[1];
+    const bool empty = !popRenderables(result, 1);
+    return empty ? Entity() : result[0];
+}
+
+size_t FilamentAsset::popRenderables(Entity* result, size_t count) noexcept {
+    return upcast(this)->popRenderables(result, count);
 }
 
 size_t FilamentAsset::getMaterialInstanceCount() const noexcept {
@@ -45,22 +63,6 @@ const MaterialInstance* const* FilamentAsset::getMaterialInstances() const noexc
 
 MaterialInstance* const* FilamentAsset::getMaterialInstances() noexcept {
     return upcast(this)->getMaterialInstances();
-}
-
-size_t FilamentAsset::getBufferBindingCount() const noexcept {
-    return upcast(this)->getBufferBindingCount();
-}
-
-const BufferBinding* FilamentAsset::getBufferBindings() const noexcept {
-    return upcast(this)->getBufferBindings();
-}
-
-size_t FilamentAsset::getTextureBindingCount() const noexcept {
-    return upcast(this)->getTextureBindingCount();
-}
-
-const TextureBinding* FilamentAsset::getTextureBindings() const noexcept {
-    return upcast(this)->getTextureBindings();
 }
 
 size_t FilamentAsset::getResourceUriCount() const noexcept {

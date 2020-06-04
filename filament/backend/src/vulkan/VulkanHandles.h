@@ -45,8 +45,8 @@ struct VulkanTexture;
 struct VulkanRenderTarget : private HwRenderTarget {
 
     // Creates an offscreen render target.
-    VulkanRenderTarget(VulkanContext& context, uint32_t w, uint32_t h, uint32_t colorLevel,
-            VulkanTexture* color, uint32_t depthLevel, VulkanTexture* depth);
+    VulkanRenderTarget(VulkanContext& context, uint32_t w, uint32_t h, TargetBufferInfo colorInfo,
+            VulkanTexture* color, TargetBufferInfo depthInfo, VulkanTexture* depth);
 
     // Creates a special "default" render target (i.e. associated with the swap chain)
     explicit VulkanRenderTarget(VulkanContext& context) : HwRenderTarget(0, 0), mContext(context),
@@ -122,7 +122,8 @@ struct VulkanTexture : public HwTexture {
     // Issues a barrier that transforms the layout of the image, e.g. from a CPU-writeable
     // layout to a GPU-readable layout.
     static void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
-            VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel, uint32_t layers);
+            VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
+            uint32_t layers, uint32_t levels = 1);
 
     VkFormat vkformat;
     VkImageView imageView = VK_NULL_HANDLE;
@@ -158,6 +159,14 @@ struct VulkanRenderPrimitive : public HwRenderPrimitive {
 struct VulkanFence : public HwFence {
     VulkanFence(const VulkanCommandBuffer& commands) : fence(commands.fence) {}
     std::shared_ptr<VulkanCmdFence> fence;
+};
+
+struct VulkanTimerQuery : public HwTimerQuery {
+    VulkanTimerQuery(VulkanContext& context);
+    ~VulkanTimerQuery();
+    uint32_t startingQueryIndex;
+    uint32_t stoppingQueryIndex;
+    VulkanContext& mContext;
 };
 
 } // namespace filament

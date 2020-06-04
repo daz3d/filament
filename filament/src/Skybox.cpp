@@ -31,6 +31,8 @@
 #include <backend/DriverEnums.h>
 
 #include <utils/Panic.h>
+#include <filament/Skybox.h>
+
 
 #include "generated/resources/materials.h"
 
@@ -41,6 +43,7 @@ using namespace details;
 
 struct Skybox::BuilderDetails {
     Texture* mEnvironmentMap = nullptr;
+    float4 mColor{0, 0, 0, 1};
     float mIntensity = FIndirectLight::DEFAULT_INTENSITY;
     bool mShowSun = false;
 };
@@ -64,20 +67,21 @@ Skybox::Builder& Skybox::Builder::intensity(float envIntensity) noexcept {
     return *this;
 }
 
+Skybox::Builder& Skybox::Builder::color(math::float4 color) noexcept {
+    mImpl->mColor = color;
+    return *this;
+}
+
 Skybox::Builder& Skybox::Builder::showSun(bool show) noexcept {
     mImpl->mShowSun = show;
     return *this;
 }
 
 Skybox* Skybox::Builder::build(Engine& engine) {
-    FEngine::assertValid(engine, __PRETTY_FUNCTION__);
     FTexture* cubemap = upcast(mImpl->mEnvironmentMap);
 
-    if (!ASSERT_PRECONDITION_NON_FATAL(cubemap, "environment texture not set")) {
-        return nullptr;
-    }
-
-    if (!ASSERT_PRECONDITION_NON_FATAL(cubemap->isCubemap(), "environment maps must be a cubemap")) {
+    if (!ASSERT_PRECONDITION_NON_FATAL(!cubemap || cubemap->isCubemap(),
+            "environment maps must be a cubemap")) {
         return nullptr;
     }
 
@@ -94,11 +98,15 @@ FSkybox::FSkybox(FEngine& engine, const Builder& builder) noexcept
           mIntensity(builder->mIntensity) {
 
     FMaterial const* material = engine.getSkyboxMaterial();
-    mSkyboxMaterialInstance = material->createInstance();
+    mSkyboxMaterialInstance = material->createInstance("Skybox");
 
     TextureSampler sampler(TextureSampler::MagFilter::LINEAR, TextureSampler::WrapMode::REPEAT);
-    static_cast<MaterialInstance*>(mSkyboxMaterialInstance)->setParameter("skybox", mSkyboxTexture, sampler);
-    static_cast<MaterialInstance*>(mSkyboxMaterialInstance)->setParameter("showSun", builder->mShowSun);
+    auto pInstance = static_cast<MaterialInstance*>(mSkyboxMaterialInstance);
+    FTexture const* texture = mSkyboxTexture ? mSkyboxTexture : engine.getDummyCubemap();
+    pInstance->setParameter("skybox", texture, sampler);
+    pInstance->setParameter("showSun", builder->mShowSun);
+    pInstance->setParameter("constantColor", mSkyboxTexture == nullptr);
+    pInstance->setParameter("color", builder->mColor);
 
     mSkybox = engine.getEntityManager().create();
 
@@ -139,6 +147,14 @@ void FSkybox::setLayerMask(uint8_t select, uint8_t values) noexcept {
     mLayerMask = (mLayerMask & ~select) | (values & select);
 }
 
+void FSkybox::setColor(math::float4 color) noexcept {
+    mSkyboxMaterialInstance->setParameter("color", color);
+}
+
+void FSkybox::commit(backend::DriverApi& driver) noexcept {
+    mSkyboxMaterialInstance->commit(driver);
+}
+
 } // namespace details
 
 // ------------------------------------------------------------------------------------------------
@@ -157,6 +173,11 @@ uint8_t Skybox::getLayerMask() const noexcept {
 
 float Skybox::getIntensity() const noexcept {
     return upcast(this)->getIntensity();
+}
+
+void Skybox::setColor(math::float4 color) noexcept {
+    upcast(this)->setColor(color);
+
 }
 
 } // namespace filament

@@ -38,7 +38,23 @@ void evaluateDirectionalLight(const MaterialInputs material,
     float visibility = 1.0;
 #if defined(HAS_SHADOWING)
     if (light.NoL > 0.0) {
-        visibility = shadow(light_shadowMap, getLightSpacePosition());
+        float ssContactShadowOcclusion = 0.0;
+
+        uint cascade = getShadowCascade();
+        bool cascadeHasVisibleShadows = bool(frameUniforms.cascades & (1u << cascade << 8u));
+        bool hasDirectionalShadows = bool(frameUniforms.directionalShadows & 1u);
+        if (hasDirectionalShadows && cascadeHasVisibleShadows) {
+            uint layer = cascade;
+            visibility = shadow(light_shadowMap, layer, getCascadeLightSpacePosition(cascade));
+        }
+        if ((frameUniforms.directionalShadows & 0x2u) != 0u && visibility > 0.0) {
+            if (objectUniforms.screenSpaceContactShadows != 0u) {
+                ssContactShadowOcclusion = screenSpaceContactShadow(light.l);
+            }
+        }
+
+        visibility *= 1.0 - ssContactShadowOcclusion;
+
         #if defined(MATERIAL_HAS_AMBIENT_OCCLUSION)
         visibility *= computeMicroShadowing(light.NoL, material.ambientOcclusion);
         #endif

@@ -324,3 +324,43 @@ Java_com_google_android_filament_MaterialInstance_nSetCullingMode(JNIEnv*,
     MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
     instance->setCullingMode((MaterialInstance::CullingMode) cullingMode);
 }
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_MaterialInstance_nSetColorWrite(JNIEnv*,
+        jclass, jlong nativeMaterialInstance, jboolean enable) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    instance->setColorWrite(enable);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_MaterialInstance_nSetDepthWrite(JNIEnv*,
+        jclass, jlong nativeMaterialInstance, jboolean enable) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    instance->setDepthWrite(enable);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_MaterialInstance_nSetDepthCulling(JNIEnv*,
+        jclass, jlong nativeMaterialInstance, jboolean enable) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    instance->setDepthCulling(enable);
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_google_android_filament_MaterialInstance_nGetName(JNIEnv* env, jclass,
+        jlong nativeMaterialInstance) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    return env->NewStringUTF(instance->getName());
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_com_google_android_filament_MaterialInstance_nGetMaterial(JNIEnv* env, jclass,
+        jlong nativeMaterialInstance) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    return (jlong) instance->getMaterial();
+}

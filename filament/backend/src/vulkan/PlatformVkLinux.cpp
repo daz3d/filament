@@ -32,7 +32,7 @@ using namespace backend;
 // passing in a null pointer, and we highlight the argument by using the VKALLOC constant.
 constexpr VkAllocationCallbacks* VKALLOC = nullptr;
 
-static const char* LIBRARY_X11 = "libX11.so.6";
+static constexpr const char* LIBRARY_X11 = "libX11.so.6";
 
 typedef Display* (*X11_OPEN_DISPLAY)(const char*);
 typedef Display* (*X11_CLOSE_DISPLAY)(Display*);
@@ -48,7 +48,7 @@ struct X11Functions {
 
 Driver* PlatformVkLinux::createDriver(void* const sharedContext) noexcept {
     ASSERT_PRECONDITION(sharedContext == nullptr, "Vulkan does not support shared contexts.");
-    static const char* requestedExtensions[] = {
+    const char* requestedExtensions[] = {
         "VK_KHR_surface",
         "VK_KHR_xlib_surface",
 #if !defined(NDEBUG)
@@ -66,8 +66,7 @@ Driver* PlatformVkLinux::createDriver(void* const sharedContext) noexcept {
             sizeof(requestedExtensions) / sizeof(requestedExtensions[0]));
 }
 
-void* PlatformVkLinux::createVkSurfaceKHR(void* nativeWindow, void* instance,
-        uint32_t* width, uint32_t* height) noexcept {
+void* PlatformVkLinux::createVkSurfaceKHR(void* nativeWindow, void* instance) noexcept {
     ASSERT_POSTCONDITION(vkCreateXlibSurfaceKHR, "Unable to load vkCreateXlibSurfaceKHR function.");
     VkSurfaceKHR surface = nullptr;
     VkXlibSurfaceCreateInfoKHR createInfo = {};
@@ -76,14 +75,17 @@ void* PlatformVkLinux::createVkSurfaceKHR(void* nativeWindow, void* instance,
     createInfo.window = (Window) nativeWindow;
     VkResult result = vkCreateXlibSurfaceKHR((VkInstance) instance, &createInfo, VKALLOC, &surface);
     ASSERT_POSTCONDITION(result == VK_SUCCESS, "vkCreateXlibSurfaceKHR error.");
+    return surface;
+}
+
+void PlatformVkLinux::getClientExtent(void* window, uint32_t* width, uint32_t* height) noexcept {
     Window root;
     int x = 0;
     int y = 0;
     unsigned int border_width = 0;
     unsigned int depth = 0;
-    g_x11.getGeometry(mDisplay, createInfo.window, &root, &x, &y, width, height, &border_width,
+    g_x11.getGeometry(mDisplay, (Window) window, &root, &x, &y, width, height, &border_width,
             &depth);
-    return surface;
-}
+ }
 
 } // namespace filament

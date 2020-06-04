@@ -38,7 +38,7 @@ class FMaterial;
 
 class FMaterialInstance : public MaterialInstance {
 public:
-    FMaterialInstance(FEngine& engine, FMaterial const* material);
+    FMaterialInstance(FEngine& engine, FMaterial const* material, const char* name);
     FMaterialInstance(const FMaterialInstance& rhs) = delete;
     FMaterialInstance& operator=(const FMaterialInstance& rhs) = delete;
 
@@ -61,10 +61,10 @@ public:
         }
     }
 
-    template <typename T>
+    template <typename T, typename = is_supported_parameter_t<T>>
     void setParameter(const char* name, T value) noexcept;
 
-    template <typename T>
+    template <typename T, typename = is_supported_parameter_t<T>>
     void setParameter(const char* name, const T* value, size_t count) noexcept;
 
     void setParameter(const char* name,
@@ -98,6 +98,12 @@ public:
 
     backend::CullingMode getCullingMode() const noexcept { return mCulling; }
 
+    bool getColorWrite() const noexcept { return mColorWrite; }
+
+    bool getDepthWrite() const noexcept { return mDepthWrite; }
+
+    backend::RasterState::DepthFunc getDepthFunc() const noexcept { return mDepthFunc; }
+
     void setPolygonOffset(float scale, float constant) noexcept {
         mPolygonOffset = { scale, constant };
     }
@@ -120,13 +126,21 @@ public:
 
     void setCullingMode(CullingMode culling) noexcept;
 
+    void setColorWrite(bool enable) noexcept;
+
+    void setDepthWrite(bool enable) noexcept;
+
+    void setDepthCulling(bool enable) noexcept;
+
+    const char* getName() const noexcept;
+
 private:
     friend class FMaterial;
     friend class MaterialInstance;
 
     FMaterialInstance() noexcept;
     void initDefaultInstance(FEngine& engine, FMaterial const* material);
-    void initParameters(FMaterial const* material);
+    void initialize(FMaterial const* material);
 
     void commitSlow(FEngine::DriverApi& driver) const;
 
@@ -139,6 +153,9 @@ private:
     backend::SamplerGroup mSamplers;
     backend::PolygonOffset mPolygonOffset;
     backend::CullingMode mCulling;
+    bool mColorWrite;
+    bool mDepthWrite;
+    backend::RasterState::DepthFunc mDepthFunc;
 
     uint64_t mMaterialSortingKey = 0;
 
@@ -147,6 +164,8 @@ private:
             (uint32_t)std::numeric_limits<int32_t>::max(),
             (uint32_t)std::numeric_limits<int32_t>::max()
     };
+
+    utils::CString mName;
 };
 
 FILAMENT_UPCAST(MaterialInstance)

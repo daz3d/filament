@@ -30,13 +30,13 @@ jobs:
           TAG=${REF##*/}
           echo ::set-output name=ref::${REF}
           echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v1.0.0
+      - uses: actions/checkout@v2.0.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
         run: |
           WORKFLOW_OS=`echo \`uname\` | sed "s/Darwin/mac/" | tr [:upper:] [:lower:]`
-          cd build/$WORKFLOW_OS && ./build.sh release
+          cd build/$WORKFLOW_OS && printf "y" | ./build.sh release
       - name: Upload release assets
         run: |
           pip3 install setuptools
@@ -62,12 +62,12 @@ jobs:
           TAG=${REF##*/}
           echo ::set-output name=ref::${REF}
           echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v1.0.0
+      - uses: actions/checkout@v2.0.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
         run: |
-          cd build/web && ./build.sh release
+          cd build/web && printf "y" | ./build.sh release
       - name: Upload release assets
         run: |
           pip3 install setuptools
@@ -92,22 +92,24 @@ jobs:
           TAG=${REF##*/}
           echo ::set-output name=ref::${REF}
           echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v1.0.0
+      - uses: actions/checkout@v2.0.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
         run: |
-          cd build/android && ./build.sh release
+          cd build/android && printf "y" | ./build.sh release
       - name: Upload release assets
         run: |
           pip3 install setuptools
           pip3 install PyGithub
           DATE=`date +%Y%m%d`
           mv out/filament-android-release.aar out/filament-${DATE}-android.aar
-          mv out/filamat-android-full-release.aar out/filamat-${DATE}-full-android.aar
+          mv out/filamat-android-release.aar out/filamat-${DATE}-android.aar
           mv out/filamat-android-lite-release.aar out/filamat-${DATE}-lite-android.aar
           mv out/gltfio-android-release.aar out/gltfio-${DATE}-android.aar
+          mv out/gltfio-android-lite-release.aar out/gltfio-${DATE}-lite-android.aar
           mv out/filament-utils-android-release.aar out/filament-utils-${DATE}-android.aar
+          mv out/filament-utils-android-lite-release.aar out/filament-utils-${DATE}-lite-android.aar
           python3 build/common/upload-assets.py ${TAG} out/*.aar
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
@@ -126,12 +128,12 @@ jobs:
           TAG=${REF##*/}
           echo ::set-output name=ref::${REF}
           echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v1.0.0
+      - uses: actions/checkout@v2.0.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
         run: |
-          cd build/ios && ./build.sh release
+          cd build/ios && printf "y" | ./build.sh release
       - name: Upload release assets
         run: |
           pip3 install setuptools
@@ -157,7 +159,7 @@ jobs:
           echo ::set-output name=ref::${REF}
           echo ::set-output name=tag::${TAG}
         shell: bash
-      - uses: actions/checkout@v1.0.0
+      - uses: actions/checkout@v2.0.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script

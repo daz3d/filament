@@ -31,19 +31,32 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.google.android.filament:filament-android:1.4.4'
+    implementation 'com.google.android.filament:filament-android:1.7.0'
 }
 ```
 
 Here are all the libraries available in the group `com.google.android.filament`:
 
-- `filament-android`: the Filament rendering engine itself
-- `gltfio-android`: a glTF 2.0 loader for Filament, depends on `filament-android`
-- `filament-utils-android`: KTX loading, Kotlin math, and camera utilities, depends on `gltfio-android`
-- `filamat-android-full`: a runtime material builder/compiler. This library is large but contains
-  a full shader compiler/validator/optimizer
-- `filamat-android-lite`: a much smaller alternative to `filamat-android-full` that can only
-  generate OpenGL shaders. It does not provide validation or optimizations
+[![filament-android](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-android/badge.svg?subject=filament-android)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-android)  
+The Filament rendering engine itself.
+
+[![gltfio-android](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/gltfio-android/badge.svg?subject=gltfio-android)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/gltfio-android)  
+A glTF 2.0 loader for Filament, depends on `filament-android`  .
+
+[![gltfio-android-lite](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/gltfio-android-lite/badge.svg?subject=gltfio-android-lite)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/gltfio-android-lite)  
+Trimmed version of `gltfio` that does not support some glTF features.
+
+[![filament-utils-android](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-utils-android/badge.svg?subject=filament-utils-android)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-utils-android)  
+KTX loading, Kotlin math, and camera utilities, depends on `gltfio-android`.
+
+[![filament-utils-android-lite](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-utils-android-lite/badge.svg?subject=filament-utils-lite)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filament-utils-android-lite)  
+Trimmed version of `filament-utils` that does not support some glTF features.
+
+[![filamat-android](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android/badge.svg?subject=filamat-android)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android)  
+A runtime material builder/compiler. This library is large but contains a full shader compiler/validator/optimizer.
+
+[![filamat-android-lite](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android-lite/badge.svg?subject=filamat-android-lite)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android-lite)  
+A much smaller alternative to `filamat-android` that can only generate OpenGL shaders. It does not provide validation or optimizations.
 
 ### Snapshots
 
@@ -69,17 +82,13 @@ steps:
 
 ## Examples
 
-### Materials
+![Night scene](docs/images/samples/example_bistro1.jpg)
+![Night scene](docs/images/samples/example_bistro2.jpg)
+![Materials](docs/images/samples/example_materials1.jpg)
+![Materials](docs/images/samples/example_materials2.jpg)
+![Helmet](docs/images/samples/example_helmet.jpg)
+![Screen-space refraction](docs/images/samples/example_ssr.jpg)
 
-Here are a few sample materials rendered with Filament:
-
-![Damaged Helmet](docs/images/samples/model_damaged_helmet.jpg)
-![Helmet](docs/images/samples/model_helmet.jpg)
-![Brushed copper](docs/images/samples/brushed_copper_2.jpg)
-![Material 1](docs/images/samples/material_01.jpg)
-![Material 2](docs/images/samples/material_02.jpg)
-![Material 6](docs/images/samples/material_06.jpg)
-![Material 8](docs/images/samples/material_08.jpg)
 
 ### Applications
 
@@ -124,12 +133,17 @@ Here are a few screenshots of applications that use Filament in production:
 - Image-based lighting
 - Physically-based camera (shutter speed, sensitivity and aperture)
 - Physical light units
-- Point light, spot light and directional light
-- SSAO
+- Point lights, spot lights and directional light
+- Spot and directional light shadows
+- Contact shadows
+- Screen-space ambient occlusion
+- Screen-space refraction
+- Global fog
+- HDR bloom
 - ACES-like tone-mapping
 - Temporal dithering
 - FXAA, MSAA and specular anti-aliasing
-- Dynamic resolution (on Android and iOS)
+- Dynamic resolution
 
 ## Rendering with Filament
 
@@ -227,11 +241,12 @@ creating the swap chain in the `onNativeWindowChanged()` callback.
 
 ### iOS
 
-See `ios/samples` for examples of using Filament on iOS.
+Filament is supported on iOS 12.0 and above. See `ios/samples` for examples of using Filament on
+iOS.
 
 Filament on iOS is largely the same as native rendering with C++. A `CAEAGLLayer` or `CAMetalLayer`
-is passed to the `createSwapChain` method. Filament for iOS supports both OpenGL ES and Vulkan via
-MoltenVK.
+is passed to the `createSwapChain` method. Filament for iOS supports both Metal (preferred) and
+OpenGL ES.
 
 ## Assets
 
@@ -272,13 +287,12 @@ and tools.
   - `filamat`:             Material generation library
   - `filameshio`:          Tiny filamesh parsing library (see also `tools/filamesh`)
   - `geometry`:            Mesh-related utilities
-  - `gltfio`:              Loader and optional pipeline for glTF 2.0
+  - `gltfio`:              Loader for glTF 2.0
   - `ibl`:                 IBL generation tools
   - `image`:               Image filtering and simple transforms
   - `imageio`:             Image file reading / writing, only intended for internal use
   - `matdbg`:              DebugServer for inspecting shaders at run-time (debug builds only)
   - `math`:                Math library
-  - `rays`:                Simple path tracer used for baking ambient occlusion, etc.
   - `utils`:               Utility library (threads, memory, data structures, etc.)
 - `samples`:               Sample desktop applications
 - `shaders`:               Shaders used by `filamat` and `matc`

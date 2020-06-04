@@ -17,9 +17,12 @@
 package com.google.android.filament.gltfio;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.android.filament.Box;
+import com.google.android.filament.Engine;
 import com.google.android.filament.Entity;
+import com.google.android.filament.MaterialInstance;
 
 /**
  * Owns a bundle of Filament objects that have been created by <code>AssetLoader</code>.
@@ -44,8 +47,10 @@ import com.google.android.filament.Entity;
 public class FilamentAsset {
     private long mNativeObject;
     private Animator mAnimator;
+    private Engine mEngine;
 
-    FilamentAsset(long nativeObject) {
+    FilamentAsset(Engine engine, long nativeObject) {
+        mEngine = engine;
         mNativeObject = nativeObject;
         mAnimator = null;
     }
@@ -62,6 +67,31 @@ public class FilamentAsset {
     }
 
     /**
+     * Pops a ready renderable off the queue, or returns 0 if no renderables have become ready.
+     *
+     * NOTE: To determine the progress percentage or completion status, please use
+     * ResourceLoader#asyncGetLoadProgress.
+     *
+     * This helper method allows clients to progressively add renderables to the scene as textures
+     * gradually become ready through asynchronous loading.
+     *
+     * See also ResourceLoader#asyncBeginLoad.
+     */
+    public @Entity int popRenderable() {
+        return nPopRenderable(mNativeObject);
+    }
+
+    /**
+     * Pops one or more renderables off the queue, or returns the available number.
+     *
+     * Returns the number of entities written into the given array. If the given array
+     * is null, returns the number of available renderables.
+     */
+    public int popRenderables(@Nullable @Entity int[] entities) {
+        return nPopRenderables(mNativeObject, entities);
+    }
+
+    /**
      * Gets the list of entities, one for each glTF node.
      *
      * <p>All of these have a transform component. Some of the returned entities may also have a
@@ -70,6 +100,17 @@ public class FilamentAsset {
     public @NonNull @Entity int[] getEntities() {
         int[] result = new int[nGetEntityCount(mNativeObject)];
         nGetEntities(mNativeObject, result);
+        return result;
+    }
+
+    public @NonNull MaterialInstance[] getMaterialInstances() {
+        final int count = nGetMaterialInstanceCount(mNativeObject);
+        MaterialInstance[] result = new MaterialInstance[count];
+        long[] natives = new long[count];
+        nGetMaterialInstances(mNativeObject, natives);
+        for (int i = 0; i < count; i++) {
+            result[i] = new MaterialInstance(mEngine, natives[i]);
+        }
         return result;
     }
 
@@ -127,8 +168,15 @@ public class FilamentAsset {
     }
 
     private static native int nGetRoot(long nativeAsset);
+    private static native int nPopRenderable(long nativeAsset);
+    private static native int nPopRenderables(long nativeAsset, int[] result);
+
     private static native int nGetEntityCount(long nativeAsset);
     private static native void nGetEntities(long nativeAsset, int[] result);
+
+    private static native int nGetMaterialInstanceCount(long nativeAsset);
+    private static native void nGetMaterialInstances(long nativeAsset, long[] nativeResults);
+
     private static native void nGetBoundingBox(long nativeAsset, float[] box);
     private static native String nGetName(long nativeAsset, int entity);
     private static native long nGetAnimator(long nativeAsset);

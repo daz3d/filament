@@ -28,6 +28,7 @@
 #include <utils/EntityManager.h>
 
 #include <math/vec3.h>
+#include <math/vec4.h>
 
 #include "generated/resources/resources.h"
 
@@ -37,16 +38,18 @@ constexpr uint8_t MATERIAL_MODEL_SUBSURFACE =  2;
 constexpr uint8_t MATERIAL_MODEL_CLOTH =       3;
 constexpr uint8_t MATERIAL_MODEL_SPECGLOSS =   4;
 
-constexpr uint8_t MATERIAL_UNLIT            = 0;
-constexpr uint8_t MATERIAL_LIT              = 1;
-constexpr uint8_t MATERIAL_SUBSURFACE       = 2;
-constexpr uint8_t MATERIAL_CLOTH            = 3;
-constexpr uint8_t MATERIAL_SPECGLOSS        = 4;
-constexpr uint8_t MATERIAL_TRANSPARENT      = 5;
-constexpr uint8_t MATERIAL_FADE             = 6;
-constexpr uint8_t MATERIAL_THIN_REFRACTION  = 7;
-constexpr uint8_t MATERIAL_SOLID_REFRACTION = 8;
-constexpr uint8_t MATERIAL_COUNT            = 9;
+constexpr uint8_t MATERIAL_UNLIT                = 0;
+constexpr uint8_t MATERIAL_LIT                  = 1;
+constexpr uint8_t MATERIAL_SUBSURFACE           = 2;
+constexpr uint8_t MATERIAL_CLOTH                = 3;
+constexpr uint8_t MATERIAL_SPECGLOSS            = 4;
+constexpr uint8_t MATERIAL_TRANSPARENT          = 5;
+constexpr uint8_t MATERIAL_FADE                 = 6;
+constexpr uint8_t MATERIAL_THIN_REFRACTION      = 7;
+constexpr uint8_t MATERIAL_SOLID_REFRACTION     = 8;
+constexpr uint8_t MATERIAL_THIN_SS_REFRACTION   = 9;
+constexpr uint8_t MATERIAL_SOLID_SS_REFRACTION  = 10;
+constexpr uint8_t MATERIAL_COUNT                = 11;
 
 constexpr uint8_t BLENDING_OPAQUE           = 0;
 constexpr uint8_t BLENDING_TRANSPARENT      = 1;
@@ -73,12 +76,16 @@ struct SandboxParameters {
     float transmission = 1.0f;
     float distance = 1.0f;
     float ior = 1.5;
+    float emissiveExposureWeight = 1.0f;
+    float emissiveEV = 0.0f;
     filament::sRGBColor transmittanceColor =  { 1.0f };
-    filament::sRGBColor specularColor = {0.0f };
-    filament::sRGBColor subsurfaceColor = {0.0f};
-    filament::sRGBColor sheenColor = {0.83f, 0.0f, 0.0f};
+    filament::sRGBColor specularColor = { 0.0f };
+    filament::sRGBColor subsurfaceColor = { 0.0f };
+    filament::sRGBColor sheenColor = { 0.83f, 0.0f, 0.0f };
+    filament::sRGBColor emissiveColor = { 0.0f, 0.0f, 0.0f };
     int currentMaterialModel = MATERIAL_MODEL_LIT;
     int currentBlending = BLENDING_OPAQUE;
+    bool ssr = false;
     bool castShadows = true;
     filament::sRGBColor lightColor = {0.98f, 0.92f, 0.89f};
     float lightIntensity = 110000.0f;
@@ -90,6 +97,15 @@ struct SandboxParameters {
     float sunAngularRadius = 1.9f;
     bool directionalLightEnabled = true;
     utils::Entity light;
+    utils::Entity spotLight;
+    bool hasSpotLight = false;
+    bool spotLightEnabled = false;
+    filament::sRGBColor spotLightColor = {1.0f, 1.0f, 1.0f};
+    float spotLightIntensity = 200000.0f;
+    bool spotLightCastShadows = true;
+    filament::math::float3 spotLightPosition;
+    float spotLightConeAngle = 3.14159 / 4.0f;
+    float spotLightConeFade = 0.9f;
     bool hasDirectionalLight = true;
     bool fxaa = true;
     bool tonemapping = true;
@@ -102,6 +118,14 @@ struct SandboxParameters {
     float polygonOffsetSlope = 2.0;
     bool ssao = false;
     filament::View::AmbientOcclusionOptions ssaoOptions;
+    filament::View::BloomOptions bloomOptions;
+    filament::View::FogOptions fogOptions;
+    bool screenSpaceContactShadows = false;
+    int stepCount = 8;
+    float maxShadowDistance = 0.3;
+    float cameraAperture = 16.0f;
+    float cameraSpeed = 125.0f;
+    float cameraISO = 100.0f;
 };
 
 inline void createInstances(SandboxParameters& params, filament::Engine& engine) {
@@ -137,11 +161,23 @@ inline void createInstances(SandboxParameters& params, filament::Engine& engine)
     params.materialInstance[MATERIAL_THIN_REFRACTION] =
             params.material[MATERIAL_THIN_REFRACTION]->createInstance();
 
+    params.material[MATERIAL_THIN_SS_REFRACTION] = Material::Builder()
+            .package(RESOURCES_SANDBOXLITTHINREFRACTIONSSR_DATA, RESOURCES_SANDBOXLITTHINREFRACTIONSSR_SIZE)
+            .build(engine);
+    params.materialInstance[MATERIAL_THIN_SS_REFRACTION] =
+            params.material[MATERIAL_THIN_SS_REFRACTION]->createInstance();
+
     params.material[MATERIAL_SOLID_REFRACTION] = Material::Builder()
             .package(RESOURCES_SANDBOXLITSOLIDREFRACTION_DATA, RESOURCES_SANDBOXLITSOLIDREFRACTION_SIZE)
             .build(engine);
     params.materialInstance[MATERIAL_SOLID_REFRACTION] =
             params.material[MATERIAL_SOLID_REFRACTION]->createInstance();
+
+    params.material[MATERIAL_SOLID_SS_REFRACTION] = Material::Builder()
+            .package(RESOURCES_SANDBOXLITSOLIDREFRACTIONSSR_DATA, RESOURCES_SANDBOXLITSOLIDREFRACTIONSSR_SIZE)
+            .build(engine);
+    params.materialInstance[MATERIAL_SOLID_SS_REFRACTION] =
+            params.material[MATERIAL_SOLID_SS_REFRACTION]->createInstance();
 
     params.material[MATERIAL_SUBSURFACE] = Material::Builder()
             .package(RESOURCES_SANDBOXSUBSURFACE_DATA, RESOURCES_SANDBOXSUBSURFACE_SIZE)
@@ -171,78 +207,17 @@ inline void createInstances(SandboxParameters& params, filament::Engine& engine)
             .sunHaloSize(params.sunHaloSize)
             .sunHaloFalloff(params.sunHaloFalloff)
             .build(engine, params.light);
-}
 
-inline filament::MaterialInstance* updateInstances(SandboxParameters& params,
-        filament::Engine& engine) {
-    using namespace filament;
-    int material = params.currentMaterialModel;
-    if (material == MATERIAL_MODEL_LIT) {
-        if (params.currentBlending == BLENDING_TRANSPARENT) material = MATERIAL_TRANSPARENT;
-        if (params.currentBlending == BLENDING_FADE) material = MATERIAL_FADE;
-        if (params.currentBlending == BLENDING_THIN_REFRACTION) material = MATERIAL_THIN_REFRACTION;
-        if (params.currentBlending == BLENDING_SOLID_REFRACTION) material = MATERIAL_SOLID_REFRACTION;
-    }
-
-    bool hasRefraction = params.currentBlending == BLENDING_THIN_REFRACTION ||
-            params.currentBlending == BLENDING_SOLID_REFRACTION;
-
-    MaterialInstance* materialInstance = params.materialInstance[material];
-    if (params.currentMaterialModel == MATERIAL_MODEL_UNLIT) {
-        materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
-    }
-    if (params.currentMaterialModel == MATERIAL_MODEL_LIT) {
-        materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
-        materialInstance->setParameter("roughness", params.roughness);
-        materialInstance->setParameter("metallic", params.metallic);
-        if (!hasRefraction) {
-            materialInstance->setParameter("reflectance", params.reflectance);
-        }
-        materialInstance->setParameter("clearCoat", params.clearCoat);
-        materialInstance->setParameter("clearCoatRoughness", params.clearCoatRoughness);
-        materialInstance->setParameter("anisotropy", params.anisotropy);
-        if (params.currentBlending != BLENDING_OPAQUE) {
-            materialInstance->setParameter("alpha", params.alpha);
-        }
-        if  (hasRefraction) {
-            math::float3 color = Color::toLinear(params.transmittanceColor);
-            materialInstance->setParameter("absorption",
-                    Color::absorptionAtDistance(color, params.distance));
-            materialInstance->setParameter("ior", params.ior);
-            materialInstance->setParameter("transmission", params.transmission);
-            materialInstance->setParameter("thickness", params.thickness);
-        }
-    }
-    if (params.currentMaterialModel == MATERIAL_MODEL_SPECGLOSS) {
-        materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
-        materialInstance->setParameter("glossiness", params.glossiness);
-        materialInstance->setParameter("specularColor", params.specularColor);
-        materialInstance->setParameter("reflectance", params.reflectance);
-        materialInstance->setParameter("clearCoat", params.clearCoat);
-        materialInstance->setParameter("clearCoatRoughness", params.clearCoatRoughness);
-        materialInstance->setParameter("anisotropy", params.anisotropy);
-    }
-    if (params.currentMaterialModel == MATERIAL_MODEL_SUBSURFACE) {
-        materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
-        materialInstance->setParameter("roughness", params.roughness);
-        materialInstance->setParameter("metallic", params.metallic);
-        materialInstance->setParameter("reflectance", params.reflectance);
-        materialInstance->setParameter("thickness", params.thickness);
-        materialInstance->setParameter("subsurfacePower", params.subsurfacePower);
-        materialInstance->setParameter("subsurfaceColor", RgbType::sRGB, params.subsurfaceColor);
-    }
-    if (params.currentMaterialModel == MATERIAL_MODEL_CLOTH) {
-        materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
-        materialInstance->setParameter("roughness", params.roughness);
-        materialInstance->setParameter("sheenColor", RgbType::sRGB, params.sheenColor);
-        materialInstance->setParameter("subsurfaceColor", RgbType::sRGB, params.subsurfaceColor);
-    }
-    if (params.currentMaterialModel != MATERIAL_MODEL_UNLIT) {
-        materialInstance->setSpecularAntiAliasingVariance(params.specularAntiAliasingVariance);
-        materialInstance->setSpecularAntiAliasingThreshold(params.specularAntiAliasingThreshold);
-    }
-
-    return materialInstance;
+    params.spotLight = EntityManager::get().create();
+    LightManager::Builder(LightManager::Type::SPOT)
+            .color(Color::toLinear<ACCURATE>(params.spotLightColor))
+            .intensity(params.spotLightIntensity)
+            .direction({0.0f, -1.0f, 0.0f})
+            .spotLightCone(params.spotLightConeAngle * params.spotLightConeFade,
+                    params.spotLightConeAngle)
+            .castShadows(params.spotLightCastShadows)
+            .falloff(10.0f)
+            .build(engine, params.spotLight);
 }
 
 #endif // TNT_FILAMENT_SAMPLES_MATERIAL_SANDBOX_H

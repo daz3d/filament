@@ -20,6 +20,12 @@
 
 #include "fg/ResourceAllocator.h"
 
+#ifndef NDEBUG
+#include "details/Texture.h"    // only needed for assert()
+#endif
+
+#include <assert.h>
+
 namespace filament {
 
 using namespace backend;
@@ -38,6 +44,15 @@ void FrameGraphTexture::create(FrameGraph& fg, const char* name,
 
     assert(any(desc.usage));
 
+    // texture that can't be sampled can't have LOD -- they obviously can't be accessed
+    // note: this could happen if a texture was created with LODs, but a later pass didn't
+    // actually sample from it.
+    uint8_t levels = desc.levels;
+    if (!(desc.usage & TextureUsage::SAMPLEABLE)) {
+        levels = 1;
+    }
+    assert(levels <= details::FTexture::maxLevelCount(desc.width, desc.height));
+
     uint8_t samples = desc.samples;
     assert(samples <= 1 || none(desc.usage & TextureUsage::SAMPLEABLE));
     if (any(desc.usage & TextureUsage::SAMPLEABLE)) {
@@ -47,7 +62,7 @@ void FrameGraphTexture::create(FrameGraph& fg, const char* name,
         samples = 1;
     }
 
-    texture = fg.getResourceAllocator().createTexture(name, desc.type, desc.levels,
+    texture = fg.getResourceAllocator().createTexture(name, desc.type, levels,
             desc.format, samples, desc.width, desc.height, desc.depth, desc.usage);
 
     assert(texture);

@@ -22,7 +22,11 @@
 
 #include <math/mat4.h>
 
+#if GLTFIO_LITE
+#include "gltfresources_lite.h"
+#else
 #include "gltfresources.h"
+#endif
 
 using namespace filament;
 using namespace filament::math;
@@ -61,14 +65,23 @@ public:
     filament::Engine* mEngine;
 };
 
+#if GLTFIO_LITE
+
+#define CREATE_MATERIAL(name) Material::Builder() \
+    .package(GLTFRESOURCES_LITE_ ## name ## _DATA, GLTFRESOURCES_LITE_ ## name ## _SIZE) \
+    .build(*mEngine);
+
+#else
+
 #define CREATE_MATERIAL(name) Material::Builder() \
     .package(GLTFRESOURCES_ ## name ## _DATA, GLTFRESOURCES_ ## name ## _SIZE) \
     .build(*mEngine);
 
+#endif
+
 #define MATINDEX(shading, alpha) (int(shading) + 3 * int(alpha))
 
 UbershaderLoader::UbershaderLoader(Engine* engine) : mEngine(engine) {
-    #ifdef EMSCRIPTEN
     unsigned char texels[4] = {};
     mDummyTexture = Texture::Builder()
             .width(1).height(1)
@@ -77,7 +90,6 @@ UbershaderLoader::UbershaderLoader(Engine* engine) : mEngine(engine) {
     Texture::PixelBufferDescriptor pbd(texels, sizeof(texels), Texture::Format::RGBA,
             Texture::Type::UBYTE);
     mDummyTexture->setImage(*mEngine, 0, std::move(pbd));
-    #endif
 }
 
 size_t UbershaderLoader::getMaterialsCount() const noexcept {
@@ -104,15 +116,24 @@ Material* UbershaderLoader::getMaterial(const MaterialKey& config) const {
         return mMaterials[matindex];
     }
     switch (matindex) {
+
+        #if !GLTFIO_LITE || defined(GLTFRESOURCES_LITE_LIT_OPAQUE_DATA)
         case MATINDEX(LIT, AlphaMode::OPAQUE): mMaterials[matindex] = CREATE_MATERIAL(LIT_OPAQUE); break;
-        case MATINDEX(LIT, AlphaMode::MASK): mMaterials[matindex] = CREATE_MATERIAL(LIT_MASKED); break;
+        #endif
+
+        #if !GLTFIO_LITE || defined(GLTFRESOURCES_LITE_LIT_BLEND_DATA)
         case MATINDEX(LIT, AlphaMode::BLEND): mMaterials[matindex] = CREATE_MATERIAL(LIT_FADE); break;
+        #endif
+
+        #if !GLTFIO_LITE
+        case MATINDEX(LIT, AlphaMode::MASK): mMaterials[matindex] = CREATE_MATERIAL(LIT_MASKED); break;
         case MATINDEX(UNLIT, AlphaMode::OPAQUE): mMaterials[matindex] = CREATE_MATERIAL(UNLIT_OPAQUE); break;
         case MATINDEX(UNLIT, AlphaMode::MASK): mMaterials[matindex] = CREATE_MATERIAL(UNLIT_MASKED); break;
         case MATINDEX(UNLIT, AlphaMode::BLEND): mMaterials[matindex] = CREATE_MATERIAL(UNLIT_FADE); break;
         case MATINDEX(SPECULAR_GLOSSINESS, AlphaMode::OPAQUE): mMaterials[matindex] = CREATE_MATERIAL(SPECULARGLOSSINESS_OPAQUE); break;
         case MATINDEX(SPECULAR_GLOSSINESS, AlphaMode::MASK): mMaterials[matindex] = CREATE_MATERIAL(SPECULARGLOSSINESS_MASKED); break;
         case MATINDEX(SPECULAR_GLOSSINESS, AlphaMode::BLEND): mMaterials[matindex] = CREATE_MATERIAL(SPECULARGLOSSINESS_FADE); break;
+        #endif
     }
     return mMaterials[matindex];
 }
@@ -128,7 +149,7 @@ MaterialInstance* UbershaderLoader::createMaterialInstance(MaterialKey* config, 
         return hasTexture ? int(uvmap->at(srcIndex)) - 1 : -1;
     };
     Material* material = getMaterial(*config);
-    MaterialInstance* mi = material->createInstance();
+    MaterialInstance* mi = material->createInstance(label);
     mi->setParameter("baseColorIndex",
             getUvIndex(config->baseColorUV, config->hasBaseColorTexture));
     mi->setParameter("normalIndex", getUvIndex(config->normalUV, config->hasNormalTexture));
@@ -140,25 +161,31 @@ MaterialInstance* UbershaderLoader::createMaterialInstance(MaterialKey* config, 
     mi->setDoubleSided(config->doubleSided);
     mi->setCullingMode(config->doubleSided ? CullingMode::NONE : CullingMode::BACK);
 
+    #if !GLTFIO_LITE
+    mi->setParameter("clearCoatIndex", getUvIndex(config->clearCoatUV, config->hasClearCoatTexture));
+    mi->setParameter("clearCoatRoughnessIndex", getUvIndex(config->clearCoatRoughnessUV, config->hasClearCoatRoughnessTexture));
+    mi->setParameter("clearCoatNormalIndex", getUvIndex(config->clearCoatNormalUV, config->hasClearCoatNormalTexture));
+
     mat3f identity;
     mi->setParameter("baseColorUvMatrix", identity);
     mi->setParameter("metallicRoughnessUvMatrix", identity);
     mi->setParameter("normalUvMatrix", identity);
     mi->setParameter("occlusionUvMatrix", identity);
     mi->setParameter("emissiveUvMatrix", identity);
+    mi->setParameter("clearCoatUvMatrix", identity);
+    mi->setParameter("clearCoatRoughnessUvMatrix", identity);
+    mi->setParameter("clearCoatNormalUvMatrix", identity);
+    #endif
 
-    // Some WebGL implementations emit a warning at draw call time if the shader declares a sampler
-    // that has not been bound to a texture, even if the texture lookup is conditional. Therefore we
-    // need to ensure that every sampler parameter is bound to a dummy texture, even if it is never
-    // actually sampled from.
-    #ifdef EMSCRIPTEN
     TextureSampler sampler;
     mi->setParameter("normalMap", mDummyTexture, sampler);
     mi->setParameter("baseColorMap", mDummyTexture, sampler);
     mi->setParameter("metallicRoughnessMap", mDummyTexture, sampler);
     mi->setParameter("occlusionMap", mDummyTexture, sampler);
     mi->setParameter("emissiveMap", mDummyTexture, sampler);
-    #endif
+    mi->setParameter("clearCoatMap", mDummyTexture, sampler);
+    mi->setParameter("clearCoatRoughnessMap", mDummyTexture, sampler);
+    mi->setParameter("clearCoatNormalMap", mDummyTexture, sampler);
 
     return mi;
 }

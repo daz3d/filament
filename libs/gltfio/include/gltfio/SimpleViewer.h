@@ -25,6 +25,7 @@
 // to one of your CPP source files to create the implementation. See gltf_viewer.cpp for an example.
 
 #include <filament/Box.h>
+#include <filament/DebugRegistry.h>
 #include <filament/Engine.h>
 #include <filament/IndirectLight.h>
 #include <filament/Scene.h>
@@ -69,17 +70,16 @@ public:
     ~SimpleViewer();
 
     /**
-     * Sets or changes the asset that is being viewed.
+     * Adds the asset's ready-to-render entities into the scene and optionally transforms the root
+     * node to make it fit into a unit cube at the origin.
      *
-     * This adds all the asset's entities into the scene and optionally transforms the asset to make
-     * it fit into a unit cube at the origin. The viewer does not claim ownership over the asset or
-     * its entities. Clients should use AssetLoader and ResourceLoader to load an asset before
-     * passing it in.
+     * The viewer does not claim ownership over the asset or its entities. Clients should use
+     * AssetLoader and ResourceLoader to load an asset before passing it in.
      *
      * @param asset The asset to view.
      * @param scale Adds a transform to the root to fit the asset into a unit cube at the origin.
      */
-    void setAsset(FilamentAsset* asset, bool scale);
+    void populateScene(FilamentAsset* asset, bool scale);
 
     /**
      * Removes the current asset from the viewer.
@@ -138,12 +138,6 @@ public:
     void enableDithering(bool b) { mEnableDithering = b; }
 
     /**
-     * Enables depth prepass on the view.
-     * Defaults to true.
-     */
-    void enablePrepass(bool b) { mEnablePrepass = b; }
-
-    /**
      * Enables FXAA antialiasing in the post-process pipeline.
      * Defaults to true.
      */
@@ -160,6 +154,14 @@ public:
      * Defaults to true.
      */
     void enableSSAO(bool b) { mEnableSsao = b; }
+
+    /**
+     * Enables Bloom.
+     * Defaults to true.
+     */
+    void enableBloom(bool bloom) {
+        mBloomOptions.enabled = bloom;
+    }
 
     /**
      * Adjusts the intensity of the IBL.
@@ -194,11 +196,14 @@ private:
     bool mEnableWireframe = false;
     bool mEnableSunlight = true;
     bool mEnableShadows = true;
+    int mShadowCascades = 1;
+    bool mEnableContactShadows = false;
     bool mEnableDithering = true;
-    bool mEnablePrepass = true;
     bool mEnableFxaa = true;
     bool mEnableMsaa = true;
     bool mEnableSsao = true;
+    filament::View::BloomOptions mBloomOptions = { .enabled = true };
+    filament::View::FogOptions mFogOptions = {};
     int mSidebarWidth;
     uint32_t mFlags;
 };
@@ -264,18 +269,36 @@ SimpleViewer::~SimpleViewer() {
     mEngine->destroy(mSunlight);
 }
 
-void SimpleViewer::setAsset(FilamentAsset* asset, bool scale) {
-    using namespace filament::math;
-    removeAsset();
-    mAsset = asset;
-    mAnimator = asset->getAnimator();
-    if (scale) {
-        auto& tcm = mEngine->getTransformManager();
-        auto root = tcm.getInstance(mAsset->getRoot());
-        mat4f transform = fitIntoUnitCube(mAsset->getBoundingBox());
-        tcm.setTransform(root, transform);
+void SimpleViewer::populateScene(FilamentAsset* asset, bool scale) {
+    if (mAsset != asset) {
+        removeAsset();
+        mAsset = asset;
+        if (!asset) {
+            mAnimator = nullptr;
+            return;
+        }
+        mAnimator = asset->getAnimator();
+        if (scale) {
+            auto& tcm = mEngine->getTransformManager();
+            auto root = tcm.getInstance(mAsset->getRoot());
+            filament::math::mat4f transform = fitIntoUnitCube(mAsset->getBoundingBox());
+            tcm.setTransform(root, transform);
+        }
+
+        mScene->addEntities(asset->getLightEntities(), asset->getLightEntityCount());
     }
-    mScene->addEntities(mAsset->getEntities(), mAsset->getEntityCount());
+
+    auto& tcm = mEngine->getRenderableManager();
+
+    static constexpr int kNumAvailable = 128;
+    utils::Entity renderables[kNumAvailable];
+    while (size_t numWritten = mAsset->popRenderables(renderables, kNumAvailable)) {
+        for (size_t i = 0; i < numWritten; i++) {
+            auto ri = tcm.getInstance(renderables[i]);
+            tcm.setScreenSpaceContactShadows(ri, true);
+        }
+        mScene->addEntities(renderables, numWritten);
+    }
 }
 
 void SimpleViewer::removeAsset() {
@@ -293,6 +316,7 @@ void SimpleViewer::removeAsset() {
 void SimpleViewer::setIndirectLight(filament::IndirectLight* ibl,
         filament::math::float3 const* sh3) {
     using namespace filament::math;
+    mFogOptions.color = sh3[0];
     mIndirectLight = ibl;
     if (ibl) {
         float3 d = filament::IndirectLight::getDirectionEstimate(sh3);
@@ -313,6 +337,9 @@ void SimpleViewer::updateIndirectLight() {
 }
 
 void SimpleViewer::applyAnimation(double currentTime) {
+    if (!mAnimator) {
+        return;
+    }
     static double startTime = 0;
     const size_t numAnimations = mAnimator->getAnimationCount();
     if (mResetAnimation) {
@@ -347,10 +374,12 @@ void SimpleViewer::updateUserInterface() {
             mScene->remove(entity);
         }
         auto instance = rm.getInstance(entity);
+        bool scaster = rm.isShadowCaster(instance);
+        ImGui::Checkbox("casts shadows", &scaster);
+        rm.setCastShadows(instance, scaster);
         size_t numPrims = rm.getPrimitiveCount(instance);
         for (size_t prim = 0; prim < numPrims; ++prim) {
-            const Material* mat = rm.getMaterialInstanceAt(instance, prim)->getMaterial();
-            const char* mname = mat->getName();
+            const char* mname = rm.getMaterialInstanceAt(instance, prim)->getName();
             if (mname) {
                 ImGui::Text("prim %zu: material %s", prim, mname);
             } else {
@@ -359,22 +388,54 @@ void SimpleViewer::updateUserInterface() {
         }
     };
 
+    auto lightTreeItem = [this, &lm](utils::Entity entity) {
+        bool lvis = mScene->hasEntity(entity);
+        ImGui::Checkbox("visible", &lvis);
+
+        if (lvis) {
+            mScene->addEntity(entity);
+        } else {
+            mScene->remove(entity);
+        }
+
+        auto instance = lm.getInstance(entity);
+        bool lcaster = lm.isShadowCaster(instance);
+        ImGui::Checkbox("shadow caster", &lcaster);
+        lm.setShadowCaster(instance, lcaster);
+    };
+
     // Declare a std::function for tree nodes, it's an easy way to make a recursive lambda.
     std::function<void(utils::Entity)> treeNode;
 
     treeNode = [&](utils::Entity entity) {
         auto tinstance = tm.getInstance(entity);
         auto rinstance = rm.getInstance(entity);
+        auto linstance = lm.getInstance(entity);
         intptr_t treeNodeId = 1 + entity.getId();
 
         const char* name = mAsset->getName(entity);
-        const char* label = name ? name : (rinstance ? "Mesh" : "Node");
+        auto getLabel = [&name, &rinstance, &linstance]() {
+            if (name) {
+                return name;
+            }
+            if (rinstance) {
+                return "Mesh";
+            }
+            if (linstance) {
+                return "Light";
+            }
+            return "Node";
+        };
+        const char* label = getLabel();
 
-        ImGuiTreeNodeFlags flags = rinstance ? 0 : ImGuiTreeNodeFlags_DefaultOpen;
+        ImGuiTreeNodeFlags flags = 0; // rinstance ? 0 : ImGuiTreeNodeFlags_DefaultOpen;
         std::vector<utils::Entity> children(tm.getChildCount(tinstance));
         if (ImGui::TreeNodeEx((const void*) treeNodeId, flags, "%s", label)) {
             if (rinstance) {
                 renderableTreeItem(entity);
+            }
+            if (linstance) {
+                lightTreeItem(entity);
             }
             tm.getChildren(tinstance, children.data(), children.size());
             for (auto ce : children) {
@@ -415,21 +476,15 @@ void SimpleViewer::updateUserInterface() {
         mCustomUI();
     }
 
+    DebugRegistry& debug = mEngine->getDebugRegistry();
+
     if (ImGui::CollapsingHeader("View")) {
         ImGui::Checkbox("Dithering", &mEnableDithering);
-        ImGui::Checkbox("Depth prepass", &mEnablePrepass);
         ImGui::Checkbox("FXAA", &mEnableFxaa);
         ImGui::Checkbox("MSAA 4x", &mEnableMsaa);
         ImGui::Checkbox("SSAO", &mEnableSsao);
+        ImGui::Checkbox("Bloom", &mBloomOptions.enabled);
     }
-
-    mView->setDepthPrepass(
-            mEnablePrepass ? View::DepthPrepass::ENABLED : View::DepthPrepass::DISABLED);
-    mView->setDithering(mEnableDithering ? View::Dithering::TEMPORAL : View::Dithering::NONE);
-    mView->setAntiAliasing(mEnableFxaa ? View::AntiAliasing::FXAA : View::AntiAliasing::NONE);
-    mView->setSampleCount(mEnableMsaa ? 4 : 1);
-    mView->setAmbientOcclusion(
-            mEnableSsao ? View::AmbientOcclusion::SSAO : View::AmbientOcclusion::NONE);
 
     if (ImGui::CollapsingHeader("Light", headerFlags)) {
         ImGui::SliderFloat("IBL intensity", &mIblIntensity, 0.0f, 100000.0f);
@@ -438,7 +493,30 @@ void SimpleViewer::updateUserInterface() {
         ImGuiExt::DirectionWidget("Sun direction", mSunlightDirection.v);
         ImGui::Checkbox("Enable sunlight", &mEnableSunlight);
         ImGui::Checkbox("Enable shadows", &mEnableShadows);
+        ImGui::SliderInt("Cascades", &mShadowCascades, 1, 4);
+        ImGui::Checkbox("Debug Cascades", debug.getPropertyAddress<bool>("d.shadowmap.visualize_cascades"));
+        ImGui::Checkbox("Enable contact shadows", &mEnableContactShadows);
     }
+
+    if (ImGui::CollapsingHeader("Fog")) {
+        ImGui::Checkbox("Enable Fog", &mFogOptions.enabled);
+        ImGui::SliderFloat("Start", &mFogOptions.distance, 0.0f, 100.0f);
+        ImGui::SliderFloat("Density", &mFogOptions.density, 0.0f, 1.0f);
+        ImGui::SliderFloat("Height", &mFogOptions.height, 0.0f, 100.0f);
+        ImGui::SliderFloat("Height Falloff", &mFogOptions.heightFalloff, 0.0f, 10.0f);
+        ImGui::SliderFloat("Scattering Start", &mFogOptions.inScatteringStart, 0.0f, 100.0f);
+        ImGui::SliderFloat("Scattering Size", &mFogOptions.inScatteringSize, 0.0f, 100.0f);
+        ImGui::Checkbox("Color from IBL", &mFogOptions.fogColorFromIbl);
+        ImGui::ColorPicker3("Color", mFogOptions.color.v);
+    }
+
+    mView->setDithering(mEnableDithering ? View::Dithering::TEMPORAL : View::Dithering::NONE);
+    mView->setAntiAliasing(mEnableFxaa ? View::AntiAliasing::FXAA : View::AntiAliasing::NONE);
+    mView->setSampleCount(mEnableMsaa ? 4 : 1);
+    mView->setAmbientOcclusion(
+            mEnableSsao ? View::AmbientOcclusion::SSAO : View::AmbientOcclusion::NONE);
+    mView->setBloomOptions(mBloomOptions);
+    mView->setFogOptions(mFogOptions);
 
     if (mEnableSunlight) {
         mScene->addEntity(mSunlight);
@@ -451,6 +529,14 @@ void SimpleViewer::updateUserInterface() {
         mScene->remove(mSunlight);
     }
 
+    lm.forEachComponent([this, &lm](utils::Entity e, LightManager::Instance ci) {
+        auto options = lm.getShadowOptions(ci);
+        options.screenSpaceContactShadows = mEnableContactShadows;
+        options.shadowCascades = mShadowCascades;
+        lm.setShadowOptions(ci, options);
+        lm.setShadowCaster(ci, mEnableShadows);
+    });
+
     if (mAsset != nullptr) {
         if (ImGui::CollapsingHeader("Model", headerFlags)) {
             if (mAnimator->getAnimationCount() > 0) {
@@ -461,7 +547,7 @@ void SimpleViewer::updateUserInterface() {
                     ImGui::TreePop();
                 }
             }
-            ImGui::Checkbox("Wireframe", &mEnableWireframe);
+            ImGui::Checkbox("Show bounds", &mEnableWireframe);
             treeNode(mAsset->getRoot());
         }
 

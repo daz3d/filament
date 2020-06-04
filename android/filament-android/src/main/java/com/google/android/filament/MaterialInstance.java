@@ -22,6 +22,7 @@ import androidx.annotation.Size;
 
 public class MaterialInstance {
     private Material mMaterial;
+    private String mName;
     private long mNativeObject;
     private long mNativeMaterial;
 
@@ -48,14 +49,19 @@ public class MaterialInstance {
         MAT4
     }
 
+    public MaterialInstance(Engine engine, long nativeMaterialInstance) {
+        mNativeObject = nativeMaterialInstance;
+        mNativeMaterial = nGetMaterial(mNativeObject);
+    }
+
     MaterialInstance(@NonNull Material material, long nativeMaterialInstance) {
         mMaterial = material;
         mNativeObject = nativeMaterialInstance;
     }
 
-    MaterialInstance(long nativeMaterial, long nativeMaterialInstance) {
-        mNativeMaterial = nativeMaterial;
+    MaterialInstance(long nativeMaterialInstance) {
         mNativeObject = nativeMaterialInstance;
+        mNativeMaterial = nGetMaterial(mNativeObject);
     }
 
     /** @return the {@link Material} associated with this instance */
@@ -65,6 +71,15 @@ public class MaterialInstance {
             mMaterial = new Material(mNativeMaterial);
         }
         return mMaterial;
+    }
+
+    /** @return the name associated with this instance */
+    @NonNull
+    public String getName() {
+        if (mName == null) {
+            mName = nGetName(getNativeObject());
+        }
+        return mName;
     }
 
     /**
@@ -430,6 +445,39 @@ public class MaterialInstance {
         nSetCullingMode(getNativeObject(), mode.ordinal());
     }
 
+    /**
+     * Overrides the default color-buffer write state that was set on the material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:colorWrite">
+     * Rasterization: colorWrite</a>
+     */
+    void setColorWrite(boolean enable) {
+        nSetColorWrite(getNativeObject(), enable);
+    }
+
+    /**
+     * Overrides the default depth-buffer write state that was set on the material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:depthWrite">
+     * Rasterization: depthWrite</a>
+     */
+    void setDepthWrite(boolean enable) {
+        nSetDepthWrite(getNativeObject(), enable);
+    }
+
+    /**
+     * Overrides the default depth testing state that was set on the material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:depthCulling">
+     * Rasterization: depthCulling</a>
+     */
+    void setDepthCulling(boolean enable) {
+        nSetDepthCulling(getNativeObject(), enable);
+    }
+
     public long getNativeObject() {
         if (mNativeObject == 0) {
             throw new IllegalStateException("Calling method on destroyed MaterialInstance");
@@ -499,6 +547,11 @@ public class MaterialInstance {
             float threshold);
 
     private static native void nSetDoubleSided(long nativeMaterialInstance, boolean doubleSided);
-
     private static native void nSetCullingMode(long nativeMaterialInstance, long mode);
+    private static native void nSetColorWrite(long nativeMaterialInstance, boolean enable);
+    private static native void nSetDepthWrite(long nativeMaterialInstance, boolean enable);
+    private static native void nSetDepthCulling(long nativeMaterialInstance, boolean enable);
+
+    private static native String nGetName(long nativeMaterialInstance);
+    private static native long nGetMaterial(long nativeMaterialInstance);
 }

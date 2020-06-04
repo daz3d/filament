@@ -17,35 +17,37 @@
 #include <backend/Platform.h>
 
 #if defined(ANDROID)
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformEGLAndroid.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkAndroid.h"
     #endif
+#elif defined(SWIFTSHADER)
+    #include "opengl/PlatformEGL.h"
 #elif defined(IOS)
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformCocoaTouchGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoaTouch.h"
     #endif
 #elif defined(__APPLE__)
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformCocoaGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoa.h"
     #endif
 #elif defined(__linux__)
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformGLX.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkLinux.h"
     #endif
 #elif defined(WIN32)
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformWGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
@@ -54,7 +56,7 @@
 #elif defined(__EMSCRIPTEN__)
     #include "opengl/PlatformWebGL.h"
 #else
-    #ifndef USE_EXTERNAL_GLES3
+    #ifndef FILAMENT_USE_EXTERNAL_GLES3
         #include "opengl/PlatformDummyGL.h"
     #endif
 #endif
@@ -108,9 +110,9 @@ DefaultPlatform* DefaultPlatform::create(Backend* backend) noexcept {
         return nullptr;
 #endif
     }
-    #if defined(USE_EXTERNAL_GLES3)
+    #if defined(FILAMENT_USE_EXTERNAL_GLES3)
         return nullptr;
-    #elif defined(EGL) && !defined(ANDROID)
+    #elif defined(SWIFTSHADER)
         return new PlatformEGL();
     #elif defined(ANDROID)
         return new PlatformEGLAndroid();

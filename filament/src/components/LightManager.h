@@ -45,6 +45,14 @@ public:
 
     void terminate() noexcept;
 
+    size_t getComponentCount() const noexcept {
+        return mManager.getComponentCount();
+    }
+
+    utils::Entity const* getEntities() const noexcept {
+        return mManager.getEntities();
+    }
+
     bool hasComponent(utils::Entity e) const noexcept {
         return mManager.hasComponent(e);
     }
@@ -71,10 +79,16 @@ public:
 
     struct SpotParams {
         float radius = 0;
+        float outerClamped = 0;
         float cosOuterSquared = 1;
         float sinInverse = std::numeric_limits<float>::infinity();
         float luminousPower = 0;
         math::float2 scaleOffset = {};
+    };
+
+    enum class IntensityUnit {
+        LUMEN_LUX,  // intensity specified in lumens (for punctual lights) or lux (for directional)
+        CANDELA     // intensity specified in candela (only applicable to punctual lights)
     };
 
     struct ShadowParams {
@@ -85,7 +99,7 @@ public:
     UTILS_NOINLINE void setLocalDirection(Instance i, math::float3 direction) noexcept;
     UTILS_NOINLINE void setColor(Instance i, const LinearColor& color) noexcept;
     UTILS_NOINLINE void setSpotLightCone(Instance i, float inner, float outer) noexcept;
-    UTILS_NOINLINE void setIntensity(Instance i, float intensity) noexcept;
+    UTILS_NOINLINE void setIntensity(Instance i, float intensity, IntensityUnit unit) noexcept;
     UTILS_NOINLINE void setFalloff(Instance i, float radius) noexcept;
     UTILS_NOINLINE void setShadowCaster(Instance i, bool shadowCaster) noexcept;
     UTILS_NOINLINE void setSunAngularRadius(Instance i, float angularRadius) noexcept;

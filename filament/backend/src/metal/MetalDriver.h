@@ -101,10 +101,20 @@ private:
         return Handle<B>(mNextId++);
     }
 
-    template<typename Dp, typename B>
-    Dp* handle_cast(HandleMap& handleMap, Handle<B>& handle) noexcept {
+    template<typename Dp, typename B, typename ... ARGS>
+    Handle<B> alloc_and_construct_handle(ARGS&& ... args) {
         std::lock_guard<std::mutex> lock(mHandleMapMutex);
+        Blob blob = mHandleMap[mNextId] = malloc(sizeof(Dp));
+        Dp* addr = reinterpret_cast<Dp*>(blob);
+        new(addr) Dp(std::forward<ARGS>(args)...);
+        return Handle<B>(mNextId++);
+    }
+
+    template<typename Dp, typename B>
+    Dp* handle_cast(HandleMap& handleMap, Handle<B> handle) noexcept {
         assert(handle);
+        if (!handle) return nullptr; // better to get a NPE than random behavior/corruption
+        std::lock_guard<std::mutex> lock(mHandleMapMutex);
         auto iter = handleMap.find(handle.getId());
         assert(iter != handleMap.end());
         Blob& blob = iter.value();
@@ -113,8 +123,9 @@ private:
 
     template<typename Dp, typename B>
     const Dp* handle_const_cast(HandleMap& handleMap, const Handle<B>& handle) noexcept {
-        std::lock_guard<std::mutex> lock(mHandleMapMutex);
         assert(handle);
+        if (!handle) return nullptr; // better to get a NPE than random behavior/corruption
+        std::lock_guard<std::mutex> lock(mHandleMapMutex);
         auto iter = handleMap.find(handle.getId());
         assert(iter != handleMap.end());
         Blob& blob = iter.value();
@@ -123,6 +134,8 @@ private:
 
     template<typename Dp, typename B, typename ... ARGS>
     Dp* construct_handle(HandleMap& handleMap, Handle<B>& handle, ARGS&& ... args) noexcept {
+        assert(handle);
+        if (!handle) return nullptr; // better to get a NPE than random behavior/corruption
         std::lock_guard<std::mutex> lock(mHandleMapMutex);
         auto iter = handleMap.find(handle.getId());
         assert(iter != handleMap.end());

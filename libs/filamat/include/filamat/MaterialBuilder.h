@@ -184,6 +184,7 @@ public:
     using Interpolation = filament::Interpolation;
     using VertexDomain = filament::VertexDomain;
     using TransparencyMode = filament::TransparencyMode;
+    using SpecularAmbientOcclusion = filament::SpecularAmbientOcclusion;
 
     using UniformType = filament::backend::UniformType;
     using SamplerType = filament::backend::SamplerType;
@@ -234,12 +235,6 @@ public:
 
     //! Specify the domain that this material will operate in.
     MaterialBuilder& materialDomain(MaterialDomain materialDomain) noexcept;
-
-    //! Specify the refraction
-    MaterialBuilder& materialRefraction(RefractionMode refraction) noexcept;
-
-    //! Specify the refraction type
-    MaterialBuilder& materialRefractionType(RefractionType refractionType) noexcept;
 
     /**
      * Set the code content of this material.
@@ -318,13 +313,13 @@ public:
      */
     MaterialBuilder& culling(CullingMode culling) noexcept;
 
-    //! Enable / disable color-buffer write (enabled by default).
+    //! Enable / disable color-buffer write (enabled by default, material instances can override).
     MaterialBuilder& colorWrite(bool enable) noexcept;
 
-    //! Enable / disable depth-buffer write (enabled by default for opaque, disabled for others).
+    //! Enable / disable depth-buffer write (enabled by default for opaque, disabled for others, material instances can override).
     MaterialBuilder& depthWrite(bool enable) noexcept;
 
-    //! Enable / disable depth based culling (enabled by default).
+    //! Enable / disable depth based culling (enabled by default, material instances can override).
     MaterialBuilder& depthCulling(bool enable) noexcept;
 
     /**
@@ -388,8 +383,14 @@ public:
     //! Enable / disable multi-bounce ambient occlusion, disabled by default on mobile.
     MaterialBuilder& multiBounceAmbientOcclusion(bool multiBounceAO) noexcept;
 
-    //! Enable / disable specular ambient occlusion, disabled by default on mobile.
-    MaterialBuilder& specularAmbientOcclusion(bool specularAO) noexcept;
+    //! Set the specular ambient occlusion technique. Disabled by default on mobile.
+    MaterialBuilder& specularAmbientOcclusion(SpecularAmbientOcclusion specularAO) noexcept;
+
+    //! Specify the refraction
+    MaterialBuilder& refractionMode(RefractionMode refraction) noexcept;
+
+    //! Specify the refraction type
+    MaterialBuilder& refractionType(RefractionType refractionType) noexcept;
 
     //! Specifies how transparent objects should be rendered (default is DEFAULT).
     MaterialBuilder& transparencyMode(TransparencyMode mode) noexcept;
@@ -467,7 +468,7 @@ public:
     // Returns true if any of the parameter samplers is of type samplerExternal
     bool hasExternalSampler() const noexcept;
 
-    static constexpr size_t MAX_PARAMETERS_COUNT = 32;
+    static constexpr size_t MAX_PARAMETERS_COUNT = 48;
     using ParameterList = Parameter[MAX_PARAMETERS_COUNT];
 
     // returns the number of parameters declared in this material
@@ -573,7 +574,8 @@ private:
 
     bool mMultiBounceAO = false;
     bool mMultiBounceAOSet = false;
-    bool mSpecularAO = false;
+
+    SpecularAmbientOcclusion mSpecularAO = SpecularAmbientOcclusion::NONE;
     bool mSpecularAOSet = false;
 };
 

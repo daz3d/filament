@@ -17,9 +17,10 @@
 #ifndef TNT_FILABRIDGE_UIBGENERATOR_H
 #define TNT_FILABRIDGE_UIBGENERATOR_H
 
-
 #include <math/mat4.h>
 #include <math/vec4.h>
+
+#include <private/filament/EngineEnums.h>
 
 namespace filament {
 
@@ -30,6 +31,7 @@ public:
     static UniformInterfaceBlock const& getPerViewUib() noexcept;
     static UniformInterfaceBlock const& getPerRenderableUib() noexcept;
     static UniformInterfaceBlock const& getLightsUib() noexcept;
+    static UniformInterfaceBlock const& getShadowUib() noexcept;
     static UniformInterfaceBlock const& getPerRenderableBonesUib() noexcept;
 };
 
@@ -49,11 +51,18 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
     filament::math::mat4f viewFromClipMatrix;
     filament::math::mat4f clipFromWorldMatrix;
     filament::math::mat4f worldFromClipMatrix;
-    filament::math::mat4f lightFromWorldMatrix;
+    filament::math::mat4f lightFromWorldMatrix[CONFIG_MAX_SHADOW_CASCADES];
+
+    // position of cascade splits, in world space (not including the near plane)
+    // -Inf stored in unused components
+    filament::math::float4 cascadeSplits;
 
     filament::math::float4 resolution; // viewport width, height, 1/width, 1/height
 
-    filament::math::float3 cameraPosition; // this is (0,0,0) when camera_at_origin is enabled
+    // camera position in view space (when camera_at_origin is enabled), i.e. it's (0,0,0).
+    // Always add worldOffset in the shader to get the true world-space position of the camera.
+    filament::math::float3 cameraPosition;
+
     float time; // time in seconds, with a 1 second period
 
     filament::math::float4 lightColorIntensity; // directional light
@@ -80,25 +89,52 @@ struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
 
     filament::math::float4 userTime;  // time(s), (double)time - (float)time, 0, 0
 
-    filament::math::float2 iblMaxMipLevel; // maxlevel, float(1<<maxlevel)
-    filament::math::float2 padding0;
+    float iblRoughnessOneLevel;       // level for roughness == 1
+    float cameraFar;                  // camera *culling* far-plane distance (projection far is at +inf)
+    float refractionLodOffset;
+
+    // bit 0: directional (sun) shadow enabled
+    // bit 1: directional (sun) screen-space contact shadow enabled
+    // bit 8-15: screen-space contact shadows ray casting steps
+    uint32_t directionalShadows;
 
     filament::math::float3 worldOffset; // this is (0,0,0) when camera_at_origin is disabled
-    float padding1;
+    float ssContactShadowDistance;
 
-    // bring PerViewUib to 1 KiB
-    filament::math::float4 padding2[15];
+    // fog
+    float fogStart;
+    float fogMaxOpacity;
+    float fogHeight;
+    float fogHeightFalloff;         // falloff * 1.44269
+    math::float3 fogColor;
+    float fogDensity;               // (density/falloff)*exp(-falloff*(camera.y - fogHeight))
+    float fogInscatteringStart;
+    float fogInscatteringSize;
+    float fogColorFromIbl;
+
+    // bit 0-3: cascade count
+    // bit 4: visualize cascades
+    // bit 8-11: cascade has visible shadows
+    uint32_t cascades;
+
+    // bring PerViewUib to 2 KiB
+    filament::math::float4 padding2[63];
 };
 
+// 2 KiB == 128 float4s
+static_assert(sizeof(PerViewUib) == sizeof(filament::math::float4) * 128,
+        "PerViewUib should be exactly 2KiB");
 
 // PerRenderableUib must have an alignment of 256 to be compatible with all versions of GLES.
 struct alignas(256) PerRenderableUib {
     filament::math::mat4f worldFromModelMatrix;
     filament::math::mat3f worldFromModelNormalMatrix; // this gets expanded to 48 bytes during the copy to the UBO
     alignas(16) filament::math::float4 morphWeights;
-    uint32_t skinningEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
-    uint32_t morphingEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
-    filament::math::float2 padding0;
+    // TODO: we can pack all the boolean bellow
+    int32_t skinningEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
+    int32_t morphingEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
+    uint32_t screenSpaceContactShadows; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
+    float padding0;
 };
 
 struct LightsUib {
@@ -108,7 +144,19 @@ struct LightsUib {
     filament::math::float4 positionFalloff;   // { float3(pos), 1/falloff^2 }
     filament::math::float4 colorIntensity;    // { float3(col), intensity }
     filament::math::float4 directionIES;      // { float3(dir), IES index }
-    filament::math::float4 spotScaleOffset;   // { scale, offset, unused, unused }
+    filament::math::float2 spotScaleOffset;   // { scale, offset }
+    uint32_t               shadow;            // { shadow bits (see ShadowInfo) }
+    uint32_t               type;              // { 0=point, 1=spot }
+};
+
+// UBO for punctual (spot light) shadows.
+struct ShadowUib {
+    static const UniformInterfaceBlock& getUib() noexcept {
+        return UibGenerator::getShadowUib();
+    }
+
+    filament::math::mat4f spotLightFromWorldMatrix[CONFIG_MAX_SHADOW_CASTING_SPOTS];
+    filament::math::float4 directionShadowBias[CONFIG_MAX_SHADOW_CASTING_SPOTS]; // light direction, normal bias
 };
 
 // This is not the UBO proper, but just an element of a bone array.

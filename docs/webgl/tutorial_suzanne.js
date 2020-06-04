@@ -1,8 +1,7 @@
-const ibl_suffix = Filament.getSupportedFormatSuffix('etc s3tc');
 const albedo_suffix = Filament.getSupportedFormatSuffix('astc s3tc');
 const texture_suffix = Filament.getSupportedFormatSuffix('etc');
-const environ = 'syferfontein_18d_clear_2k'
-const ibl_url = `${environ}/${environ}_ibl${ibl_suffix}.ktx`;
+const environ = 'venetian_crossroads_2k'
+const ibl_url = `${environ}/${environ}_ibl.ktx`;
 const sky_small_url = `${environ}/${environ}_skybox_tiny.ktx`;
 const sky_large_url = `${environ}/${environ}_skybox.ktx`;
 const albedo_url = `albedo${albedo_suffix}.ktx`;
@@ -33,27 +32,27 @@ class App {
       startSpin: 0.035
     });
     Filament.fetch([sky_large_url, albedo_url, roughness_url, metallic_url, normal_url, ao_url],
-      () => {
-        const albedo = this.engine.createTextureFromKtx(albedo_url, {
-          srgb: true
-        });
-        const roughness = this.engine.createTextureFromKtx(roughness_url);
-        const metallic = this.engine.createTextureFromKtx(metallic_url);
-        const normal = this.engine.createTextureFromKtx(normal_url);
-        const ao = this.engine.createTextureFromKtx(ao_url);
-        const sampler = new Filament.TextureSampler(Filament.MinFilter.LINEAR_MIPMAP_LINEAR,
-          Filament.MagFilter.LINEAR, Filament.WrapMode.CLAMP_TO_EDGE);
-        this.matinstance.setTextureParameter('albedo', albedo, sampler);
-        this.matinstance.setTextureParameter('roughness', roughness, sampler);
-        this.matinstance.setTextureParameter('metallic', metallic, sampler);
-        this.matinstance.setTextureParameter('normal', normal, sampler);
-        this.matinstance.setTextureParameter('ao', ao, sampler);
-        // Replace low-res skybox with high-res skybox.
-        this.engine.destroySkybox(this.skybox);
-        this.skybox = this.engine.createSkyFromKtx(sky_large_url);
-        this.scene.setSkybox(this.skybox);
-        this.scene.addEntity(this.suzanne);
+    () => {
+      const albedo = this.engine.createTextureFromKtx(albedo_url, {
+        srgb: true
       });
+      const roughness = this.engine.createTextureFromKtx(roughness_url);
+      const metallic = this.engine.createTextureFromKtx(metallic_url);
+      const normal = this.engine.createTextureFromKtx(normal_url);
+      const ao = this.engine.createTextureFromKtx(ao_url);
+      const sampler = new Filament.TextureSampler(Filament.MinFilter.LINEAR_MIPMAP_LINEAR,
+        Filament.MagFilter.LINEAR, Filament.WrapMode.CLAMP_TO_EDGE);
+      this.matinstance.setTextureParameter('albedo', albedo, sampler);
+      this.matinstance.setTextureParameter('roughness', roughness, sampler);
+      this.matinstance.setTextureParameter('metallic', metallic, sampler);
+      this.matinstance.setTextureParameter('normal', normal, sampler);
+      this.matinstance.setTextureParameter('ao', ao, sampler);
+      // Replace low-res skybox with high-res skybox.
+      this.engine.destroySkybox(this.skybox);
+      this.skybox = this.engine.createSkyFromKtx(sky_large_url);
+      this.scene.setSkybox(this.skybox);
+      this.scene.addEntity(this.suzanne);
+    });
     this.swapChain = this.engine.createSwapChain();
     this.renderer = this.engine.createRenderer();
     this.camera = this.engine.createCamera();

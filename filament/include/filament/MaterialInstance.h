@@ -24,6 +24,8 @@
 
 #include <utils/compiler.h>
 
+#include <math/mathfwd.h>
+
 namespace filament {
 
 class Material;
@@ -36,10 +38,37 @@ class UTILS_PUBLIC MaterialInstance : public FilamentAPI {
 public:
     using CullingMode = filament::backend::CullingMode;
 
+    template<typename T>
+    using is_supported_parameter_t = typename std::enable_if<
+            std::is_same<bool, T>::value ||
+            std::is_same<float, T>::value ||
+            std::is_same<int32_t, T>::value ||
+            std::is_same<uint32_t, T>::value ||
+            std::is_same<math::bool2, T>::value ||
+            std::is_same<math::bool3, T>::value ||
+            std::is_same<math::bool4, T>::value ||
+            std::is_same<math::int2, T>::value ||
+            std::is_same<math::int3, T>::value ||
+            std::is_same<math::int4, T>::value ||
+            std::is_same<math::uint2, T>::value ||
+            std::is_same<math::uint3, T>::value ||
+            std::is_same<math::uint4, T>::value ||
+            std::is_same<math::float2, T>::value ||
+            std::is_same<math::float3, T>::value ||
+            std::is_same<math::float4, T>::value ||
+            std::is_same<math::mat3f, T>::value ||
+            std::is_same<math::mat4f, T>::value
+    >::type;
+
     /**
      * @return the Material associated with this instance
      */
     Material const* getMaterial() const noexcept;
+
+    /**
+     * @return the name associated with this instance
+     */
+    const char* getName() const noexcept;
 
     /**
      * Set a uniform by name
@@ -48,7 +77,7 @@ public:
      * @param value     Value of the parameter to set.
      * @throws utils::PreConditionPanic if name doesn't exist or no-op if exceptions are disabled.
      */
-    template<typename T>
+    template<typename T, typename = is_supported_parameter_t<T>>
     void setParameter(const char* name, T value) noexcept;
 
     /**
@@ -59,7 +88,7 @@ public:
      * @param count     Size of the array to set.
      * @throws utils::PreConditionPanic if name doesn't exist or no-op if exceptions are disabled.
      */
-    template<typename T>
+    template<typename T, typename = is_supported_parameter_t<T>>
     void setParameter(const char* name, const T* values, size_t count) noexcept;
 
     /**
@@ -97,7 +126,7 @@ public:
 
     /**
      * Set up a custom scissor rectangle; by default this encompasses the View.
-     * 
+     *
      * @param left      left coordinate of the scissor box
      * @param bottom    bottom coordinate of the scissor box
      * @param width     width of the scissor box
@@ -160,6 +189,21 @@ public:
      * Overrides the default triangle culling state that was set on the material.
      */
     void setCullingMode(CullingMode culling) noexcept;
+
+    /**
+     * Overrides the default color-buffer write state that was set on the material.
+     */
+    void setColorWrite(bool enable) noexcept;
+
+    /**
+     * Overrides the default depth-buffer write state that was set on the material.
+     */
+    void setDepthWrite(bool enable) noexcept;
+
+    /**
+     * Overrides the default depth testing state that was set on the material.
+     */
+    void setDepthCulling(bool enable) noexcept;
 };
 
 } // namespace filament

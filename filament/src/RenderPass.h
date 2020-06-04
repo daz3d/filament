@@ -30,6 +30,8 @@
 #include <utils/compiler.h>
 #include <utils/Slice.h>
 
+#include <limits>
+
 namespace utils {
 class JobSystem;
 }
@@ -48,14 +50,14 @@ public:
     static constexpr uint64_t BLEND_TWO_PASS_MASK           = 0x1llu;
     static constexpr unsigned BLEND_TWO_PASS_SHIFT          = 0;
 
-    static constexpr uint64_t MATERIAL_INSTANCE_ID_MASK     = 0x0000FFFFllu;
+    static constexpr uint64_t MATERIAL_INSTANCE_ID_MASK     = 0x00000FFFllu;
     static constexpr unsigned MATERIAL_INSTANCE_ID_SHIFT    = 0;
 
-    static constexpr uint64_t MATERIAL_VARIANT_KEY_MASK     = 0x001F0000llu;
-    static constexpr unsigned MATERIAL_VARIANT_KEY_SHIFT    = 16;
+    static constexpr uint64_t MATERIAL_VARIANT_KEY_MASK     = 0x000FF000llu;
+    static constexpr unsigned MATERIAL_VARIANT_KEY_SHIFT    = 12;
 
-    static constexpr uint64_t MATERIAL_ID_MASK              = 0xFFE00000llu;
-    static constexpr unsigned MATERIAL_ID_SHIFT             = 21;
+    static constexpr uint64_t MATERIAL_ID_MASK              = 0xFFF00000llu;
+    static constexpr unsigned MATERIAL_ID_SHIFT             = 20;
 
     static constexpr uint64_t BLEND_DISTANCE_MASK           = 0xFFFFFFFF0000llu;
     static constexpr unsigned BLEND_DISTANCE_SHIFT          = 16;
@@ -88,7 +90,8 @@ public:
     enum class Pass : uint64_t {    // 6-bits max
         DEPTH    = uint64_t(0x00) << PASS_SHIFT,
         COLOR    = uint64_t(0x01) << PASS_SHIFT,
-        BLENDED  = uint64_t(0x02) << PASS_SHIFT,
+        REFRACT  = uint64_t(0x02) << PASS_SHIFT,
+        BLENDED  = uint64_t(0x03) << PASS_SHIFT,
         SENTINEL = 0xffffffffffffffffllu
     };
 
@@ -99,9 +102,8 @@ public:
     };
 
     enum CommandTypeFlags : uint8_t {
-        COLOR = 0x1,    // generate the color pass only (e.g. no depth-prepass)
+        COLOR = 0x1,    // generate the color pass only
         DEPTH = 0x2,    // generate the depth pass only ( e.g. shadowmap)
-        COLOR_AND_DEPTH = COLOR | DEPTH,
 
         // shadow-casters are rendered in the depth buffer, regardless of blending (or alpha masking)
         DEPTH_CONTAINS_SHADOW_CASTERS = 0x4,
@@ -110,13 +112,10 @@ public:
         // alpha-tested objects are not rendered in the depth buffer
         DEPTH_FILTER_ALPHA_MASKED_OBJECTS = 0x10,
 
-        // generate commands for color with depth pre-pass -- in this case, we want to put
-        // objects that use alpha-testing or blending in the depth prepass.
-        COLOR_WITH_DEPTH_PREPASS = DEPTH | COLOR | DEPTH_FILTER_TRANSLUCENT_OBJECTS | DEPTH_FILTER_ALPHA_MASKED_OBJECTS,
         // generate commands for shadow map
         SHADOW = DEPTH | DEPTH_CONTAINS_SHADOW_CASTERS,
         // generate commands for SSAO
-        SSAO = DEPTH | DEPTH_FILTER_TRANSLUCENT_OBJECTS | DEPTH_FILTER_ALPHA_MASKED_OBJECTS,
+        SSAO = DEPTH | DEPTH_FILTER_TRANSLUCENT_OBJECTS,
     };
 
 
@@ -137,18 +136,11 @@ public:
     // | correctness      |     optimizations (truncation allowed)             |
     //
     //
-    // COLOR command (with depth prepass)
-    // |   6  | 2| 2|1| 3 | 2|       16       |               32               |
-    // +------+--+--+-+---+--+----------------+--------------------------------+
-    // |000001|01|00|a|ppp|00|0000000000000000|          material-id           |
-    // +------+--+--+-+---+--+----------------+--------------------------------+
-    // | correctness      |        optimizations (truncation allowed)          |
-    //
-    //
-    // COLOR command (without depth prepass)
+    // COLOR command
     // |   6  | 2| 2|1| 3 | 2|  6   |   10     |               32               |
     // +------+--+--+-+---+--+------+----------+--------------------------------+
     // |000001|01|00|a|ppp|00|000000| Z-bucket |          material-id           |
+    // |000010|01|00|a|ppp|00|000000| Z-bucket |          material-id           | refraction
     // +------+--+--+-+---+--+------+----------+--------------------------------+
     // | correctness      |      optimizations (truncation allowed)             |
     //
@@ -156,7 +148,7 @@ public:
     // BLENDED command
     // |   6  | 2| 2|1| 3 | 2|              32                |         15    |1|
     // +------+--+--+-+---+--+--------------------------------+---------------+-+
-    // |000010|01|00|0|ppp|00|         ~distanceBits          |   blendOrder  |t|
+    // |000011|01|00|0|ppp|00|         ~distanceBits          |   blendOrder  |t|
     // +------+--+--+-+---+--+--------------------------------+---------------+-+
     // | correctness                                                            |
     //
@@ -188,10 +180,10 @@ public:
 
     // The sorting material key is 32 bits and encoded as:
     //
-    // |    11     |  5  |       16       |
-    // +-----------+-----+----------------+
-    // | material  | var |   instance     |
-    // +-----------+-----+----------------+
+    // |     12     |   8    |     12     |
+    // +------------+--------+------------+
+    // |  material  |variant |  instance  |
+    // +------------+--------+------------+
     //
     // The variant is inserted while building the commands, because we don't know it before that
     //
@@ -246,15 +238,31 @@ public:
     static constexpr RenderFlags HAS_DIRECTIONAL_LIGHT   = 0x02;
     static constexpr RenderFlags HAS_DYNAMIC_LIGHTING    = 0x04;
     static constexpr RenderFlags HAS_INVERSE_FRONT_FACES = 0x08;
+    static constexpr RenderFlags HAS_FOG                 = 0x10;
 
 
-    RenderPass(FEngine& engine, utils::GrowingSlice<Command>& commands) noexcept;
+    RenderPass(FEngine& engine, utils::GrowingSlice<Command> commands) noexcept;
     void overridePolygonOffset(backend::PolygonOffset* polygonOffset) noexcept;
-    void overrideMaterial(FMaterial const* material, FMaterialInstance const* mi) noexcept;
     void setGeometry(FScene::RenderableSoa const& soa, utils::Range<uint32_t> vr,
             backend::Handle<backend::HwUniformBuffer> uboHandle) noexcept;
     void setCamera(const CameraInfo& camera) noexcept;
     void setRenderFlags(RenderFlags flags) noexcept;
+
+    // Sets the visibility mask, which is AND-ed against each Renderable's VISIBLE_MASK to determine
+    // if the renderable is visible for this pass.
+    // Defaults to all 1's, which means all renderables in this render pass will be rendered.
+    void setVisibilityMask(FScene::VisibleMaskType mask) noexcept { mVisibilityMask = mask; }
+
+    // Resets the visibility mask to the default value of all 1's.
+    void clearVisibilityMask() noexcept {
+        mVisibilityMask = std::numeric_limits<FScene::VisibleMaskType>::max();
+    }
+
+    Command* begin() noexcept { return mCommands.begin(); }
+    Command* end() noexcept { return mCommands.end(); }
+
+    Command const* begin() const noexcept { return mCommands.begin(); }
+    Command const* end() const noexcept { return mCommands.end(); }
 
     Command* newCommandBuffer() noexcept;
 
@@ -294,12 +302,12 @@ private:
 
     static inline void generateCommands(uint32_t commandTypeFlags, Command* commands,
             FScene::RenderableSoa const& soa, utils::Range<uint32_t> range, RenderFlags renderFlags,
-            math::float3 cameraPosition, math::float3 cameraForward) noexcept;
+            FScene::VisibleMaskType visibilityMask, math::float3 cameraPosition, math::float3 cameraForward) noexcept;
 
     template<uint32_t commandTypeFlags>
     static inline void generateCommandsImpl(uint32_t, Command* commands,
             FScene::RenderableSoa const& soa, utils::Range<uint32_t> range,
-            RenderFlags renderFlags,
+            RenderFlags renderFlags, FScene::VisibleMaskType visibilityMask,
             math::float3 cameraPosition, math::float3 cameraForward) noexcept;
 
     static void setupColorCommand(Command& cmdDraw, bool hasDepthPass,
@@ -331,11 +339,11 @@ private:
     CameraInfo mCamera;
     // info about the scene features (e.g.: has shadows, lighting, etc...)
     RenderFlags mFlags{};
+    FScene::VisibleMaskType mVisibilityMask = std::numeric_limits<FScene::VisibleMaskType>::max();
     // whether to override the polygon offset setting
     bool mPolygonOffsetOverride = false;
     // value of the override
     backend::PolygonOffset mPolygonOffset{};
-    FMaterialInstance const* mMaterialInstanceOverride = nullptr;
 
     // a vector for our custom commands
     mutable CustomCommandVector mCustomCommands;

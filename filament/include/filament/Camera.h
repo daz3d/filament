@@ -23,7 +23,7 @@
 
 #include <utils/compiler.h>
 
-#include <math/mat4.h>
+#include <math/mathfwd.h>
 
 namespace utils {
 class Entity;
@@ -178,7 +178,7 @@ public:
 
     /** Sets the projection matrix from the field-of-view.
      *
-     * @param fovInDegrees field-of-view in degrees from the camera center axis. 0 < \p fov < 180.
+     * @param fovInDegrees full field-of-view in degrees. 0 < \p fov < 180.
      * @param aspect       aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
      * @param near         distance in world units from the camera to the near plane. \p near > 0.
      * @param far          distance in world units from the camera to the far plane. \p far > \p near.
@@ -189,13 +189,14 @@ public:
     void setProjection(double fovInDegrees, double aspect, double near, double far,
                        Fov direction = Fov::VERTICAL) noexcept;
 
-    /** Sets the projection matrix from the focal length
+    /** Sets the projection matrix from the focal length.
      *
-     * @param focalLength   lense's focal length in millimeters. \p focalLength > 0.
-     * @param near      distance in world units from the camera to the near plane. \p near > 0.
-     * @param far       distance in world units from the camera to the far plane. \p far > \p near.
+     * @param focalLength lens's focal length in millimeters. \p focalLength > 0.
+     * @param aspect      aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
+     * @param near        distance in world units from the camera to the near plane. \p near > 0.
+     * @param far         distance in world units from the camera to the far plane. \p far > \p near.
      */
-    void setLensProjection(double focalLength, double near, double far) noexcept;
+    void setLensProjection(double focalLength, double aspect, double near, double far) noexcept;
 
     /** Sets the projection matrix.
      *
@@ -258,7 +259,15 @@ public:
      */
     void lookAt(const math::float3& eye,
                 const math::float3& center,
-                const math::float3& up = { 0, 1, 0 }) noexcept;
+                const math::float3& up) noexcept;
+
+    /** Sets the camera's view matrix, assuming up is along the y axis
+     *
+     * @param eye       The position of the camera in world space.
+     * @param center    The point in world space the camera is looking at.
+     */
+    void lookAt(const math::float3& eye,
+                const math::float3& center) noexcept;
 
     /** Returns the camera's model matrix
      *
@@ -289,6 +298,9 @@ public:
 
     //! Returns the camera's forward vector
     math::float3 getForwardVector() const noexcept;
+
+    //! Returns the camera's field of view in degrees
+    float getFieldOfViewInDegrees(Fov direction) const noexcept;
 
     //! Returns a Frustum object in world space
     class Frustum getFrustum() const noexcept;

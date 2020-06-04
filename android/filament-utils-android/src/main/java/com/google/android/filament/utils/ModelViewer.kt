@@ -21,9 +21,17 @@ import android.view.Surface
 import android.view.SurfaceView
 import android.view.TextureView
 import com.google.android.filament.*
+import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.*
 import java.nio.Buffer
+
+private const val kNearPlane = 0.5
+private const val kFarPlane = 10000.0
+private const val kFovDegrees = 45.0
+private const val kAperture = 16f
+private const val kShutterSpeed = 1f / 125f
+private const val kSensitivity = 100f
 
 /**
  * Helps render glTF models into a [SurfaceView] or [TextureView] with an orbit controller.
@@ -41,7 +49,8 @@ import java.nio.Buffer
  * clients still have the responsibility of adding an [IndirectLight] and [Skybox] to the scene.
  * Additionally, clients should:
  *
- * 1. Call [onTouchEvent] from a touch handler.
+ * 1. Pass the model viewer into [SurfaceView.setOnTouchListener] or call its [onTouchEvent]
+ *    method from your touch handler.
  * 2. Call [render] and [Animator.applyAnimation] from a `Choreographer` frame callback.
  *
  * NOTE: if its associated SurfaceView or TextureView has become detached from its window, the
@@ -49,40 +58,40 @@ import java.nio.Buffer
  *
  * See `sample-gltf-viewer` for a usage example.
  */
-class ModelViewer {
-
+class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
     var asset: FilamentAsset? = null
         private set
 
     var animator: Animator? = null
         private set
 
-    val engine: Engine
+    @Suppress("unused")
+    val progress
+        get() = resourceLoader.asyncGetLoadProgress()
+
     val scene: Scene
     val view: View
     val camera: Camera
     @Entity val light: Int
 
     private val uiHelper: UiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
-    private val cameraManipulator: Manipulator
-    private val gestureDetector: GestureDetector
+    private lateinit var displayHelper: DisplayHelper
+    private lateinit var cameraManipulator: Manipulator
+    private lateinit var gestureDetector: GestureDetector
+    private var surfaceView: SurfaceView? = null
+    private var textureView: TextureView? = null
+
     private val renderer: Renderer
     private var swapChain: SwapChain? = null
     private var assetLoader: AssetLoader
+    private var resourceLoader: ResourceLoader
+    private val readyRenderables = IntArray(128) // add up to 128 entities at a time
 
     private val eyePos = DoubleArray(3)
     private val target = DoubleArray(3)
     private val upward = DoubleArray(3)
 
-    private val kNearPlane = 0.5
-    private val kFarPlane = 10000.0
-    private val kFovDegrees = 45.0
-    private val kAperture = 16f
-    private val kShutterSpeed = 1f / 125f
-    private val kSensitivity = 100f
-
     init {
-        engine = Engine.create()
         renderer = engine.createRenderer()
         scene = engine.createScene()
         camera = engine.createCamera().apply { setExposure(kAperture, kShutterSpeed, kSensitivity) }
@@ -91,6 +100,7 @@ class ModelViewer {
         view.camera = camera
 
         assetLoader = AssetLoader(engine, MaterialProvider(engine), EntityManager.get())
+        resourceLoader = ResourceLoader(engine)
 
         // Always add a direct light source since it is required for shadowing.
         // We highly recommend adding an indirect light as well.
@@ -100,7 +110,7 @@ class ModelViewer {
         val (r, g, b) = Colors.cct(6_500.0f)
         LightManager.Builder(LightManager.Type.DIRECTIONAL)
                 .color(r, g, b)
-                .intensity(300_000.0f)
+                .intensity(100_000.0f)
                 .direction(0.0f, -1.0f, 0.0f)
                 .castShadows(true)
                 .build(engine, light)
@@ -108,25 +118,28 @@ class ModelViewer {
         scene.addEntity(light)
     }
 
-    constructor(surfaceView: SurfaceView) {
-        cameraManipulator = Manipulator.Builder()
-                .targetPosition(0.0f, 0.0f, -4.0f)
+    constructor(surfaceView: SurfaceView, engine: Engine = Engine.create(), manipulator: Manipulator? = null) : this(engine) {
+        cameraManipulator = manipulator ?: Manipulator.Builder()
+                .targetPosition(kDefaultObjectPosition.x, kDefaultObjectPosition.y, kDefaultObjectPosition.z)
                 .viewport(surfaceView.width, surfaceView.height)
                 .build(Manipulator.Mode.ORBIT)
 
+        this.surfaceView = surfaceView
         gestureDetector = GestureDetector(surfaceView, cameraManipulator)
+        displayHelper = DisplayHelper(surfaceView.context)
         uiHelper.renderCallback = SurfaceCallback()
         uiHelper.attachTo(surfaceView)
         addDetachListener(surfaceView)
     }
 
     @Suppress("unused")
-    constructor(textureView: TextureView) {
-        cameraManipulator = Manipulator.Builder()
-                .targetPosition(0.0f, 0.0f, -4.0f)
+    constructor(textureView: TextureView, engine: Engine = Engine.create(), manipulator: Manipulator? = null) : this(engine) {
+        cameraManipulator = manipulator ?: Manipulator.Builder()
+                .targetPosition(kDefaultObjectPosition.x, kDefaultObjectPosition.y, kDefaultObjectPosition.z)
                 .viewport(textureView.width, textureView.height)
                 .build(Manipulator.Mode.ORBIT)
 
+        this.textureView = textureView
         gestureDetector = GestureDetector(textureView, cameraManipulator)
         uiHelper.renderCallback = SurfaceCallback()
         uiHelper.attachTo(textureView)
@@ -138,14 +151,11 @@ class ModelViewer {
      */
     fun loadModelGlb(buffer: Buffer) {
         destroyModel()
-        asset = assetLoader.createAssetFromJson(buffer)
+        asset = assetLoader.createAssetFromBinary(buffer)
         asset?.let { asset ->
-            val resourceLoader = ResourceLoader(engine)
-            resourceLoader.loadResources(asset)
-            resourceLoader.destroy()
+            resourceLoader.asyncBeginLoad(asset)
             animator = asset.animator
             asset.releaseSourceData()
-            scene.addEntities(asset.entities)
         }
     }
 
@@ -156,30 +166,29 @@ class ModelViewer {
         destroyModel()
         asset = assetLoader.createAssetFromJson(buffer)
         asset?.let { asset ->
-            val resourceLoader = ResourceLoader(engine)
             for (uri in asset.resourceUris) {
                 resourceLoader.addResourceData(uri, callback(uri))
             }
-            resourceLoader.loadResources(asset)
-            resourceLoader.destroy()
+            resourceLoader.asyncBeginLoad(asset)
             animator = asset.animator
             asset.releaseSourceData()
-            scene.addEntities(asset.entities)
         }
     }
 
     /**
-     * Sets up a root transform on the current model to make it fit into the viewing frustum.
+     * Sets up a root transform on the current model to make it fit into a unit cube.
+     *
+     * @param centerPoint Coordinate of center point of unit cube, defaults to < 0, 0, -4 >
      */
-    fun transformToUnitCube() {
+    fun transformToUnitCube(centerPoint: Float3 = kDefaultObjectPosition) {
         asset?.let { asset ->
             val tm = engine.transformManager
-            val center = asset.boundingBox.center.let { v-> Float3(v[0], v[1], v[2]) }
+            var center = asset.boundingBox.center.let { v-> Float3(v[0], v[1], v[2]) }
             val halfExtent = asset.boundingBox.halfExtent.let { v-> Float3(v[0], v[1], v[2]) }
             val maxExtent = 2.0f * max(halfExtent)
             val scaleFactor = 2.0f / maxExtent
-            center.z = center.z + 4.0f / scaleFactor
-            val transform = scale(Float3(scaleFactor)) * translation(Float3(-center))
+            center -= centerPoint / scaleFactor
+            val transform = scale(Float3(scaleFactor)) * translation(-center)
             tm.setTransform(tm.getInstance(asset.root), transpose(transform).toFloatArray())
         }
     }
@@ -197,21 +206,40 @@ class ModelViewer {
 
     /**
      * Renders the model and updates the Filament camera.
+     *
+     * @param frameTimeNanos time in nanoseconds when the frame started being rendered,
+     *                       typically comes from {@link android.view.Choreographer.FrameCallback}
      */
-    fun render() {
+    fun render(frameTimeNanos: Long) {
         if (!uiHelper.isReadyToRender) {
             return
         }
 
+        // Allow the resource loader to finalize textures that have become ready.
+        resourceLoader.asyncUpdateLoad()
+
+        // Add renderable entities to the scene as they become ready.
+        asset?.let { populateScene(it) }
+
+        // Extract the camera basis from the helper and push it to the Filament camera.
         cameraManipulator.getLookAt(eyePos, target, upward)
         camera.lookAt(
                 eyePos[0], eyePos[1], eyePos[2],
                 target[0], target[1], target[2],
                 upward[0], upward[1], upward[2])
 
-        if (renderer.beginFrame(swapChain!!)) {
+        // Render the scene, unless the renderer wants to skip the frame.
+        if (renderer.beginFrame(swapChain!!, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
+        }
+    }
+
+    private fun populateScene(asset: FilamentAsset) {
+        var count = 0
+        val popRenderables = {count = asset.popRenderables(readyRenderables); count != 0}
+        while (popRenderables()) {
+            scene.addEntities(readyRenderables.take(count).toIntArray())
         }
     }
 
@@ -223,6 +251,7 @@ class ModelViewer {
 
                 destroyModel()
                 assetLoader.destroy()
+                resourceLoader.destroy()
 
                 engine.destroyEntity(light)
                 engine.destroyRenderer(renderer)
@@ -244,13 +273,22 @@ class ModelViewer {
         gestureDetector.onTouchEvent(event)
     }
 
+    @SuppressWarnings("ClickableViewAccessibility")
+    override fun onTouch(view: android.view.View, event: MotionEvent): Boolean {
+        onTouchEvent(event)
+        return true
+    }
+
     inner class SurfaceCallback : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
             swapChain?.let { engine.destroySwapChain(it) }
             swapChain = engine.createSwapChain(surface)
+            surfaceView?.let { displayHelper.attach(renderer, it.display) }
+            textureView?.let { displayHelper.attach(renderer, it.display) }
         }
 
         override fun onDetachedFromSurface() {
+            displayHelper.detach()
             swapChain?.let {
                 engine.destroySwapChain(it)
                 engine.flushAndWait()
@@ -264,5 +302,9 @@ class ModelViewer {
             camera.setProjection(kFovDegrees, aspect, kNearPlane, kFarPlane, Camera.Fov.VERTICAL)
             cameraManipulator.setViewport(width, height)
         }
+    }
+
+    companion object {
+        private val kDefaultObjectPosition = Float3(0.0f, 0.0f, -4.0f)
     }
 }

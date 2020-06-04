@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-# -*- coding: future_fstrings -*-
 
-# To run this script, you may need to do the following on Ubuntu:
-#     sudo apt-get install python3-pip
-#     pip3 install -r requirements.txt
+# To run this script, I recommend using pipenv to create an isolated Python environment with the
+# correct packages so that you do not interfere with other Python projects in your system.
+# After installing pipenv, run the following commands from the current folder:
 #
-# If CMake is choosing /usr/bin/python3, then do this instead:
-#     /usr/bin/python3 -m pip requirements.txt
+#  pipenv --python 3.7
+#  pipenv shell
+#  pipenv install
+#  ./build.py
 
 """Converts markdown into HTML and extracts JavaScript code blocks.
 
@@ -456,7 +457,7 @@ def build_reference_markdown(doctree):
             result += "\n</div>\n"
     return result
 
-def build_reference():
+def build_api_reference():
     doctree = gather_docstrings([
         ROOT_DIR + 'web/filament-js/jsbindings.cpp',
         ROOT_DIR + 'web/filament-js/jsenums.cpp',
@@ -505,20 +506,26 @@ if __name__ == "__main__":
 
     copy_src_file(ROOT_DIR + 'web/docs/main.css')
     copy_src_file(ROOT_DIR + 'third_party/gl-matrix/gl-matrix-min.js')
+
     copy_built_file('web/filament-js/filament.js')
     copy_built_file('web/filament-js/filament.wasm')
+
+    build_filamat('triangle')
+    build_filamat('plastic')
+    build_filamat('textured')
+
+    build_api_reference()
+
+    # Copy resources from "samples" to "docs"
     copy_built_file('web/samples/suzanne.filamesh')
+    copy_built_file('web/samples/parquet.filamat')
     copy_built_file('web/samples/metallic*.ktx')
     copy_built_file('web/samples/normal*.ktx')
     copy_built_file('web/samples/roughness*.ktx')
     copy_built_file('web/samples/ao*.ktx')
     copy_built_file('web/samples/albedo*.ktx')
     copy_built_file('web/samples/pillars_2k/pillars_2k_*.ktx', 'pillars_2k')
-    copy_built_file('web/samples/venetian_crossroads/venetian_crossroads*.ktx', 'venetian_crossroads')
-    build_filamat('triangle')
-    build_filamat('plastic')
-    build_filamat('textured')
-    build_reference()
+    copy_built_file('web/samples/venetian_crossroads_2k/venetian_crossroads*.ktx', 'venetian_crossroads_2k')
 
     if args.server:
         spawn_local_server()

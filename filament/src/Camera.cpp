@@ -25,6 +25,7 @@
 #include <utils/Panic.h>
 
 #include <math/scalar.h>
+#include <filament/Exposure.h>
 
 using namespace filament::math;
 using namespace utils;
@@ -58,11 +59,11 @@ void UTILS_NOINLINE FCamera::setProjection(double fov, double aspect, double nea
     FCamera::setProjection(Projection::PERSPECTIVE, -w, w, -h, h, near, far);
 }
 
-void FCamera::setLensProjection(double focalLength, double near, double far) noexcept {
-    // a 35mm camera has a 36mm wide frame size
-    double theta = 2.0 * std::atan(36.0 / (2.0 * focalLength));
-    // a 35mm camera has a 24mm tall frame size
-    FCamera::setProjection(theta, 36.0 / 24.0, near, far, Fov::HORIZONTAL);
+void FCamera::setLensProjection(double focalLength, double aspect, double near, double far) noexcept {
+    // a 35mm camera has a 36x24mm wide frame size
+    double theta = 2.0 * std::atan(SENSOR_SIZE * 1000.0f / (2.0 * focalLength));
+    theta *= 180.0 / math::F_PI;
+    FCamera::setProjection(theta, aspect, near, far, Fov::VERTICAL);
 }
 
 /*
@@ -234,6 +235,34 @@ Frustum FCamera::getFrustum(mat4 const& projection, mat4f const& viewMatrix) noe
     return Frustum(mat4f{ projection * viewMatrix });
 }
 
+// ------------------------------------------------------------------------------------------------
+
+CameraInfo::CameraInfo(FCamera const& camera) noexcept {
+    projection         = mat4f{ camera.getProjectionMatrix() };
+    cullingProjection  = mat4f{ camera.getCullingProjectionMatrix() };
+    model              = camera.getModelMatrix();
+    view               = camera.getViewMatrix();
+    zn                 = camera.getNear();
+    zf                 = camera.getCullingFar();
+    ev100              = Exposure::ev100(camera);
+    f                  = (FCamera::SENSOR_SIZE * (float)projection[1][1]) * 0.5f;
+    A                  = f / camera.getAperture();
+}
+
+CameraInfo::CameraInfo(FCamera const& camera, const math::mat4f& worldOriginCamera) noexcept {
+    const mat4f modelMatrix{ worldOriginCamera * camera.getModelMatrix() };
+    projection         = mat4f{ camera.getProjectionMatrix() };
+    cullingProjection  = mat4f{ camera.getCullingProjectionMatrix() };
+    model              = modelMatrix;
+    view               = FCamera::getViewMatrix(model);
+    zn                 = camera.getNear();
+    zf                 = camera.getCullingFar();
+    ev100              = Exposure::ev100(camera);
+    f                  = (FCamera::SENSOR_SIZE * (float)projection[1][1]) * 0.5f;
+    A                  = f / camera.getAperture();
+    worldOffset        = camera.getPosition();
+    worldOrigin        = worldOriginCamera;
+}
 
 } // namespace details
 
@@ -246,7 +275,7 @@ using namespace details;
 mat4f Camera::inverseProjection(const mat4f& p) noexcept {
     return details::inverseProjection(p);
 }
-mat4  Camera::inverseProjection(const mat4 & p) noexcept {
+mat4 Camera::inverseProjection(const mat4 & p) noexcept {
     return details::inverseProjection(p);
 }
 
@@ -260,8 +289,8 @@ void Camera::setProjection(double fov, double aspect, double near, double far,
     upcast(this)->setProjection(fov, aspect, near, far, direction);
 }
 
-void Camera::setLensProjection(double focalLength, double near, double far) noexcept {
-    upcast(this)->setLensProjection(focalLength, near, far);
+void Camera::setLensProjection(double focalLength, double aspect, double near, double far) noexcept {
+    upcast(this)->setLensProjection(focalLength, aspect, near, far);
 }
 
 void Camera::setCustomProjection(mat4 const& projection, double near, double far) noexcept {
@@ -292,6 +321,10 @@ void Camera::lookAt(const float3& eye, const float3& center, float3 const& up) n
     upcast(this)->lookAt(eye, center, up);
 }
 
+void Camera::lookAt(const float3& eye, const float3& center) noexcept {
+    upcast(this)->lookAt(eye, center, {0, 1, 0});
+}
+
 mat4f Camera::getModelMatrix() const noexcept {
     return upcast(this)->getModelMatrix();
 }
@@ -314,6 +347,10 @@ float3 Camera::getUpVector() const noexcept {
 
 float3 Camera::getForwardVector() const noexcept {
     return upcast(this)->getForwardVector();
+}
+
+float Camera::getFieldOfViewInDegrees(Camera::Fov direction) const noexcept {
+    return upcast(this)->getFieldOfViewInDegrees(direction);
 }
 
 Frustum Camera::getFrustum() const noexcept {

@@ -21,6 +21,7 @@
 
 #include "upcast.h"
 
+#include "FrameInfo.h"
 #include "UniformBuffer.h"
 
 #include "details/Allocators.h"
@@ -28,7 +29,10 @@
 #include "details/Froxelizer.h"
 #include "details/RenderTarget.h"
 #include "details/ShadowMap.h"
+#include "details/ShadowMapManager.h"
 #include "details/Scene.h"
+
+#include <private/filament/EngineEnums.h>
 
 #include "private/backend/DriverApi.h"
 
@@ -42,8 +46,6 @@
 
 #include <math/scalar.h>
 
-#include <array>
-
 namespace utils {
 class JobSystem;
 } // namespace utils;
@@ -55,6 +57,38 @@ class FEngine;
 class FMaterialInstance;
 class FRenderer;
 class FScene;
+
+// The value of the 'VISIBLE_MASK' after culling. Each bit represents visibility in a frustum
+// (either camera or light).
+//
+// bits                          7 6 5 4 3 2 1 0
+// +-------------------------------------------+
+// VISIBLE_RENDERABLE                          X
+// VISIBLE_DIR_SHADOW_CASTER                 X
+// VISIBLE_SPOT_SHADOW_CASTER_0            X
+// VISIBLE_SPOT_SHADOW_CASTER_1          X
+// ...
+
+static constexpr size_t VISIBLE_RENDERABLE_BIT = 0u;
+static constexpr size_t VISIBLE_DIR_SHADOW_CASTER_BIT = 1u;
+static constexpr size_t VISIBLE_SPOT_SHADOW_CASTER_N_BIT(size_t n) { return n + 2; }
+
+static constexpr uint8_t VISIBLE_RENDERABLE = 1u << VISIBLE_RENDERABLE_BIT;
+static constexpr uint8_t VISIBLE_DIR_SHADOW_CASTER = 1u << VISIBLE_DIR_SHADOW_CASTER_BIT;
+static constexpr uint8_t VISIBLE_SPOT_SHADOW_CASTER_N(size_t n) {
+    return 1u << VISIBLE_SPOT_SHADOW_CASTER_N_BIT(n);
+}
+
+// ORing of all the VISIBLE_SPOT_SHADOW_CASTER bits
+static constexpr uint8_t VISIBLE_SPOT_SHADOW_CASTER =
+        (0xFF >> (sizeof(uint8_t) * 8u - CONFIG_MAX_SHADOW_CASTING_SPOTS)) << 2u;
+
+// Because we're using a uint8_t for the visibility mask, we're limited to 6 spot light shadows.
+// (2 of the bits are used for visible renderables + directional light shadow casters).
+static_assert(CONFIG_MAX_SHADOW_CASTING_SPOTS <= 6,
+        "CONFIG_MAX_SHADOW_CASTING_SPOTS cannot be higher than 6.");
+
+// ------------------------------------------------------------------------------------------------
 
 class FView : public View {
 public:
@@ -82,21 +116,9 @@ public:
         return mViewport;
     }
 
-    void setClearColor(LinearColorA const& clearColor) noexcept;
-    LinearColorA const& getClearColor() const noexcept {
-        return mClearColor;
-    }
-
-    void setClearTargets(bool color, bool depth, bool stencil) noexcept;
     bool getClearTargetColor() const noexcept {
         // don't clear the color buffer if we have a skybox
-        return mClearTargetColor && !isSkyboxVisible();
-    }
-    bool getClearTargetDepth() const noexcept {
-        return mClearTargetDepth;
-    }
-    bool getClearTargetStencil() const noexcept {
-        return mClearTargetStencil;
+        return !isSkyboxVisible();
     }
     bool isSkyboxVisible() const noexcept;
 
@@ -121,20 +143,26 @@ public:
         return mName.c_str();
     }
 
-    void prepareCamera(const CameraInfo& camera, const Viewport& viewport) const noexcept;
+    void prepareCamera(const CameraInfo& camera) const noexcept;
+    void prepareViewport(const Viewport& viewport) const noexcept;
     void prepareShadowing(FEngine& engine, backend::DriverApi& driver,
-            FScene::RenderableSoa& renderableData, FScene::LightSoa const& lightData) noexcept;
+            FScene::RenderableSoa& renderableData, FScene::LightSoa& lightData) noexcept;
     void prepareLighting(FEngine& engine, FEngine::DriverApi& driver,
             ArenaScope& arena, Viewport const& viewport) noexcept;
     void prepareSSAO(backend::Handle<backend::HwTexture> ssao) const noexcept;
-    void cleanupSSAO() const noexcept;
+    void prepareSSR(backend::Handle<backend::HwTexture> ssr, float refractionLodOffset) const noexcept;
+    void prepareStructure(backend::Handle<backend::HwTexture> structure) const noexcept;
+    void cleanupRenderPasses() const noexcept;
     void froxelize(FEngine& engine) const noexcept;
     void commitUniforms(backend::DriverApi& driver) const noexcept;
     void commitFroxels(backend::DriverApi& driverApi) const noexcept;
 
     bool hasDirectionalLight() const noexcept { return mHasDirectionalLight; }
     bool hasDynamicLighting() const noexcept { return mHasDynamicLighting; }
-    bool hasShadowing() const noexcept { return mHasShadowing & mDirectionalShadowMap.hasVisibleShadows(); }
+    bool hasShadowing() const noexcept { return mHasShadowing; }
+    bool hasFog() const noexcept { return mFogOptions.enabled && mFogOptions.density > 0.0f; }
+
+    void renderShadowMaps(FEngine& engine, FEngine::DriverApi& driver, RenderPass& pass) noexcept;
 
     void updatePrimitivesLod(
             FEngine& engine, const CameraInfo& camera,
@@ -142,20 +170,12 @@ public:
 
     void setShadowsEnabled(bool enabled) noexcept { mShadowingEnabled = enabled; }
 
-    ShadowMap const& getShadowMap() const { return mDirectionalShadowMap; }
-    ShadowMap& getShadowMap() { return mDirectionalShadowMap; }
-
     FCamera const* getDirectionalLightCamera() const noexcept {
-        return &mDirectionalShadowMap.getDebugCamera();
+        return &mShadowMapManager.getCascadeShadowMap(0)->getDebugCamera();
     }
 
-    void setRenderTarget(FRenderTarget* renderTarget, TargetBufferFlags discard) noexcept {
+    void setRenderTarget(FRenderTarget* renderTarget) noexcept {
         mRenderTarget = renderTarget;
-        mDiscardedTargetBuffers = discard;
-    }
-
-    void setRenderTarget(TargetBufferFlags discard) noexcept {
-        mDiscardedTargetBuffers = discard;
     }
 
     FRenderTarget* getRenderTarget() const noexcept {
@@ -194,13 +214,11 @@ public:
         return mDithering;
     }
 
-    TargetBufferFlags getDiscardedTargetBuffers() const noexcept { return mDiscardedTargetBuffers; }
-
     bool hasPostProcessPass() const noexcept {
         return mHasPostProcessPass;
     }
 
-    math::float2 updateScale(std::chrono::duration<float, std::milli> frameTime) noexcept;
+    math::float2 updateScale(FrameInfo const& info) noexcept;
 
     void setDynamicResolutionOptions(View::DynamicResolutionOptions const& options) noexcept;
 
@@ -222,22 +240,6 @@ public:
         mHasPostProcessPass = enabled;
     }
 
-    void setDepthPrepass(DepthPrepass prepass) noexcept {
-#ifdef __EMSCRIPTEN__
-        if (prepass == View::DepthPrepass::ENABLED) {
-            utils::slog.w << "WARNING: " <<
-                "Depth prepass cannot be enabled on web due to invariance requirements." <<
-                utils::io::endl;
-            return;
-        }
-#endif
-        mDepthPrepass = prepass;
-    }
-
-    DepthPrepass getDepthPrepass() const noexcept {
-        return mDepthPrepass;
-    }
-
     void setAmbientOcclusion(AmbientOcclusion ambientOcclusion) noexcept {
         mAmbientOcclusion = ambientOcclusion;
     }
@@ -246,65 +248,103 @@ public:
         return mAmbientOcclusion;
     }
 
-    void setAmbientOcclusionOptions(AmbientOcclusionOptions const& options) noexcept {
+    void setAmbientOcclusionOptions(AmbientOcclusionOptions options) noexcept {
+        options.radius = math::max(0.0f, options.radius);
+        options.bias = math::clamp(0.0f, 0.1f, options.bias);
+        options.power = std::max(0.0f, options.power);
+        options.resolution = math::clamp(0.0f, 1.0f, options.resolution);
+        options.intensity = std::max(0.0f, options.intensity);
         mAmbientOcclusionOptions = options;
-        mAmbientOcclusionOptions.radius = math::clamp(0.0f, 10.0f, mAmbientOcclusionOptions.radius);
-        mAmbientOcclusionOptions.bias = math::clamp(0.0f, 0.1f, mAmbientOcclusionOptions.bias);
-        mAmbientOcclusionOptions.power = math::clamp(0.0f, 1.0f, mAmbientOcclusionOptions.power);
     }
 
     AmbientOcclusionOptions const& getAmbientOcclusionOptions() const noexcept {
         return mAmbientOcclusionOptions;
     }
 
+    void setBloomOptions(BloomOptions options) noexcept {
+        options.dirtStrength = math::saturate(options.dirtStrength);
+        options.levels = math::clamp(options.levels, uint8_t(3), uint8_t(12));
+        mBloomOptions = options;
+    }
+
+    BloomOptions getBloomOptions() const noexcept {
+        return mBloomOptions;
+    }
+
+    void setFogOptions(FogOptions options) noexcept {
+        options.distance = std::max(0.0f, options.distance);
+        options.maximumOpacity = math::clamp(options.maximumOpacity, 0.0f, 1.0f);
+        options.density = std::max(0.0f, options.density);
+        options.heightFalloff = std::max(0.0f, options.heightFalloff);
+        options.inScatteringSize = options.inScatteringSize;
+        options.inScatteringStart = std::max(0.0f, options.inScatteringStart);
+        mFogOptions = options;
+    }
+
+    void setDepthOfFieldOptions(DepthOfFieldOptions options) noexcept {
+        options.focusDistance = std::max(0.0f, options.focusDistance);
+        options.blurScale = std::max(0.0f, options.blurScale);
+        options.maxApertureDiameter = std::max(0.0f, options.maxApertureDiameter);
+        mDepthOfFieldOptions = options;
+    }
+
+    DepthOfFieldOptions getDepthOfFieldOptions() const noexcept {
+        return mDepthOfFieldOptions;
+    }
+
+    void setBlendMode(BlendMode blendMode) noexcept {
+        mBlendMode = blendMode;
+    }
+
+    BlendMode getBlendMode() const noexcept {
+        return mBlendMode;
+    }
+
     Range const& getVisibleRenderables() const noexcept {
         return mVisibleRenderables;
     }
 
-    Range const& getVisibleShadowCasters() const noexcept {
-        return mVisibleShadowCasters;
+    Range const& getVisibleDirectionalShadowCasters() const noexcept {
+        return mVisibleDirectionalShadowCasters;
     }
 
-    uint8_t getClearFlags() const noexcept {
-        uint8_t clearFlags = 0;
-        if (getClearTargetColor())     clearFlags |= (uint8_t)TargetBufferFlags::COLOR;
-        if (getClearTargetDepth())     clearFlags |= (uint8_t)TargetBufferFlags::DEPTH;
-        if (getClearTargetStencil())   clearFlags |= (uint8_t)TargetBufferFlags::STENCIL;
-        return clearFlags;
+    Range const& getVisibleSpotShadowCasters() const noexcept {
+        return mSpotLightShadowCasters;
     }
 
+    FCamera const& getCameraUser() const noexcept { return *mCullingCamera; }
     FCamera& getCameraUser() noexcept { return *mCullingCamera; }
     void setCameraUser(FCamera* camera) noexcept { setCullingCamera(camera); }
 
     backend::Handle<backend::HwRenderTarget> getRenderTargetHandle() const noexcept {
-        constexpr backend::Handle<backend::HwRenderTarget> kEmptyHandle;
+        backend::Handle<backend::HwRenderTarget> kEmptyHandle;
         return mRenderTarget == nullptr ? kEmptyHandle : mRenderTarget->getHwHandle();
     }
 
-private:
-    static constexpr size_t MAX_FRAMETIME_HISTORY = 32u;
+    static void cullRenderables(utils::JobSystem& js, FScene::RenderableSoa& renderableData,
+            Frustum const& frustum, size_t bit) noexcept;
 
+    UniformBuffer& getViewUniforms() const { return mPerViewUb; }
+    backend::SamplerGroup& getViewSamplers() const { return mPerViewSb; }
+    UniformBuffer& getShadowUniforms() const { return mShadowUb; }
+
+private:
     void prepareVisibleRenderables(utils::JobSystem& js,
             Frustum const& frustum, FScene::RenderableSoa& renderableData) const noexcept;
-
-    static void prepareVisibleShadowCasters(utils::JobSystem& js,
-            Frustum const& lightFrustum, FScene::RenderableSoa& renderableData) noexcept;
 
     static void prepareVisibleLights(
             FLightManager const& lcm, utils::JobSystem& js, Frustum const& frustum,
             FScene::LightSoa& lightData) noexcept;
 
-    static void cullRenderables(utils::JobSystem& js,
-            FScene::RenderableSoa& renderableData, Frustum const& frustum, size_t bit) noexcept;
-
-    void computeVisibilityMasks(
+    static void computeVisibilityMasks(
             uint8_t visibleLayers, uint8_t const* layers,
             FRenderableManager::Visibility const* visibility, uint8_t* visibleMask,
-            size_t count) const;
+            size_t count) ;
 
     void bindPerViewUniformsAndSamplers(FEngine::DriverApi& driver) const noexcept {
         driver.bindUniformBuffer(BindingPoints::PER_VIEW, mPerViewUbh);
         driver.bindUniformBuffer(BindingPoints::LIGHTS, mLightUbh);
+        driver.bindUniformBuffer(BindingPoints::SHADOW, mShadowUbh);
         driver.bindSamplers(BindingPoints::PER_VIEW, mPerViewSbh);
     }
 
@@ -317,30 +357,22 @@ private:
     backend::Handle<backend::HwSamplerGroup> mPerViewSbh;
     backend::Handle<backend::HwUniformBuffer> mPerViewUbh;
     backend::Handle<backend::HwUniformBuffer> mLightUbh;
+    backend::Handle<backend::HwUniformBuffer> mShadowUbh;
     backend::Handle<backend::HwUniformBuffer> mRenderableUbh;
-
-    backend::Handle<backend::HwSamplerGroup> getUsh() const noexcept { return mPerViewSbh; }
-    backend::Handle<backend::HwUniformBuffer> getUbh() const noexcept { return mPerViewUbh; }
-    backend::Handle<backend::HwUniformBuffer> getLightUbh() const noexcept { return mLightUbh; }
 
     FScene* mScene = nullptr;
     FCamera* mCullingCamera = nullptr;
     FCamera* mViewingCamera = nullptr;
 
     CameraInfo mViewingCameraInfo;
-    Frustum mCullingFrustum;
+    Frustum mCullingFrustum{};
 
     mutable Froxelizer mFroxelizer;
 
     Viewport mViewport;
-    LinearColorA mClearColor;
     bool mCulling = true;
     bool mFrontFaceWindingInverted = false;
-    bool mClearTargetColor = true;
-    bool mClearTargetDepth = true;
-    bool mClearTargetStencil = false;
 
-    TargetBufferFlags mDiscardedTargetBuffers = TargetBufferFlags::ALL;
     FRenderTarget* mRenderTarget = nullptr;
 
     uint8_t mVisibleLayers = 0x1;
@@ -350,34 +382,35 @@ private:
     Dithering mDithering = Dithering::TEMPORAL;
     bool mShadowingEnabled = true;
     bool mHasPostProcessPass = true;
-    DepthPrepass mDepthPrepass = DepthPrepass::DEFAULT;
     AmbientOcclusion mAmbientOcclusion = AmbientOcclusion::NONE;
     AmbientOcclusionOptions mAmbientOcclusionOptions{};
+    BloomOptions mBloomOptions;
+    FogOptions mFogOptions;
+    DepthOfFieldOptions mDepthOfFieldOptions;
+    BlendMode mBlendMode = BlendMode::OPAQUE;
 
-    using duration = std::chrono::duration<float, std::milli>;
     DynamicResolutionOptions mDynamicResolution;
-    std::array<duration, MAX_FRAMETIME_HISTORY> mFrameTimeHistory;
-    size_t mFrameTimeHistorySize = 0;
-
     math::float2 mScale = 1.0f;
-    float mDynamicWorkloadScale = 1.0f;
     bool mIsDynamicResolutionSupported = false;
 
     RenderQuality mRenderQuality;
 
     mutable UniformBuffer mPerViewUb;
+    mutable UniformBuffer mShadowUb;
     mutable backend::SamplerGroup mPerViewSb;
 
     utils::CString mName;
 
     // the following values are set by prepare()
     Range mVisibleRenderables;
-    Range mVisibleShadowCasters;
+    Range mVisibleDirectionalShadowCasters;
+    Range mSpotLightShadowCasters;
     uint32_t mRenderableUBOSize = 0;
     mutable bool mHasDirectionalLight = false;
     mutable bool mHasDynamicLighting = false;
     mutable bool mHasShadowing = false;
-    mutable ShadowMap mDirectionalShadowMap;
+
+    ShadowMapManager mShadowMapManager;
 };
 
 FILAMENT_UPCAST(View)

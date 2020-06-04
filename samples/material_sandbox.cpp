@@ -26,13 +26,16 @@
 
 #include <utils/Path.h>
 
+#include <filament/Camera.h>
 #include <filament/Engine.h>
+#include <filament/Exposure.h>
 #include <filament/DebugRegistry.h>
 #include <filament/IndirectLight.h>
 #include <filament/IndexBuffer.h>
 #include <filament/LightManager.h>
 #include <filament/Material.h>
 #include <filament/MaterialInstance.h>
+#include <filament/Renderer.h>
 #include <filament/RenderableManager.h>
 #include <filament/Scene.h>
 #include <filament/TransformManager.h>
@@ -44,10 +47,10 @@
 #include <math/vec4.h>
 #include <math/norm.h>
 
-#include "app/Config.h"
-#include "app/IBL.h"
-#include "app/FilamentApp.h"
-#include "app/MeshAssimp.h"
+#include <filamentapp/Config.h>
+#include <filamentapp/IBL.h>
+#include <filamentapp/FilamentApp.h>
+#include <filamentapp/MeshAssimp.h>
 
 #include "material_sandbox.h"
 
@@ -65,6 +68,7 @@ static std::map<std::string, MaterialInstance*> g_meshMaterialInstances;
 static SandboxParameters g_params;
 static Config g_config;
 static bool g_shadowPlane = false;
+static bool g_singleMode = false;
 
 static void printUsage(char* name) {
     std::string exec_name(Path(name).getName());
@@ -85,6 +89,18 @@ static void printUsage(char* name) {
             "       Applies uniform scale\n\n"
             "   --shadow-plane, -p\n"
             "       Enable shadow plane\n\n"
+            "   --single\n"
+            "       Only apply the edited material to the first renderable in the scene\n\n"
+            "   --dirt\n"
+            "       Specify a dirt texture\n\n"
+            "   --camera=<camera mode>, -c <camera mode>\n"
+            "       Set the camera mode: orbit (default) or flight\n"
+            "       Flight mode uses the following controls:\n"
+            "           Click and drag the mouse to pan the camera\n"
+            "           Use the scroll weel to adjust movement speed\n"
+            "           W / S: forward / backward\n"
+            "           A / D: left / right\n"
+            "           E / Q: up / down\n"
     );
     const std::string from("SAMPLE_MATERIAL");
     for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
@@ -94,14 +110,17 @@ static void printUsage(char* name) {
 }
 
 static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
-    static constexpr const char* OPTSTR = "ha:vps:i:";
+    static constexpr const char* OPTSTR = "ha:vps:i:d:c:";
     static const struct option OPTIONS[] = {
-            { "help",       no_argument,       nullptr, 'h' },
-            { "api",        required_argument, nullptr, 'a' },
-            { "ibl",        required_argument, nullptr, 'i' },
-            { "split-view", no_argument,       nullptr, 'v' },
-            { "scale",      required_argument, nullptr, 's' },
-            { "shadow-plane", no_argument,     nullptr, 'p' },
+            { "help",         no_argument,       nullptr, 'h' },
+            { "api",          required_argument, nullptr, 'a' },
+            { "ibl",          required_argument, nullptr, 'i' },
+            { "split-view",   no_argument,       nullptr, 'v' },
+            { "scale",        required_argument, nullptr, 's' },
+            { "shadow-plane", no_argument,       nullptr, 'p' },
+            { "single",       no_argument,       nullptr, 'n' },
+            { "dirt",         required_argument, nullptr, 'd' },
+            { "camera",       required_argument, nullptr, 'c' },
             { nullptr, 0, nullptr, 0 }  // termination of the option list
     };
     int opt;
@@ -124,6 +143,15 @@ static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
                     std::cerr << "Unrecognized backend. Must be 'opengl'|'vulkan'|'metal'." << std::endl;
                 }
                 break;
+            case 'c':
+                if (arg == "flight") {
+                    config->cameraMode = camutils::Mode::FREE_FLIGHT;
+                } else if (arg == "orbit") {
+                    config->cameraMode = camutils::Mode::ORBIT;
+                } else {
+                    std::cerr << "Unrecognized camera mode. Must be 'flight'|'orbit'.\n";
+                }
+                break;
             case 'i':
                 config->iblDirectory = arg;
                 break;
@@ -141,6 +169,12 @@ static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
                 break;
             case 'p':
                 g_shadowPlane = true;
+                break;
+            case 'n':
+                g_singleMode = true;
+                break;
+            case 'd':
+                config->dirt =  arg;
                 break;
         }
     }
@@ -164,8 +198,11 @@ static void cleanup(Engine* engine, View*, Scene*) {
     g_meshSet.reset(nullptr);
 
     engine->destroy(g_params.light);
+    engine->destroy(g_params.spotLight);
+
     EntityManager& em = EntityManager::get();
     em.destroy(g_params.light);
+    em.destroy(g_params.spotLight);
 }
 
 static void setup(Engine* engine, View*, Scene* scene) {
@@ -184,27 +221,41 @@ static void setup(Engine* engine, View*, Scene* scene) {
     tcm.setTransform(ei, mat4f{ mat3f(g_config.scale), float3(0.0f, 0.0f, -4.0f) } *
             tcm.getWorldTransform(ei));
 
+    size_t count = 0;
     auto& rcm = engine->getRenderableManager();
     for (auto renderable : g_meshSet->getRenderables()) {
         auto instance = rcm.getInstance(renderable);
         if (!instance) continue;
 
         rcm.setCastShadows(instance, g_params.castShadows);
+        rcm.setScreenSpaceContactShadows(instance, true);
 
-        for (size_t i = 0; i < rcm.getPrimitiveCount(instance); i++) {
-            rcm.setMaterialInstanceAt(instance, i, g_params.materialInstance[MATERIAL_LIT]);
+        if (!g_singleMode || count == 0) {
+            for (size_t i = 0; i < rcm.getPrimitiveCount(instance); i++) {
+                rcm.setMaterialInstanceAt(instance, i, g_params.materialInstance[MATERIAL_LIT]);
+            }
+        } else {
+            auto ei = tcm.getInstance(renderable);
+            tcm.setTransform(ei, mat4f{ mat3f(g_config.scale), float3(0.0f, 0.0f, -3.0f) } *
+                    tcm.getWorldTransform(ei));
         }
+        count++;
 
         scene->addEntity(renderable);
     }
 
     scene->addEntity(g_params.light);
 
+    // Parent the spot light to the root renderable in the mesh.
+    tcm.create(g_params.spotLight, tcm.getInstance(g_meshSet->getRenderables()[0]));
+    g_params.spotLightPosition = float3{0.0, 1.0, 0.0f};
+
     if (g_shadowPlane) {
         EntityManager& em = EntityManager::get();
         Material* shadowMaterial = Material::Builder()
                 .package(RESOURCES_GROUNDSHADOW_DATA, RESOURCES_GROUNDSHADOW_SIZE)
                 .build(*engine);
+        shadowMaterial->setDefaultParameter("strength", 0.7f);
 
         const static uint32_t indices[] = {
                 0, 1, 2, 2, 3, 0
@@ -220,7 +271,8 @@ static void setup(Engine* engine, View*, Scene* scene) {
         short4 tbn = filament::math::packSnorm16(
                 mat3f::packTangentFrame(
                         filament::math::mat3f{
-                                float3{ 1.0f, 0.0f, 0.0f }, float3{ 0.0f, 0.0f, 1.0f },
+                                float3{ 1.0f, 0.0f, 0.0f },
+                                float3{ 0.0f, 0.0f, 1.0f },
                                 float3{ 0.0f, 1.0f, 0.0f }
                         }
                 ).xyzw);
@@ -274,6 +326,92 @@ static void setup(Engine* engine, View*, Scene* scene) {
         params.lightIntensity = c.w * pIndirectLight->getIntensity();
         params.lightColor = c.rgb;
     }
+
+    g_params.bloomOptions.dirt = FilamentApp::get().getDirtTexture();
+}
+
+static filament::MaterialInstance* updateInstances(
+        SandboxParameters& params, filament::Engine& engine) {
+
+    int material = params.currentMaterialModel;
+    if (material == MATERIAL_MODEL_LIT) {
+        if (params.currentBlending == BLENDING_TRANSPARENT) material = MATERIAL_TRANSPARENT;
+        if (params.currentBlending == BLENDING_FADE) material = MATERIAL_FADE;
+        if (params.ssr) {
+            if (params.currentBlending == BLENDING_THIN_REFRACTION) material = MATERIAL_THIN_SS_REFRACTION;
+            if (params.currentBlending == BLENDING_SOLID_REFRACTION) material = MATERIAL_SOLID_SS_REFRACTION;
+        } else {
+            if (params.currentBlending == BLENDING_THIN_REFRACTION) material = MATERIAL_THIN_REFRACTION;
+            if (params.currentBlending == BLENDING_SOLID_REFRACTION) material = MATERIAL_SOLID_REFRACTION;
+        }
+    }
+
+    bool hasRefraction = params.currentBlending == BLENDING_THIN_REFRACTION ||
+            params.currentBlending == BLENDING_SOLID_REFRACTION;
+
+    MaterialInstance* materialInstance = params.materialInstance[material];
+    materialInstance->setParameter("baseColor", RgbType::sRGB, params.color);
+
+    if (params.currentMaterialModel != MATERIAL_MODEL_CLOTH) {
+        math::float4 emissive(Color::toLinear(params.emissiveColor), params.emissiveExposureWeight);
+        emissive.rgb *= Exposure::luminance(params.emissiveEV);
+        materialInstance->setParameter("emissive", emissive);
+    }
+
+    if (params.currentMaterialModel == MATERIAL_MODEL_LIT) {
+        materialInstance->setParameter("roughness", params.roughness);
+        materialInstance->setParameter("metallic", params.metallic);
+        if (!hasRefraction) {
+            materialInstance->setParameter("reflectance", params.reflectance);
+        }
+        materialInstance->setParameter("clearCoat", params.clearCoat);
+        materialInstance->setParameter("clearCoatRoughness", params.clearCoatRoughness);
+        materialInstance->setParameter("anisotropy", params.anisotropy);
+
+        if (params.currentBlending != BLENDING_OPAQUE) {
+            materialInstance->setParameter("alpha", params.alpha);
+        }
+
+        if  (hasRefraction) {
+            math::float3 color = Color::toLinear(params.transmittanceColor);
+            materialInstance->setParameter("absorption",
+                    Color::absorptionAtDistance(color, params.distance));
+            materialInstance->setParameter("ior", params.ior);
+            materialInstance->setParameter("transmission", params.transmission);
+            materialInstance->setParameter("thickness", params.thickness);
+        }
+    }
+
+    if (params.currentMaterialModel == MATERIAL_MODEL_SPECGLOSS) {
+        materialInstance->setParameter("glossiness", params.glossiness);
+        materialInstance->setParameter("specularColor", params.specularColor);
+        materialInstance->setParameter("reflectance", params.reflectance);
+        materialInstance->setParameter("clearCoat", params.clearCoat);
+        materialInstance->setParameter("clearCoatRoughness", params.clearCoatRoughness);
+        materialInstance->setParameter("anisotropy", params.anisotropy);
+    }
+
+    if (params.currentMaterialModel == MATERIAL_MODEL_SUBSURFACE) {
+        materialInstance->setParameter("roughness", params.roughness);
+        materialInstance->setParameter("metallic", params.metallic);
+        materialInstance->setParameter("reflectance", params.reflectance);
+        materialInstance->setParameter("thickness", params.thickness);
+        materialInstance->setParameter("subsurfacePower", params.subsurfacePower);
+        materialInstance->setParameter("subsurfaceColor", RgbType::sRGB, params.subsurfaceColor);
+    }
+
+    if (params.currentMaterialModel == MATERIAL_MODEL_CLOTH) {
+        materialInstance->setParameter("roughness", params.roughness);
+        materialInstance->setParameter("sheenColor", RgbType::sRGB, params.sheenColor);
+        materialInstance->setParameter("subsurfaceColor", RgbType::sRGB, params.subsurfaceColor);
+    }
+
+    if (params.currentMaterialModel != MATERIAL_MODEL_UNLIT) {
+        materialInstance->setSpecularAntiAliasingVariance(params.specularAntiAliasingVariance);
+        materialInstance->setSpecularAntiAliasingThreshold(params.specularAntiAliasingThreshold);
+    }
+
+    return materialInstance;
 }
 
 static void gui(filament::Engine* engine, filament::View*) {
@@ -282,15 +420,15 @@ static void gui(filament::Engine* engine, filament::View*) {
     ImGui::Begin("Parameters");
     {
         if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Combo("model", &params.currentMaterialModel,
-                    "unlit\0lit\0subsurface\0cloth\0specularGlossiness\0\0");
+            ImGui::Combo("Model", &params.currentMaterialModel,
+                    "Unlit\0Lit\0Subsurface\0Cloth\0Specular glossiness\0\0");
 
             if (params.currentMaterialModel == MATERIAL_MODEL_LIT) {
-                ImGui::Combo("blending", &params.currentBlending,
-                        "opaque\0transparent\0fade\0thin refraction\0solid refraction\0\0");
+                ImGui::Combo("Blending", &params.currentBlending,
+                        "Opaque\0Transparent\0Fade\0Thin refraction\0Solid refraction\0\0");
             }
 
-            ImGui::ColorEdit3("baseColor", &params.color.r);
+            ImGui::ColorEdit3("Base color", &params.color.r);
 
             bool hasRefraction = params.currentBlending == BLENDING_THIN_REFRACTION ||
                     params.currentBlending == BLENDING_SOLID_REFRACTION;
@@ -298,85 +436,140 @@ static void gui(filament::Engine* engine, filament::View*) {
             if (params.currentMaterialModel > MATERIAL_MODEL_UNLIT) {
                 if (params.currentBlending == BLENDING_TRANSPARENT ||
                         params.currentBlending == BLENDING_FADE) {
-                    ImGui::SliderFloat("alpha", &params.alpha, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Alpha", &params.alpha, 0.0f, 1.0f);
                 }
+
                 if (params.currentMaterialModel != MATERIAL_MODEL_SPECGLOSS) {
-                    ImGui::SliderFloat("roughness", &params.roughness, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Roughness", &params.roughness, 0.0f, 1.0f);
                 } else {
-                    ImGui::SliderFloat("glossiness", &params.glossiness, 0.0f, 1.0f);
-                    ImGui::ColorEdit3("specularColor", &params.specularColor.r);
+                    ImGui::SliderFloat("Glossiness", &params.glossiness, 0.0f, 1.0f);
+                    ImGui::ColorEdit3("Specular color", &params.specularColor.r);
                 }
+
                 if (params.currentMaterialModel != MATERIAL_MODEL_CLOTH &&
                         params.currentMaterialModel != MATERIAL_MODEL_SPECGLOSS) {
                     if (!hasRefraction) {
-                        ImGui::SliderFloat("metallic", &params.metallic, 0.0f, 1.0f);
-                        ImGui::SliderFloat("reflectance", &params.reflectance, 0.0f, 1.0f);
+                        ImGui::SliderFloat("Metallic", &params.metallic, 0.0f, 1.0f);
+                        ImGui::SliderFloat("Reflectance", &params.reflectance, 0.0f, 1.0f);
                     }
                 }
+
                 if (params.currentMaterialModel != MATERIAL_MODEL_CLOTH &&
                         params.currentMaterialModel != MATERIAL_MODEL_SUBSURFACE) {
-                    ImGui::SliderFloat("clearCoat", &params.clearCoat, 0.0f, 1.0f);
-                    ImGui::SliderFloat("clearCoatRoughness", &params.clearCoatRoughness, 0.0f, 1.0f);
-                    ImGui::SliderFloat("anisotropy", &params.anisotropy, -1.0f, 1.0f);
+                    ImGui::SliderFloat("Clear coat", &params.clearCoat, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Clear coat roughness", &params.clearCoatRoughness, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Anisotropy", &params.anisotropy, -1.0f, 1.0f);
                 }
+
                 if (params.currentMaterialModel == MATERIAL_MODEL_SUBSURFACE) {
-                    ImGui::SliderFloat("thickness", &params.thickness, 0.0f, 1.0f);
-                    ImGui::SliderFloat("subsurfacePower", &params.subsurfacePower, 1.0f, 24.0f);
-                    ImGui::ColorEdit3("subsurfaceColor", &params.subsurfaceColor.r);
+                    ImGui::SliderFloat("Thickness", &params.thickness, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Subsurface power", &params.subsurfacePower, 1.0f, 24.0f);
+                    ImGui::ColorEdit3("Subsurface color", &params.subsurfaceColor.r);
                 }
+
                 if (params.currentMaterialModel == MATERIAL_MODEL_CLOTH) {
-                    ImGui::ColorEdit3("sheenColor", &params.sheenColor.r);
-                    ImGui::ColorEdit3("subsurfaceColor", &params.subsurfaceColor.r);
+                    ImGui::ColorEdit3("Sheen color", &params.sheenColor.r);
+                    ImGui::ColorEdit3("Subsurface color", &params.subsurfaceColor.r);
                 }
 
                 if (hasRefraction) {
-                    ImGui::SliderFloat("ior", &params.ior, 1.0f, 3.0f);
-                    ImGui::SliderFloat("transmission", &params.transmission, 0.0f, 1.0f);
-                    ImGui::SliderFloat("thickness", &params.thickness, 0.0f, 1.0f);
-                    ImGui::ColorEdit3("transmittance", &params.transmittanceColor.r);
-                    ImGui::SliderFloat("distance", &params.distance, 0.0f, 4.0f);
+                    ImGui::SliderFloat("IOR", &params.ior, 1.0f, 3.0f);
+                    ImGui::SliderFloat("Transmission", &params.transmission, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Thickness", &params.thickness, 0.0f, 1.0f);
+                    ImGui::ColorEdit3("Transmittance", &params.transmittanceColor.r);
+                    ImGui::SliderFloat("Distance", &params.distance, 0.0f, 4.0f);
+                    ImGui::Checkbox("Screen space refraction", &params.ssr);
                 }
             }
+
+            ImGui::ColorEdit3("Emissive color", &params.emissiveColor.r);
+            ImGui::SliderFloat("Emissive EV", &params.emissiveEV, -24.0f, 24.0f);
+            ImGui::SliderFloat("Exposure weight", &params.emissiveExposureWeight, 0.0f, 1.0f);
         }
 
         if (ImGui::CollapsingHeader("Shading AA")) {
-            ImGui::SliderFloat("variance", &params.specularAntiAliasingVariance, 0.0f, 1.0f);
-            ImGui::SliderFloat("threshold", &params.specularAntiAliasingThreshold, 0.0f, 1.0f);
+            ImGui::SliderFloat("Variance", &params.specularAntiAliasingVariance, 0.0f, 1.0f);
+            ImGui::SliderFloat("Threshold", &params.specularAntiAliasingThreshold, 0.0f, 1.0f);
         }
 
         if (ImGui::CollapsingHeader("Object")) {
-            ImGui::Checkbox("castShadows", &params.castShadows);
+            ImGui::Checkbox("Cast shadows##object", &params.castShadows);
         }
 
-        if (ImGui::CollapsingHeader("Light")) {
-            ImGui::Checkbox("enabled", &params.directionalLightEnabled);
-            ImGui::ColorEdit3("color", &params.lightColor.r);
-            ImGui::SliderFloat("lux", &params.lightIntensity, 0.0f, 150000.0f);
-            ImGui::SliderFloat("sunSize", &params.sunAngularRadius, 0.1f, 10.0f);
-            ImGui::SliderFloat("haloSize", &params.sunHaloSize, 1.01f, 40.0f);
-            ImGui::SliderFloat("haloFalloff", &params.sunHaloFalloff, 0.0f, 2048.0f);
-            ImGui::SliderFloat("ibl", &params.iblIntensity, 0.0f, 50000.0f);
-            ImGui::SliderAngle("ibl rotation", &params.iblRotation);
-            ImGuiExt::DirectionWidget("direction", params.lightDirection.v);
+        if (ImGui::CollapsingHeader("Camera")) {
+            ImGui::SliderFloat("Focal length", &FilamentApp::get().getCameraFocalLength(), 16.0f, 90.0f);
+            ImGui::SliderFloat("Aperture", &params.cameraAperture, 1.0f, 32.0f);
+            ImGui::SliderFloat("Speed", &params.cameraSpeed, 800.0f, 1.0f);
+            ImGui::SliderFloat("ISO", &params.cameraISO, 25.0f, 6400.0f);
+        }
+
+        if (ImGui::CollapsingHeader("Indirect Light")) {
+            ImGui::SliderFloat("IBL", &params.iblIntensity, 0.0f, 50000.0f);
+            ImGui::SliderAngle("Rotation", &params.iblRotation);
             ImGui::Indent();
             if (ImGui::CollapsingHeader("SSAO")) {
                 DebugRegistry& debug = engine->getDebugRegistry();
-                ImGui::Checkbox("enabled###ssao", &params.ssao);
-                ImGui::SliderFloat("radius", &params.ssaoOptions.radius, 0.05f, 5.0f);
-                ImGui::SliderFloat("bias", &params.ssaoOptions.bias, 0.0f, 0.01f, "%.6f");
-                ImGui::SliderFloat("intensity", &params.ssaoOptions.intensity, 0.0f, 10.0f);
-                ImGui::SliderFloat("power", &params.ssaoOptions.power, 0.0f, 1.0f);
+                ImGui::Checkbox("Enabled##ssao", &params.ssao);
+                ImGui::SliderFloat("Radius", &params.ssaoOptions.radius, 0.05f, 5.0f);
+                ImGui::SliderFloat("Bias", &params.ssaoOptions.bias, 0.0f, 0.01f, "%.6f");
+                ImGui::SliderFloat("Intensity", &params.ssaoOptions.intensity, 0.0f, 4.0f);
+                ImGui::SliderFloat("Power", &params.ssaoOptions.power, 0.0f, 4.0f);
             }
             ImGui::Unindent();
         }
 
-        if (ImGui::CollapsingHeader("Post-processing")) {
-            ImGui::Checkbox("msaa 4x", &params.msaa);
-            ImGui::Checkbox("tone-mapping", &params.tonemapping);
+        if (ImGui::CollapsingHeader("Directional Light")) {
+            ImGui::Checkbox("Enabled##directionalLight", &params.directionalLightEnabled);
+            ImGui::ColorEdit3("Color##directionalLight", &params.lightColor.r);
+            ImGui::SliderFloat("Lux", &params.lightIntensity, 0.0f, 150000.0f);
+            ImGui::SliderFloat("Sun size", &params.sunAngularRadius, 0.1f, 10.0f);
+            ImGui::SliderFloat("Halo size", &params.sunHaloSize, 1.01f, 40.0f);
+            ImGui::SliderFloat("Halo falloff", &params.sunHaloFalloff, 0.0f, 2048.0f);
+            ImGuiExt::DirectionWidget("Direction", params.lightDirection.v);
             ImGui::Indent();
-                ImGui::Checkbox("dithering", &params.dithering);
+            if (ImGui::CollapsingHeader("Contact Shadows")) {
+                DebugRegistry& debug = engine->getDebugRegistry();
+                ImGui::Checkbox("Enabled##contactShadows", &params.screenSpaceContactShadows);
+                ImGui::SliderInt("Steps", &params.stepCount, 0, 255);
+                ImGui::SliderFloat("Distance", &params.maxShadowDistance, 0.0f, 10.0f);
+            }
+            ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader("Spot Light")) {
+            ImGui::Checkbox("Enabled##spotLight", &params.spotLightEnabled);
+            ImGui::SliderFloat3("Position", &params.spotLightPosition.x, -5.0f, 5.0f);
+            ImGui::ColorEdit3("Color##spotLight", &params.spotLightColor.r);
+            ImGui::Checkbox("Cast shadows##spotLight", &params.spotLightCastShadows);
+            ImGui::SliderFloat("Lumens", &params.spotLightIntensity, 0.0, 1000000.f);
+            ImGui::SliderAngle("Cone angle", &params.spotLightConeAngle, 0.0f, 90.0f);
+            ImGui::SliderFloat("Cone fade", &params.spotLightConeFade, 0.0f, 1.0f);
+        }
+
+        if (ImGui::CollapsingHeader("Fog")) {
+            ImGui::Checkbox("Enable Fog", &params.fogOptions.enabled);
+            ImGui::SliderFloat("Start", &params.fogOptions.distance, 0.0f, 100.0f);
+            ImGui::SliderFloat("Density", &params.fogOptions.density, 0.0f, 1.0f);
+            ImGui::SliderFloat("Height", &params.fogOptions.height, 0.0f, 100.0f);
+            ImGui::SliderFloat("Height Falloff", &params.fogOptions.heightFalloff, 0.0f, 10.0f);
+            ImGui::SliderFloat("Scattering Start", &params.fogOptions.inScatteringStart, 0.0f, 100.0f);
+            ImGui::SliderFloat("Scattering Size", &params.fogOptions.inScatteringSize, 0.0f, 100.0f);
+            ImGui::Checkbox("Color from IBL", &params.fogOptions.fogColorFromIbl);
+            ImGui::ColorPicker3("Color", params.fogOptions.color.v);
+        }
+
+        if (ImGui::CollapsingHeader("Post-processing")) {
+            ImGui::Checkbox("MSAA 4x", &params.msaa);
+            ImGui::Checkbox("Tone mapping", &params.tonemapping);
+            ImGui::Indent();
+                ImGui::Checkbox("Bloom", &params.bloomOptions.enabled);
+                if (params.bloomOptions.enabled) {
+                    ImGui::SliderFloat("Strength", &params.bloomOptions.strength, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Dirt", &params.bloomOptions.dirtStrength, 0.0f, 1.0f);
+                }
+                ImGui::Checkbox("Dithering", &params.dithering);
                 ImGui::Unindent();
-            ImGui::Checkbox("fxaa", &params.fxaa);
+            ImGui::Checkbox("FXAA", &params.fxaa);
         }
 
         if (ImGui::CollapsingHeader("Debug")) {
@@ -413,12 +606,16 @@ static void gui(filament::Engine* engine, filament::View*) {
     MaterialInstance* materialInstance = updateInstances(params, *engine);
 
     auto& rcm = engine->getRenderableManager();
+    size_t count = 0;
     for (auto renderable : g_meshSet->getRenderables()) {
         auto instance = rcm.getInstance(renderable);
         if (!instance) continue;
-        for (size_t i = 0; i < rcm.getPrimitiveCount(instance); i++) {
-            rcm.setMaterialInstanceAt(instance, i, materialInstance);
+        if (!g_singleMode || count == 0) {
+            for (size_t i = 0; i < rcm.getPrimitiveCount(instance); i++) {
+                rcm.setMaterialInstanceAt(instance, i, materialInstance);
+            }
         }
+        count++;
         rcm.setCastShadows(instance, params.castShadows);
     }
 
@@ -452,17 +649,47 @@ static void gui(filament::Engine* engine, filament::View*) {
     options.constantBias = params.constantBias;
     options.polygonOffsetConstant = params.polygonOffsetConstant;
     options.polygonOffsetSlope = params.polygonOffsetSlope;
+    options.screenSpaceContactShadows = params.screenSpaceContactShadows;
+    options.stepCount = params.stepCount;
+    options.maxShadowDistance = params.maxShadowDistance;
     lcm.setShadowOptions(lightInstance, options);
+
+    if (params.spotLightEnabled && !params.hasSpotLight) {
+        g_scene->addEntity(params.spotLight);
+        params.hasSpotLight = true;
+    } else if (!params.spotLightEnabled && params.hasSpotLight) {
+        g_scene->remove(params.spotLight);
+        params.hasSpotLight = false;
+    }
+    auto spotLightInstance = lcm.getInstance(params.spotLight);
+    auto& tcm = engine->getTransformManager();
+    tcm.setTransform(tcm.getInstance(params.spotLight),
+            mat4f::translation(params.spotLightPosition));
+    lcm.setColor(spotLightInstance, params.spotLightColor);
+    lcm.setShadowCaster(spotLightInstance, params.spotLightCastShadows);
+    lcm.setIntensity(spotLightInstance, params.spotLightIntensity);
+    lcm.setSpotLightCone(spotLightInstance, params.spotLightConeAngle * params.spotLightConeFade,
+            params.spotLightConeAngle);
 }
 
-static void preRender(filament::Engine*, filament::View* view, filament::Scene*, filament::Renderer*) {
+static void preRender(filament::Engine*, filament::View* view, filament::Scene*, filament::Renderer* renderer) {
     view->setAntiAliasing(g_params.fxaa ? View::AntiAliasing::FXAA : View::AntiAliasing::NONE);
     view->setToneMapping(g_params.tonemapping ? View::ToneMapping::ACES : View::ToneMapping::LINEAR);
     view->setDithering(g_params.dithering ? View::Dithering::TEMPORAL : View::Dithering::NONE);
+    view->setBloomOptions(g_params.bloomOptions);
+    view->setFogOptions(g_params.fogOptions);
     view->setSampleCount((uint8_t) (g_params.msaa ? 4 : 1));
     view->setAmbientOcclusion(
             g_params.ssao ? View::AmbientOcclusion::SSAO : View::AmbientOcclusion::NONE);
     view->setAmbientOcclusionOptions(g_params.ssaoOptions);
+
+    // Without an IBL, we must clear the swapchain to black before each frame.
+    renderer->setClearOptions({
+            .clearColor = { 0.0f, 0.0f, 0.0f, 1.0f },
+            .clear = !FilamentApp::get().getIBL()  });
+
+    Camera& camera = view->getCamera();
+    camera.setExposure(g_params.cameraAperture, 1.0f / g_params.cameraSpeed, g_params.cameraISO);
 }
 
 int main(int argc, char* argv[]) {
@@ -482,9 +709,10 @@ int main(int argc, char* argv[]) {
         g_filenames.push_back(filename);
     }
 
+    g_params.bloomOptions.enabled = true;
+
     g_config.title = "Material Sandbox";
     FilamentApp& filamentApp = FilamentApp::get();
     filamentApp.run(g_config, setup, cleanup, gui, preRender);
-
     return 0;
 }

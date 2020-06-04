@@ -21,6 +21,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.Size;
 
+import java.util.EnumSet;
+
 import static com.google.android.filament.Colors.LinearColor;
 
 /**
@@ -62,9 +64,27 @@ public class View {
     private Viewport mViewport = new Viewport(0, 0, 0, 0);
     private DynamicResolutionOptions mDynamicResolution;
     private RenderQuality mRenderQuality;
-    private DepthPrepass mDepthPrepass = DepthPrepass.DEFAULT;
     private AmbientOcclusionOptions mAmbientOcclusionOptions;
+    private BloomOptions mBloomOptions;
+    private FogOptions mFogOptions;
     private RenderTarget mRenderTarget;
+    private BlendMode mBlendMode;
+    private DepthOfFieldOptions mDepthOfFieldOptions;
+
+    /**
+     * Generic Quality Level
+     */
+    public enum QualityLevel {
+        LOW,
+        MEDIUM,
+        HIGH,
+        ULTRA
+    }
+
+    public enum BlendMode {
+        OPAQUE,
+        TRANSLUCENT
+    }
 
     /**
      * Dynamic resolution can be used to either reach a desired target frame rate by lowering the
@@ -95,21 +115,6 @@ public class View {
         public boolean homogeneousScaling = false;
 
         /**
-         * Desired frame time in milliseconds.
-         */
-        public float targetFrameTimeMilli = 1000.0f / 60.0f;
-
-        /**
-         * Additional headroom for the GPU as a ratio of the targetFrameTime.
-         */
-        public float headRoomRatio = 0.0f;
-
-        /**
-         * Rate at which the scale will change to reach the target frame rate.
-         */
-        public float scaleRate = 0.125f;
-
-        /**
          * The minimum scale in X and Y this View should use.
          */
         public float minScale = 0.5f;
@@ -120,9 +125,12 @@ public class View {
         public float maxScale = 1.0f;
 
         /**
-         * History size. higher values, tend to filter more (clamped to 30).
+         * Upscaling quality. LOW: 1 bilinear taps, MEDIUM: 4 bilinear taps, HIGH: 9 bilinear taps.
+         * If minScale needs to be very low, it might help to use MEDIUM or HIGH here.
+         * The default upsacling quality is set to LOW.
          */
-        public int history = 9;
+        @NonNull
+        public QualityLevel quality = QualityLevel.LOW;
     }
 
     /**
@@ -138,12 +146,13 @@ public class View {
         /**
          * Self-occlusion bias in meters. Use to avoid self-occlusion. Between 0 and a few mm.
          */
-        public float bias = 0.005f;
+        public float bias = 0.0005f;
 
         /**
-         * Controls ambient occlusion's contrast. Between 0 (linear) and 1 (squared)
+         * Controls ambient occlusion's contrast. Must be positive. Default is 1.
+         * Good values are between 0.5 and 3.
          */
-        public float power = 0.0f;
+        public float power = 1.0f;
 
         /**
          * How each dimension of the AO buffer is scaled. Must be positive and <= 1.
@@ -154,25 +163,173 @@ public class View {
          * Strength of the Ambient Occlusion effect. Must be positive.
          */
         public float intensity = 1.0f;
+
+        /**
+         * The quality setting controls the number of samples used for evaluating Ambient
+         * occlusion. The default is QualityLevel.LOW which is sufficient for most mobile
+         * applications.
+         */
+        @NonNull
+        public QualityLevel quality = QualityLevel.LOW;
     }
 
     /**
-     * Sets the quality of the HDR color buffer.
+     * Options for controlling the Bloom effect
      *
-     * <p>
-     * A quality of <code>HIGH</code> or <code>ULTRA</code> means using an RGB16F or RGBA16F color
-     * buffer. This means colors in the LDR range (0..1) have 10 bit precision. A quality of
-     * <code>LOW</code> or <code>MEDIUM</code> means using an R11G11B10F opaque color buffer or an
-     * RGBA16F transparent color buffer. With R11G11B10F colors in the LDR range have a precision of
-     * either 6 bits (red and green channels) or 5 bits (blue channel).
-     * </p>
+     * enabled:     Enable or disable the bloom post-processing effect. Disabled by default.
+     * levels:      Number of successive blurs to achieve the blur effect, the minimum is 3 and the
+     *              maximum is 12. This value together with resolution influences the spread of the
+     *              blur effect. This value can be silently reduced to accommodate the original
+     *              image size.
+     * resolution:  Resolution of bloom's minor axis. The minimum value is 2^levels and the
+     *              the maximum is lower of the original resolution and 4096. This parameter is
+     *              silently clamped to the minimum and maximum.
+     *              It is highly recommended that this value be smaller than the target resolution
+     *              after dynamic resolution is applied (horizontally and vertically).
+     * strength:    how much of the bloom is added to the original image. Between 0 and 1.
+     * blendMode:   Whether the bloom effect is purely additive (false) or mixed with the original
+     *              image (true).
+     * anamorphism: Bloom's aspect ratio (x/y), for artistic purposes.
+     * threshold:   When enabled, a threshold at 1.0 is applied on the source image, this is
+     *              useful for artistic reasons and is usually needed when a dirt texture is used.
+     * dirt:        A dirt/scratch/smudges texture (that can be RGB), which gets added to the
+     *              bloom effect. Smudges are visible where bloom occurs. Threshold must be
+     *              enabled for the dirt effect to work properly.
+     * dirtStrength: Strength of the dirt texture.
+     *
+     * @see setBloomOptions
      */
-    public enum QualityLevel {
-        LOW,
-        MEDIUM,
-        HIGH,
-        ULTRA
+    public static class BloomOptions {
+
+        public enum BlendingMode {
+            ADD,
+            INTERPOLATE
+        }
+
+        /**
+         * User provided dirt texture
+         */
+        @Nullable
+        public Texture dirt = null;
+
+        /**
+         * strength of the dirt texture
+         */
+        public float dirtStrength = 0.2f;
+
+        /**
+         * Strength of the bloom effect, between 0.0 and 1.0
+         */
+        public float strength = 0.10f;
+
+        /**
+         * Resolution of minor axis (2^levels to 4096)
+         */
+        public int resolution = 360;
+
+        /**
+         * Bloom x/y aspect-ratio (1/32 to 32)
+         */
+        public float anamorphism = 1.0f;
+
+        /**
+         * Number of blur levels (3 to 12)
+         */
+        public int levels = 6;
+
+        /**
+         * How the bloom effect is applied
+         */
+        public BlendingMode blendingMode = BlendingMode.ADD;
+
+        /**
+         * Whether to threshold the source
+         */
+        public boolean threshold = true;
+
+        /**
+         * enable or disable bloom
+         */
+        public boolean enabled = false;
     }
+
+    /**
+     * Options to control fog in the scene
+     *
+     * @see View#setFogOptions
+     */
+    public static class FogOptions {
+        /**
+         * distance in world units from the camera where the fog starts ( >= 0.0 )
+         */
+        public float distance = 0.0f;
+
+        /**
+         * fog's maximum opacity between 0 and 1
+         */
+        public float maximumOpacity = 1.0f;
+
+        /**
+         * fog's floor in world units
+         */
+        public float height = 0.0f;
+
+        /**
+         * how fast fog dissipates with altitude
+         */
+        public float heightFalloff = 1.0f;
+
+        /**
+         * fog's color (linear)
+         */
+        @NonNull
+        public float[] color = { 0.5f, 0.5f, 0.5f };
+
+        /**
+         * fog's density at altitude given by 'height'
+         */
+        public float density = 0.1f;
+
+        /**
+         * distance in world units from the camera where in-scattering starts
+         */
+        public float inScatteringStart = 0.0f;
+
+        /**
+         * size of in-scattering (>=0 to activate). Good values are >> 1 (e.g. ~10 - 100)
+         */
+        public float inScatteringSize = 0.0f;
+
+        /**
+         * fog color will be modulated by the IBL color in the view direction
+         */
+        public boolean fogColorFromIbl = false;
+
+        /**
+         * enable or disable fog
+         */
+        public boolean enabled = false;
+    }
+
+    /**
+     * Options to control Depth of Field (DoF) effect in the scene
+     *
+     * @see View#setDepthOfFieldOptions
+     */
+    public static class DepthOfFieldOptions {
+
+        /** focus distance in world units */
+        public float focusDistance = 10.0f;
+
+        /** scale factor controlling the amount of blur (values other than 1.0 are not physically correct)*/
+        public float blurScale = 1.0f;
+
+        /** maximum aperture diameter in meters (zero to disable bokeh rotation) */
+        public float maxApertureDiameter = 0.01f;
+
+        /** enable or disable Depth of field effect */
+        public boolean enabled = false;
+    };
 
     /**
      * Structure used to set the color precision for the rendering of a <code>View</code>.
@@ -186,6 +343,15 @@ public class View {
      * @see #getRenderQuality
      */
     public static class RenderQuality {
+        /**
+          * <p>
+          * A quality of <code>HIGH</code> or <code>ULTRA</code> means using an RGB16F or RGBA16F color
+          * buffer. This means colors in the LDR range (0..1) have 10 bit precision. A quality of
+          * <code>LOW</code> or <code>MEDIUM</code> means using an R11G11B10F opaque color buffer or an
+          * RGBA16F transparent color buffer. With R11G11B10F colors in the LDR range have a precision of
+          * either 6 bits (red and green channels) or 5 bits (blue channel).
+          * </p>
+          */
         public QualityLevel hdrColorBuffer = QualityLevel.HIGH;
     }
 
@@ -240,18 +406,68 @@ public class View {
         TEMPORAL
     }
 
-    /** @see #setDepthPrepass */
-    public enum DepthPrepass {
-        DEFAULT(-1),
-        DISABLED(0),
-        ENABLED(1);
+    /**
+     * Used to select buffers.
+     */
+    public enum TargetBufferFlags {
+        /**
+         * Color 0 buffer selected.
+         */
+        COLOR0(0x1),
+        /**
+         * Color 1 buffer selected.
+         */
+        COLOR1(0x2),
+        /**
+         * Color 2 buffer selected.
+         */
+        COLOR2(0x4),
+        /**
+         * Color 3 buffer selected.
+         */
+        COLOR3(0x8),
+        /**
+         * Depth buffer selected.
+         */
+        DEPTH(0x10),
+        /**
+         * Stencil buffer selected.
+         */
+        STENCIL(0x20);
 
-        final int value;
+        /*
+         * No buffer selected
+         */
+        public static EnumSet<TargetBufferFlags> NONE = EnumSet.noneOf(TargetBufferFlags.class);
 
-        DepthPrepass(int value) {
-            this.value = value;
+        /*
+         * All color buffers selected
+         */
+        public static EnumSet<TargetBufferFlags> ALL_COLOR =
+                EnumSet.of(COLOR0, COLOR1, COLOR2, COLOR3);
+        /**
+         * Depth and stencil buffer selected.
+         */
+        public static EnumSet<TargetBufferFlags> DEPTH_STENCIL = EnumSet.of(DEPTH, STENCIL);
+        /**
+         * All buffers are selected.
+         */
+        public static EnumSet<TargetBufferFlags> ALL = EnumSet.range(COLOR0, STENCIL);
+
+        private int mFlags;
+
+        TargetBufferFlags(int flags) {
+            mFlags = flags;
         }
-    };
+
+        static int flags(EnumSet<TargetBufferFlags> flags) {
+            int result = 0;
+            for (TargetBufferFlags flag : flags) {
+                result |= flag.mFlags;
+            }
+            return result;
+        }
+    }
 
     View(long nativeView) {
         mNativeObject = nativeView;
@@ -367,39 +583,23 @@ public class View {
     }
 
     /**
-     * Sets the color used to clear the Viewport when rendering this View.
+     * Sets the blending mode used to draw the view into the SwapChain.
      *
-     * <p>This is ignored if a {@link Skybox} is present or if clearing has been disabled
-     * via {@link #setClearTargets}. Defaults to black.</p>
-     *
-     * @see #getClearColor
+     * @param blendMode either {@link BlendMode#OPAQUE} or {@link BlendMode#TRANSLUCENT}
+     * @see #getBlendMode
      */
-    public void setClearColor(
-            @LinearColor float r, @LinearColor float g, @LinearColor float b, float a) {
-        nSetClearColor(getNativeObject(), r, g, b, a);
+    public void setBlendMode(BlendMode blendMode) {
+        mBlendMode = blendMode;
+        nSetBlendMode(getNativeObject(), blendMode.ordinal());
     }
 
     /**
-     * Returns the View clear color in a provided 4-tuple.
      *
-     * @return A reference to the passed-in array.
-     *
-     * @see #setClearColor
+     * @return blending mode set by setBlendMode
+     * @see #setBlendMode
      */
-    @NonNull @Size(min = 4)
-    public float[] getClearColor(@NonNull @Size(min = 4) float[] out) {
-        out = Asserts.assertFloat4(out);
-        nGetClearColor(getNativeObject(), out);
-        return out;
-    }
-
-    /**
-     * Sets which targets to clear (default: true, true, false)
-     *
-     * @see #setClearColor
-     */
-    public void setClearTargets(boolean color, boolean depth, boolean stencil) {
-        nSetClearTargets(getNativeObject(), color, depth, stencil);
+    public BlendMode getBlendMode() {
+        return mBlendMode;
     }
 
     /**
@@ -570,12 +770,9 @@ public class View {
         nSetDynamicResolutionOptions(getNativeObject(),
                 options.enabled,
                 options.homogeneousScaling,
-                options.targetFrameTimeMilli,
-                options.headRoomRatio,
-                options.scaleRate,
                 options.minScale,
                 options.maxScale,
-                options.history);
+                options.quality.ordinal());
     }
 
     /**
@@ -610,49 +807,6 @@ public class View {
             mRenderQuality = new RenderQuality();
         }
         return mRenderQuality;
-    }
-
-    /**
-     * Checks if this view is rendered with a depth-only prepass.
-     *
-     * @return the value set by {@link #setDepthPrepass}.
-     */
-    @NonNull
-    public DepthPrepass getDepthPrepass() {
-        return mDepthPrepass;
-    }
-
-    /**
-     * Sets whether this view is rendered with or without a depth pre-pass.
-     *
-     * <p><b>This setting is ignored and will be removed in future versions of Filament.</b></p>
-     *
-     * <p>
-     * By default, the system picks the most appropriate strategy for your platform; this method
-     * lets you override that strategy.
-     * </p>
-     *
-     * <p>
-     * When the depth pre-pass is enabled, the renderer will first draw all objects in the
-     * depth buffer from front to back, and then draw the objects again but sorted to minimize
-     * state changes. With the depth pre-pass disabled, objects are drawn only once, but it may
-     * result in more state changes or more overdraw.
-     * </p>
-     *
-     * <p>
-     * The best strategy may depend on the scene and/or GPU.
-     * </p>
-     *
-     * <ul>
-     * <li>DepthPrepass::DEFAULT uses the most appropriate strategy</li>
-     * <li>DepthPrepass::DISABLED disables the depth pre-pass</li>
-     * <li>DepthPrepass::ENABLE enables the depth pre-pass</li>
-     * </ul>
-     */
-    @Deprecated
-    public void setDepthPrepass(@NonNull DepthPrepass depthPrepass) {
-        mDepthPrepass = depthPrepass;
-        nSetDepthPrepass(getNativeObject(), depthPrepass.value);
     }
 
     /**
@@ -770,7 +924,7 @@ public class View {
     public void setAmbientOcclusionOptions(@NonNull AmbientOcclusionOptions options) {
         mAmbientOcclusionOptions = options;
         nSetAmbientOcclusionOptions(getNativeObject(), options.radius, options.bias, options.power,
-                options.resolution, options.intensity);
+                options.resolution, options.intensity, options.quality.ordinal());
     }
 
     /**
@@ -785,6 +939,90 @@ public class View {
         }
         return mAmbientOcclusionOptions;
     }
+
+    /**
+     * Sets bloom options.
+     *
+     * @param options Options for bloom.
+     * @see #getBloomOptions
+     */
+    public void setBloomOptions(@NonNull BloomOptions options) {
+        mBloomOptions = options;
+        nSetBloomOptions(getNativeObject(), options.dirt != null ? options.dirt.getNativeObject() : 0,
+                options.dirtStrength, options.strength, options.resolution,
+                options.anamorphism, options.levels, options.blendingMode.ordinal(),
+                options.threshold, options.enabled);
+    }
+
+    /**
+     * Gets the bloom options
+     * @see #setBloomOptions
+     *
+     * @return bloom options currently set.
+     */
+    @NonNull
+    public BloomOptions getBloomOptions() {
+        if (mBloomOptions == null) {
+            mBloomOptions = new BloomOptions();
+        }
+        return mBloomOptions;
+    }
+
+    /**
+     * Sets fog options.
+     *
+     * @param options Options for fog.
+     * @see #getFogOptions
+     */
+    public void setFogOptions(@NonNull FogOptions options) {
+        mFogOptions = options;
+        nSetFogOptions(getNativeObject(), options.distance, options.maximumOpacity, options.height,
+                options.heightFalloff, options.color[0], options.color[1], options.color[2],
+                options.density, options.inScatteringStart, options.inScatteringSize,
+                options.fogColorFromIbl,
+                options.enabled);
+    }
+
+    /**
+     * Gets the fog options
+     *
+     * @return fog options currently set.
+     * @see #setFogOptions
+     */
+    @NonNull
+    public FogOptions getFogOptions() {
+        if (mFogOptions == null) {
+            mFogOptions = new FogOptions();
+        }
+        return mFogOptions;
+    }
+
+
+    /**
+     * Sets Depth of Field options.
+     *
+     * @param options Options for depth of field effect.
+     * @see #getDepthOfFieldOptions
+     */
+    public void setDepthOfFieldOptions(@NonNull DepthOfFieldOptions options) {
+        mDepthOfFieldOptions = options;
+        nSetDepthOfFieldOptions(getNativeObject(), options.focusDistance, options.blurScale, options.maxApertureDiameter, options.enabled);
+    }
+
+    /**
+     * Gets the Depth of Field options
+     *
+     * @return Depth of Field options currently set.
+     * @see #setDepthOfFieldOptions
+     */
+    @NonNull
+    public DepthOfFieldOptions getDepthOfFieldOptions() {
+        if (mDepthOfFieldOptions == null) {
+            mDepthOfFieldOptions = new DepthOfFieldOptions();
+        }
+        return mDepthOfFieldOptions;
+    }
+
 
     public long getNativeObject() {
         if (mNativeObject == 0) {
@@ -801,9 +1039,6 @@ public class View {
     private static native void nSetScene(long nativeView, long nativeScene);
     private static native void nSetCamera(long nativeView, long nativeCamera);
     private static native void nSetViewport(long nativeView, int left, int bottom, int width, int height);
-    private static native void nSetClearColor(long nativeView, float r, float g, float b, float a);
-    private static native void nGetClearColor(long nativeView, float[] out);
-    private static native void nSetClearTargets(long nativeView, boolean color, boolean depth, boolean stencil);
     private static native void nSetVisibleLayers(long nativeView, int select, int value);
     private static native void nSetShadowsEnabled(long nativeView, boolean enabled);
     private static native void nSetRenderTarget(long nativeView, long nativeRenderTarget);
@@ -815,18 +1050,18 @@ public class View {
     private static native int nGetToneMapping(long nativeView);
     private static native void nSetDithering(long nativeView, int dithering);
     private static native int nGetDithering(long nativeView);
-    private static native void nSetDynamicResolutionOptions(long nativeView,
-            boolean enabled, boolean homogeneousScaling,
-            float targetFrameTimeMilli, float headRoomRatio, float scaleRate,
-            float minScale, float maxScale, int history);
+    private static native void nSetDynamicResolutionOptions(long nativeView, boolean enabled, boolean homogeneousScaling, float minScale, float maxScale, int quality);
     private static native void nSetRenderQuality(long nativeView, int hdrColorBufferQuality);
     private static native void nSetDynamicLightingOptions(long nativeView, float zLightNear, float zLightFar);
-    private static native void nSetDepthPrepass(long nativeView, int value);
     private static native void nSetPostProcessingEnabled(long nativeView, boolean enabled);
     private static native boolean nIsPostProcessingEnabled(long nativeView);
     private static native void nSetFrontFaceWindingInverted(long nativeView, boolean inverted);
     private static native boolean nIsFrontFaceWindingInverted(long nativeView);
     private static native void nSetAmbientOcclusion(long nativeView, int ordinal);
     private static native int nGetAmbientOcclusion(long nativeView);
-    private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity);
+    private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity, int quality);
+    private static native void nSetBloomOptions(long nativeView, long dirtNativeObject, float dirtStrength, float strength, int resolution, float anamorphism, int levels, int blendMode, boolean threshold, boolean enabled);
+    private static native void nSetFogOptions(long nativeView, float distance, float maximumOpacity, float height, float heightFalloff, float v, float v1, float v2, float density, float inScatteringStart, float inScatteringSize, boolean fogColorFromIbl, boolean enabled);
+    private static native void nSetBlendMode(long nativeView, int blendMode);
+    private static native void nSetDepthOfFieldOptions(long nativeView, float focusDistance, float blurScale, float maxApertureDiameter, boolean enabled);
 }

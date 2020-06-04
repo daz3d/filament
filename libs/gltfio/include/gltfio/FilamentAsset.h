@@ -31,8 +31,6 @@ namespace filament {
 
 namespace gltfio {
 
-struct BufferBinding;
-struct TextureBinding;
 class Animator;
 
 /**
@@ -53,14 +51,14 @@ class Animator;
  * and upload data into vertex buffers and index buffers.
  *
  * \todo Only the default glTF scene is loaded, other glTF scenes are ignored.
- * \todo Cameras, extras, and extensions are ignored.
+ * \todo Cameras are ignored.
  */
 class FilamentAsset {
 public:
 
     /**
      * Gets the list of entities, one for each glTF node. All of these have a Transform component.
-     * Some of the returned entities may also have a Renderable component.
+     * Some of the returned entities may also have a Renderable component and/or a Light component.
      */
     const utils::Entity* getEntities() const noexcept;
 
@@ -69,8 +67,47 @@ public:
      */
     size_t getEntityCount() const noexcept;
 
+    /**
+     * Gets the list of entities in the scene representing lights. All of these have a Light component.
+     */
+    const utils::Entity* getLightEntities() const noexcept;
+
+    /**
+     * Gets the number of entities returned by getLightEntities().
+     */
+    size_t getLightEntityCount() const noexcept;
+
     /** Gets the transform root for the asset, which has no matching glTF node. */
     utils::Entity getRoot() const noexcept;
+
+    /**
+     * Pops a ready renderable off the queue, or returns 0 if no renderables have become ready.
+     *
+     * NOTE: To determine the progress percentage or completion status, please use
+     * ResourceLoader#asyncGetLoadProgress. To get the number of ready renderables,
+     * please use popRenderables().
+     *
+     * This method allows clients to progressively add the asset's renderables to the scene as
+     * textures gradually become ready through asynchronous loading. For example, on every frame
+     * progressive applications can do something like this:
+     *
+     *    while (utils::Entity e = popRenderable()) { scene.addEntity(e); }
+     *
+     * \see ResourceLoader#asyncBeginLoad
+     * \see popRenderables()
+     */
+    utils::Entity popRenderable() noexcept;
+
+    /**
+     * Pops up to "count" ready renderables off the queue, or returns the available number.
+     *
+     * The given pointer should either be null or point to memory that can hold up to count
+     * entities. If the pointer is null, returns the number of available renderables. Otherwise
+     * returns the number of entities that have been written.
+     *
+     * \see ResourceLoader#asyncBeginLoad
+     */
+    size_t popRenderables(utils::Entity* entities, size_t count) noexcept;
 
     /** Gets all material instances. These are already bound to renderables. */
     const filament::MaterialInstance* const* getMaterialInstances() const noexcept;
@@ -80,18 +117,6 @@ public:
 
     /** Gets the number of materials returned by getMaterialInstances(). */
     size_t getMaterialInstanceCount() const noexcept;
-
-    /** Gets loading instructions for vertex buffers and index buffers. */
-    const BufferBinding* getBufferBindings() const noexcept;
-
-    /** Gets the number of bindings returned by getBufferBindings(). */
-    size_t getBufferBindingCount() const noexcept;
-
-    /** Gets loading instructions for textures. */
-    const TextureBinding* getTextureBindings() const noexcept;
-
-    /** Gets the number of bindings returned by getTextureBindings(). */
-    size_t getTextureBindingCount() const noexcept;
 
     /** Gets resource URIs for all externally-referenced buffers. */
     const char* const* getResourceUris() const noexcept;
@@ -147,61 +172,6 @@ public:
     FilamentAsset& operator=(FilamentAsset const&) = delete;
     FilamentAsset& operator=(FilamentAsset&&) = delete;
     /*! \endcond */
-};
-
-/**
- * \struct BufferBinding FilamentAsset.h gltfio/FilamentAsset.h
- * \brief Read-only structure that tells the resource loader how to load a source blob into a
- * filament::VertexBuffer, filament::IndexBuffer, etc.
- *
- * \warning Clients usually do not need to interact with BufferBinding directly, they can use
- * ResourceLoader instead.
- *
- * Each binding instance corresponds to one of the following:
- *
- * - One call to VertexBuffer::setBufferAt().
- * - One call to IndexBuffer::setBuffer().
- */
-struct BufferBinding {
-    const char* uri;      // unique identifier for the source blob
-    uint32_t totalSize;   // size in bytes of the source blob at the given URI
-    uint8_t bufferIndex;  // only used when the destination is a VertexBuffer
-    uint32_t offset;      // byte count used only for vertex and index buffers
-    uint32_t size;        // byte count used only for vertex and index buffers
-    void** data;          // pointer to the resource data in the source asset (if loaded)
-
-    // Only one of the following two destinations can be non-null.
-    filament::VertexBuffer* vertexBuffer;
-    filament::IndexBuffer* indexBuffer;
-
-    bool convertBytesToShorts;   // the resource loader must convert the buffer from u8 to u16
-    bool generateTrivialIndices; // the resource loader must generate indices like: 0, 1, 2, ...
-    bool generateDummyData;      // the resource loader should generate a sequence of 1.0 values
-    bool generateTangents;       // the resource loader should generate tangents
-    bool sparseAccessor;         // the resource loader should apply a sparse data set
-
-    bool isMorphTarget;
-    uint8_t morphTargetIndex;
-};
-
-/**
- * \struct TextureBinding FilamentAsset.h gltfio/FilamentAsset.h
- * \brief Read-only structure that describes a binding between filament::Texture and
- * filament::MaterialInstance.
- *
- * \warning Clients usually do not need to interact with TextureBinding directly, they can use
- * ResourceLoader instead.
- */
-struct TextureBinding {
-    const char* uri;
-    uint32_t totalSize;
-    const char* mimeType;
-    void** data;
-    size_t offset;
-    filament::MaterialInstance* materialInstance;
-    const char* materialParameter;
-    filament::TextureSampler sampler;
-    bool srgb;
 };
 
 } // namespace gltfio

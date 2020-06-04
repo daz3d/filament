@@ -95,9 +95,9 @@ static VulkanAttachment createOffscreenAttachment(VulkanTexture* tex) {
 }
 
 VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height,
-        uint32_t colorLevel, VulkanTexture* color, uint32_t depthLevel, VulkanTexture* depth) :
-        HwRenderTarget(width, height), mContext(context), mOffscreen(true), mColorLevel(colorLevel),
-        mDepthLevel(depthLevel) {
+        TargetBufferInfo colorInfo, VulkanTexture* color, TargetBufferInfo depthInfo,
+        VulkanTexture* depth) : HwRenderTarget(width, height), mContext(context), mOffscreen(true),
+        mColorLevel(colorInfo.level), mDepthLevel(depthInfo.level) {
     mColor = createOffscreenAttachment(color);
     mDepth = createOffscreenAttachment(depth);
 
@@ -109,13 +109,17 @@ VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, u
             .format = mColor.format,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = colorLevel,
+                .baseMipLevel = colorInfo.level,
                 .levelCount = 1
             }
         };
         if (color->target == SamplerType::SAMPLER_CUBEMAP) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
             viewInfo.subresourceRange.layerCount = 6;
+        } else if (color->target == SamplerType::SAMPLER_2D_ARRAY) {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+            viewInfo.subresourceRange.layerCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = colorInfo.layer;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewInfo.subresourceRange.layerCount = 1;
@@ -129,13 +133,17 @@ VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, u
             .format = mDepth.format,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = depthLevel,
+                .baseMipLevel = depthInfo.level,
                 .levelCount = 1
             }
         };
         if (depth->target == SamplerType::SAMPLER_CUBEMAP) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
             viewInfo.subresourceRange.layerCount = 6;
+        } else if (depth->target == SamplerType::SAMPLER_2D_ARRAY) {
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+            viewInfo.subresourceRange.layerCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = depthInfo.layer;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewInfo.subresourceRange.layerCount = 1;
@@ -208,7 +216,7 @@ VulkanAttachment VulkanRenderTarget::getColor() const {
 }
 
 VulkanAttachment VulkanRenderTarget::getDepth() const {
-    return mOffscreen ? mDepth : VulkanAttachment {};
+    return mOffscreen ? mDepth : mContext.currentSurface->depth;
 }
 
 VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
@@ -302,7 +310,7 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
         .format = vkformat,
-        .extent = { w, h, depth },
+        .extent = { w, h, 1 },
         .mipLevels = levels,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -312,19 +320,32 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
         imageInfo.arrayLayers = 6;
         imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     }
+    if (target == SamplerType::SAMPLER_2D_ARRAY) {
+        imageInfo.arrayLayers = depth;
+        // NOTE: We do not use VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT here because:
+        //
+        //  (a) MoltenVK does not support it, and
+        //  (b) it is necessary only when 3D textures need to support array-style access
+        //
+        // In other words, the "arrayness" of the texture is an aspect of the VkImageView,
+        // not the VkImage.
+    }
+
+    // Filament expects blit() to work with any texture, so we almost always set these usage flags.
+    const VkImageUsageFlags blittable = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
     if (any(usage & TextureUsage::SAMPLEABLE)) {
         imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
     if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
-        imageInfo.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        imageInfo.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | blittable;
     }
     if (any(usage & TextureUsage::STENCIL_ATTACHMENT)) {
         imageInfo.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     }
     if (any(usage & TextureUsage::UPLOADABLE)) {
-        // Uploadable textures can be used as a blit source (e.g. for mipmap generation)
-        // therefore we must set both the TRANSFER_DST and TRANSFER_SRC flags.
-        imageInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        imageInfo.usage |= blittable;
     }
     if (any(usage & TextureUsage::DEPTH_ATTACHMENT)) {
         imageInfo.usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -337,6 +358,7 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
             << "handle = " << utils::io::hex << textureImage << utils::io::dec << ", "
             << "extent = " << w << "x" << h << "x"<< depth << ", "
             << "mipLevels = " << int(levels) << ", "
+            << "usage = " << imageInfo.usage << ", "
             << "format = " << vkformat << utils::io::endl;
     }
     ASSERT_POSTCONDITION(!error, "Unable to create image.");
@@ -367,6 +389,9 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
     if (target == SamplerType::SAMPLER_CUBEMAP) {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
         viewInfo.subresourceRange.layerCount = 6;
+    } else if (target == SamplerType::SAMPLER_2D_ARRAY) {
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        viewInfo.subresourceRange.layerCount = depth;
     } else {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.subresourceRange.layerCount = 1;
@@ -376,6 +401,24 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
     }
     error = vkCreateImageView(context.device, &viewInfo, VKALLOC, &imageView);
     ASSERT_POSTCONDITION(!error, "Unable to create image view.");
+
+    // TODO: The following layout transition is a workaround for a potential validation bug. It
+    // lets us avoid an InvalidImageLayout validation error, which could be a false positive since
+    // we perform the necessary transition via beginRenderPass(). This comment block should be
+    // updated after investigating the LunarG validation layer.
+    if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
+        auto transition = [=](VulkanCommandBuffer commands) {
+            VulkanTexture::transitionImageLayout(commands.cmdbuffer, textureImage,
+                    VK_IMAGE_LAYOUT_UNDEFINED, getTextureLayout(usage), 0, 1, levels);
+        };
+        if (mContext.currentCommands) {
+            transition(*mContext.currentCommands);
+        } else {
+            acquireWorkCommandBuffer(mContext);
+            transition(mContext.work);
+            flushWorkCommandBuffer(mContext);
+        }
+    }
 }
 
 VulkanTexture::~VulkanTexture() {
@@ -421,8 +464,7 @@ void VulkanTexture::update2DImage(const PixelBufferDescriptor& data, uint32_t wi
         copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height, nullptr,
                 miplevel);
         transitionImageLayout(commands.cmdbuffer, textureImage,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, miplevel, 1);
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, getTextureLayout(usage), miplevel, 1);
 
         mStagePool.releaseStage(stage, commands);
     };
@@ -466,8 +508,7 @@ void VulkanTexture::updateCubeImage(const PixelBufferDescriptor& data,
         copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height,
                 &faceOffsets, miplevel);
         transitionImageLayout(commands.cmdbuffer, textureImage,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, miplevel, 6);
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, getTextureLayout(usage), miplevel, 6);
 
         mStagePool.releaseStage(stage, commands);
     };
@@ -483,7 +524,11 @@ void VulkanTexture::updateCubeImage(const PixelBufferDescriptor& data,
 }
 
 void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
-        VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel, uint32_t layerCount) {
+        VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
+        uint32_t layerCount, uint32_t levelCount) {
+    if (oldLayout == newLayout) {
+        return;
+    }
     VkImageMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -493,7 +538,7 @@ void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
     barrier.image = image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = miplevel;
-    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.levelCount = levelCount;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = layerCount;
     VkPipelineStageFlags sourceStage;
@@ -512,6 +557,12 @@ void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
             destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             break;
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            break;
+        case VK_IMAGE_LAYOUT_GENERAL:
             barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
             barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -624,6 +675,27 @@ void VulkanRenderPrimitive::setBuffers(VulkanVertexBuffer* vertexBuffer,
         };
         bufferIndex++;
     }
+}
+
+VulkanTimerQuery::VulkanTimerQuery(VulkanContext& context) : mContext(context) {
+    auto& bitset = context.timestamps.used;
+    const size_t maxTimers = bitset.size();
+    assert(bitset.count() < maxTimers);
+    for (size_t timerIndex = 0; timerIndex < maxTimers; ++timerIndex) {
+        if (!bitset.test(timerIndex)) {
+            bitset.set(timerIndex);
+            startingQueryIndex = timerIndex * 2;
+            stoppingQueryIndex = timerIndex * 2 + 1;
+            return;
+        }
+    }
+    utils::slog.e << "More than " << maxTimers << " timers are not supported." << utils::io::endl;
+    startingQueryIndex = 0;
+    stoppingQueryIndex = 1;
+}
+
+VulkanTimerQuery::~VulkanTimerQuery() {
+    mContext.timestamps.used.unset(startingQueryIndex / 2);
 }
 
 } // namespace filament

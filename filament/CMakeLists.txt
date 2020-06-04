@@ -47,8 +47,9 @@ set(SRCS
         src/fg/Blackboard.cpp
         src/fg/FrameGraph.cpp
         src/fg/FrameGraphHandle.cpp
-        src/fg/fg/RenderTarget.cpp
-        src/fg/fg/RenderTargetResource.cpp
+        src/fg/FrameGraphPassResources.cpp
+        src/fg/fg/PassNode.cpp
+        src/fg/fg/RenderTargetResourceEntry.cpp
         src/fg/fg/ResourceEntry.cpp
         src/fg/ResourceAllocator.cpp
         src/Box.cpp
@@ -78,6 +79,7 @@ set(SRCS
         src/RenderTarget.cpp
         src/Scene.cpp
         src/ShadowMap.cpp
+        src/ShadowMapManager.cpp
         src/Skybox.cpp
         src/SwapChain.cpp
         src/Stream.cpp
@@ -98,8 +100,8 @@ set(PRIVATE_HDRS
         src/fg/FrameGraphPassResources.h
         src/fg/FrameGraphHandle.h
         src/fg/fg/PassNode.h
-        src/fg/fg/RenderTarget.h
         src/fg/fg/ResourceEntry.h
+        src/fg/fg/RenderTargetResourceEntry.h
         src/fg/fg/ResourceNode.h
         src/fg/ResourceAllocator.h
         src/fg/fg/VirtualResource.h
@@ -122,6 +124,7 @@ set(PRIVATE_HDRS
         src/details/ResourceList.h
         src/details/Scene.h
         src/details/ShadowMap.h
+        src/details/ShadowMapManager.h
         src/details/Skybox.h
         src/details/Stream.h
         src/details/SwapChain.h
@@ -140,11 +143,18 @@ set(PRIVATE_HDRS
 
 set(MATERIAL_SRCS
         src/materials/defaultMaterial.mat
-        src/materials/blit.mat
-        src/materials/blur.mat
+        src/materials/dof.mat
+        src/materials/dofBlur.mat
+        src/materials/blitLow.mat
+        src/materials/blitMedium.mat
+        src/materials/blitHigh.mat
+        src/materials/bloomDownsample.mat
+        src/materials/bloomUpsample.mat
+        src/materials/bilateralBlur.mat
         src/materials/mipmapDepth.mat
         src/materials/skybox.mat
         src/materials/sao.mat
+        src/materials/separableGaussianBlur.mat
         src/materials/tonemapping.mat
         src/materials/fxaa.mat
 )
@@ -208,12 +218,25 @@ add_custom_command(
     DEPENDS ../shaders/src/tone_mapping.fs
     DEPENDS ../shaders/src/conversion_functions.fs
     DEPENDS ../shaders/src/dithering.fs
+    DEPENDS ../shaders/src/bloom.fs
     APPEND
 )
 
 add_custom_command(
     OUTPUT "${MATERIAL_DIR}/fxaa.filamat"
     DEPENDS ../shaders/src/fxaa.fs
+    APPEND
+)
+
+add_custom_command(
+    OUTPUT "${MATERIAL_DIR}/dof.filamat"
+    DEPENDS src/materials/dofUtils.fs
+    APPEND
+)
+
+add_custom_command(
+    OUTPUT "${MATERIAL_DIR}/dofBlur.filamat"
+    DEPENDS src/materials/dofUtils.fs
     APPEND
 )
 
@@ -258,14 +281,6 @@ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
 # Dependencies
 # ==================================================================================================
 
-if (ANDROID)
-    target_link_libraries(${TARGET} PUBLIC GLESv3 EGL android)
-endif()
-
-if (APPLE AND NOT IOS)
-    target_link_libraries(${TARGET} PRIVATE "-framework Cocoa")
-endif()
-
 target_link_libraries(${TARGET} PUBLIC backend)
 target_link_libraries(${TARGET} PUBLIC math)
 target_link_libraries(${TARGET} PUBLIC utils)
@@ -283,19 +298,6 @@ else()
     add_definitions(-DFILAMENT_ENABLE_MATDBG=0)
 endif()
 
-# Android, iOS, and WebGL do not use bluegl.
-if(NOT IOS AND NOT ANDROID AND NOT WEBGL)
-    target_link_libraries(${TARGET} PRIVATE bluegl)
-endif()
-
-if (FILAMENT_SUPPORTS_VULKAN)
-    target_link_libraries(${TARGET} PUBLIC bluevk vkmemalloc)
-endif()
-
-if (FILAMENT_SUPPORTS_METAL)
-    target_link_libraries(${TARGET} PUBLIC "-framework Metal -framework CoreVideo")
-endif()
-
 if (LINUX)
     target_link_libraries(${TARGET} PRIVATE dl)
 endif()
@@ -303,7 +305,7 @@ endif()
 # ==================================================================================================
 # Compiler flags
 # ==================================================================================================
-if (MSVC OR CLANG_CL)
+if (MSVC)
     set(OPTIMIZATION_FLAGS
         /fp:fast
     )
@@ -330,24 +332,16 @@ set(LINUX_COMPILER_FLAGS
         -fPIC
 )
 
-if (MSVC_NATIVE)
-    set(FILAMENT_WARNINGS -W0)
+if (MSVC)
+    set(FILAMENT_WARNINGS /W3)
 else()
     set(FILAMENT_WARNINGS
-            -Wextra -Wno-unused-parameter
+            -Wall -Wextra -Wno-unused-parameter
             -Wextra-semi -Wnewline-eof -Wdeprecated -Wundef
             -Wgnu-conditional-omitted-operand
             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
             -Wover-aligned
     )
-endif()
-
-# clang-cl maps -Wall to -Weverything, which clutters logs with benign -Wc++98-compat warnings
-# Use /W4 instead for clang-cl builds
-if (CLANG_CL)
-    set(FILAMENT_WARNINGS /W4 ${FILAMENT_WARNINGS})
-else()
-    set(FILAMENT_WARNINGS -Wall ${FILAMENT_WARNINGS})
 endif()
 
 target_compile_options(${TARGET} PRIVATE

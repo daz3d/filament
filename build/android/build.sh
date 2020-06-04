@@ -8,11 +8,27 @@
 #
 # The default is release
 
+NDK_VERSION="ndk;21.0.6113669"
+ANDROID_NDK_VERSION=21
+
+echo "This script is intended to run in a CI environment and may modify your current environment."
+echo "Please refer to BUILDING.md for more information."
+
+read -r -p "Do you wish to proceed (y/n)? " choice
+case "${choice}" in
+    y|Y)
+	      echo "Build will proceed..."
+	      ;;
+    n|N)
+    	  exit 0
+    	  ;;
+	  *)
+        exit 0
+        ;;
+esac
+
 set -e
 set -x
-
-NDK_VERSION="ndk;20.0.5594570"
-ANDROID_NDK_VERSION=20
 
 UNAME=`echo $(uname)`
 LC_UNAME=`echo $UNAME | tr '[:upper:]' '[:lower:]'`
@@ -42,5 +58,12 @@ else
     ${ANDROID_HOME}/tools/bin/sdkmanager "${NDK_VERSION}" > /dev/null
 fi
 
+# Only build 1 32 bit and 1 64 bit target during presubmit to cut down build times
+# Continuous builds will build everything
+ANDROID_ABIS=
+if [[ "$TARGET" == "presubmit" ]]; then
+  ANDROID_ABIS="-q arm64-v8a,x86"
+fi
+
 pushd `dirname $0`/../.. > /dev/null
-./build.sh -p android -c $GENERATE_ARCHIVES $BUILD_DEBUG $BUILD_RELEASE
+./build.sh -p android $ANDROID_ABIS -c $GENERATE_ARCHIVES $BUILD_DEBUG $BUILD_RELEASE

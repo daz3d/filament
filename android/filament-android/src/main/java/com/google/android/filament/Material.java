@@ -326,6 +326,21 @@ public class Material {
         return new MaterialInstance(this, nativeInstance);
     }
 
+    /**
+     * Creates a new instance of this material with a specified name. Material instances should be
+     * freed using {@link Engine#destroyMaterialInstance(MaterialInstance)}.
+     *
+     * @param name arbitrary label to associate with the given material instance
+     *
+     * @return the new instance
+     */
+    @NonNull
+    public MaterialInstance createInstance(@NonNull String name) {
+        long nativeInstance = nCreateInstanceWithName(getNativeObject(), name);
+        if (nativeInstance == 0) throw new IllegalStateException("Couldn't create MaterialInstance");
+        return new MaterialInstance(this, nativeInstance);
+    }
+
     /** Returns the material's default instance. */
     @NonNull
     public MaterialInstance getDefaultInstance() {
@@ -422,7 +437,7 @@ public class Material {
     }
 
     /**
-     * Indicates whether this material will write to the color buffer.
+     * Indicates whether instances of this material will, by default, write to the color buffer.
      *
      * @see
      * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:colorwrite">
@@ -433,7 +448,7 @@ public class Material {
     }
 
     /**
-     * Indicates whether this material will write to the depth buffer.
+     * Indicates whether instances of this material will, by default, write to the depth buffer.
      *
      * @see
      * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:depthwrite">
@@ -444,7 +459,7 @@ public class Material {
     }
 
     /**
-     * Indicates whether this material will use depth testing.
+     * Indicates whether instances of this material will, by default, use depth testing.
      *
      * @see
      * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:depthculling">
@@ -879,6 +894,7 @@ public class Material {
 
     private static native long nBuilderBuild(long nativeEngine, @NonNull Buffer buffer, int size);
     private static native long nCreateInstance(long nativeMaterial);
+    private static native long nCreateInstanceWithName(long nativeMaterial, @NonNull String name);
     private static native long nGetDefaultInstance(long nativeMaterial);
 
     private static native String nGetName(long nativeMaterial);

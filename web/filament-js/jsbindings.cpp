@@ -127,6 +127,13 @@ namespace emscripten {
         BIND(utils::EntityManager)
         BIND(VertexBuffer)
         BIND(View)
+
+        // Permit use of Texture* inside emscripten::value_object.
+        template<> struct TypeID<Texture*> {
+            static constexpr TYPEID get() {
+                return LightTypeID<Texture>::get();
+            }
+        };
     }
 }
 #undef BIND
@@ -275,6 +282,30 @@ value_object<Box>("Box")
 value_object<filament::Aabb>("Aabb")
     .field("min", &filament::Aabb::min)
     .field("max", &filament::Aabb::max);
+
+value_object<filament::Renderer::ClearOptions>("Renderer$ClearOptions")
+    .field("clearColor", &filament::Renderer::ClearOptions::clearColor)
+    .field("clear", &filament::Renderer::ClearOptions::clear)
+    .field("discard", &filament::Renderer::ClearOptions::discard);
+
+value_object<filament::View::AmbientOcclusionOptions>("View$AmbientOcclusionOptions")
+    .field("radius", &filament::View::AmbientOcclusionOptions::radius)
+    .field("power", &filament::View::AmbientOcclusionOptions::power)
+    .field("bias", &filament::View::AmbientOcclusionOptions::bias)
+    .field("resolution", &filament::View::AmbientOcclusionOptions::resolution)
+    .field("intensity", &filament::View::AmbientOcclusionOptions::intensity)
+    .field("quality", &filament::View::AmbientOcclusionOptions::quality);
+
+value_object<filament::View::BloomOptions>("View$BloomOptions")
+    .field("dirtStrength", &filament::View::BloomOptions::dirtStrength)
+    .field("strength", &filament::View::BloomOptions::strength)
+    .field("resolution", &filament::View::BloomOptions::resolution)
+    .field("anamorphism", &filament::View::BloomOptions::anamorphism)
+    .field("levels", &filament::View::BloomOptions::levels)
+    .field("threshold", &filament::View::BloomOptions::threshold)
+    .field("enabled", &filament::View::BloomOptions::enabled)
+    .field("blendMode", &filament::View::BloomOptions::blendMode)
+    .field("dirt", &filament::View::BloomOptions::dirt);
 
 // In JavaScript, a flat contiguous representation is best for matrices (see gl-matrix) so we
 // need to define a small wrapper here.
@@ -452,6 +483,7 @@ class_<Renderer>("Renderer")
         }
         engine->execute();
     }), allow_raw_pointers())
+    .function("_setClearOptions", &Renderer::setClearOptions, allow_raw_pointers())
     .function("beginFrame", &Renderer::beginFrame, allow_raw_pointers())
     .function("endFrame", &Renderer::endFrame, allow_raw_pointers());
 
@@ -461,11 +493,15 @@ class_<Renderer>("Renderer")
 class_<View>("View")
     .function("setScene", &View::setScene, allow_raw_pointers())
     .function("setCamera", &View::setCamera, allow_raw_pointers())
+    .function("setBlendMode", &View::setBlendMode)
+    .function("getBlendMode", &View::getBlendMode)
     .function("getViewport", &View::getViewport)
     .function("setViewport", &View::setViewport)
-    .function("setClearColor", &View::setClearColor)
-    .function("setDepthPrepass", &View::setDepthPrepass)
     .function("setPostProcessingEnabled", &View::setPostProcessingEnabled)
+    .function("_setAmbientOcclusionOptions", &View::setAmbientOcclusionOptions)
+    .function("_setBloomOptions", &View::setBloomOptions)
+    .function("setAmbientOcclusion", &View::setAmbientOcclusion)
+    .function("getAmbientOcclusion", &View::getAmbientOcclusion)
     .function("setAntiAliasing", &View::setAntiAliasing)
     .function("getAntiAliasing", &View::getAntiAliasing)
     .function("setSampleCount", &View::setSampleCount)
@@ -545,7 +581,12 @@ class_<Camera>("Camera")
         self->setModelMatrix(m.m);
     }), allow_raw_pointers())
 
-    .function("lookAt", &Camera::lookAt)
+    .function("lookAt", EMBIND_LAMBDA(void, (Camera* self,
+            const math::float3& eye,
+            const math::float3& center,
+            const math::float3& up), {
+        self->lookAt(eye, center, up);
+    }), allow_raw_pointers())
 
     .function("getModelMatrix", EMBIND_LAMBDA(flatmat4, (Camera* self), {
         return flatmat4 { self->getModelMatrix() };
@@ -606,6 +647,26 @@ class_<RenderableBuilder>("RenderableManager$Builder")
             VertexBuffer* vertices,
             IndexBuffer* indices), {
         return &builder->geometry(index, type, vertices, indices); })
+
+    .BUILDER_FUNCTION("geometryOffset", RenderableBuilder, (RenderableBuilder* builder,
+            size_t index,
+            RenderableManager::PrimitiveType type,
+            VertexBuffer* vertices,
+            IndexBuffer* indices,
+            size_t offset,
+            size_t count), {
+        return &builder->geometry(index, type, vertices, indices, offset, count); })
+
+    .BUILDER_FUNCTION("geometryMinMax", RenderableBuilder, (RenderableBuilder* builder,
+            size_t index,
+            RenderableManager::PrimitiveType type,
+            VertexBuffer* vertices,
+            IndexBuffer* indices,
+            size_t offset,
+            size_t minIndex,
+            size_t maxIndex,
+            size_t count), {
+        return &builder->geometry(index, type, vertices, indices, offset, minIndex, maxIndex, count); })
 
     .BUILDER_FUNCTION("material", RenderableBuilder, (RenderableBuilder* builder,
             size_t index, MaterialInstance* mi), {
@@ -900,8 +961,8 @@ class_<VertexBuilder>("VertexBuffer$Builder")
 class_<VertexBuffer>("VertexBuffer")
     .class_function("Builder", (VertexBuilder (*)()) [] { return VertexBuilder(); })
     .function("_setBufferAt", EMBIND_LAMBDA(void, (VertexBuffer* self,
-            Engine* engine, uint8_t bufferIndex, BufferDescriptor vbd), {
-        self->setBufferAt(*engine, bufferIndex, std::move(*vbd.bd));
+            Engine* engine, uint8_t bufferIndex, BufferDescriptor vbd, uint32_t byteOffset), {
+        self->setBufferAt(*engine, bufferIndex, std::move(*vbd.bd), byteOffset);
     }), allow_raw_pointers());
 
 class_<IndexBuilder>("IndexBuffer$Builder")
@@ -918,20 +979,27 @@ class_<IndexBuilder>("IndexBuffer$Builder")
 class_<IndexBuffer>("IndexBuffer")
     .class_function("Builder", (IndexBuilder (*)()) [] { return IndexBuilder(); })
     .function("_setBuffer", EMBIND_LAMBDA(void, (IndexBuffer* self,
-            Engine* engine, BufferDescriptor ibd), {
-        self->setBuffer(*engine, std::move(*ibd.bd));
+            Engine* engine, BufferDescriptor ibd, uint32_t byteOffset), {
+        self->setBuffer(*engine, std::move(*ibd.bd), byteOffset);
     }), allow_raw_pointers());
 
 class_<Material>("Material")
     .function("getDefaultInstance",
             select_overload<MaterialInstance*(void)>(&Material::getDefaultInstance),
             allow_raw_pointers())
-    .function("createInstance", &Material::createInstance, allow_raw_pointers())
+    .function("createInstance", EMBIND_LAMBDA(MaterialInstance*, (Material* self), {
+        return self->createInstance(); }), allow_raw_pointers())
+    .function("createNamedInstance", EMBIND_LAMBDA(MaterialInstance*,
+            (Material* self, std::string name), {
+        return self->createInstance(name.c_str()); }), allow_raw_pointers())
     .function("getName", EMBIND_LAMBDA(std::string, (Material* self), {
         return std::string(self->getName());
     }), allow_raw_pointers());
 
 class_<MaterialInstance>("MaterialInstance")
+    .function("getName", EMBIND_LAMBDA(std::string, (MaterialInstance* self), {
+        return std::string(self->getName());
+    }), allow_raw_pointers())
     .function("setBoolParameter", EMBIND_LAMBDA(void,
             (MaterialInstance* self, std::string name, bool value), {
         self->setParameter(name.c_str(), value); }), allow_raw_pointers())
@@ -959,7 +1027,10 @@ class_<MaterialInstance>("MaterialInstance")
     .function("setPolygonOffset", &MaterialInstance::setPolygonOffset)
     .function("setMaskThreshold", &MaterialInstance::setMaskThreshold)
     .function("setDoubleSided", &MaterialInstance::setDoubleSided)
-    .function("setCullingMode", &MaterialInstance::setCullingMode);
+    .function("setCullingMode", &MaterialInstance::setCullingMode)
+    .function("setColorWrite", &MaterialInstance::setColorWrite)
+    .function("setDepthWrite", &MaterialInstance::setDepthWrite)
+    .function("setDepthCulling", &MaterialInstance::setDepthCulling);
 
 class_<TextureSampler>("TextureSampler")
     .constructor<backend::SamplerMinFilter, backend::SamplerMagFilter, backend::SamplerWrapMode>();
@@ -1052,12 +1123,15 @@ class_<IblBuilder>("IndirectLight$Builder")
         return &builder->rotation(value.m); });
 
 class_<Skybox>("Skybox")
-    .class_function("Builder", (SkyBuilder (*)()) [] { return SkyBuilder(); });
+    .class_function("Builder", (SkyBuilder (*)()) [] { return SkyBuilder(); })
+    .function("setColor", &Skybox::setColor);
 
 class_<SkyBuilder>("Skybox$Builder")
     .function("_build", EMBIND_LAMBDA(Skybox*, (SkyBuilder* builder, Engine* engine), {
         return builder->build(*engine);
     }), allow_raw_pointers())
+    .BUILDER_FUNCTION("color", SkyBuilder, (SkyBuilder* builder, filament::math::float4 color), {
+        return &builder->color(color); })
     .BUILDER_FUNCTION("environment", SkyBuilder, (SkyBuilder* builder, Texture* cubemap), {
         return &builder->environment(cubemap); })
     .BUILDER_FUNCTION("showSun", SkyBuilder, (SkyBuilder* builder, bool show), {
@@ -1068,7 +1142,8 @@ class_<SkyBuilder>("Skybox$Builder")
 
 /// Entity ::core class:: Handle to an object consisting of a set of components.
 /// To create an entity with no components, use [EntityManager].
-class_<utils::Entity>("Entity");
+class_<utils::Entity>("Entity")
+    .function("getId", &utils::Entity::getId);
 
 /// EntityManager ::core class:: Singleton used for constructing entities in Filament's ECS.
 class_<utils::EntityManager>("EntityManager")
@@ -1335,7 +1410,7 @@ class_<SurfaceBuilder>("SurfaceOrientation$Builder")
     })
 
     .function("_build", EMBIND_LAMBDA(SurfaceOrientation*, (SurfaceBuilder* builder), {
-        return new SurfaceOrientation(builder->build());
+        return builder->build();
     }), allow_raw_pointers());
 
 class_<SurfaceOrientation>("SurfaceOrientation")
@@ -1375,6 +1450,8 @@ class_<FilamentAsset>("gltfio$FilamentAsset")
     }), allow_raw_pointers())
 
     .function("getRoot", &FilamentAsset::getRoot)
+
+    .function("popRenderable", &FilamentAsset::popRenderable)
 
     .function("getMaterialInstances", EMBIND_LAMBDA(std::vector<const MaterialInstance*>,
             (FilamentAsset* self), {
@@ -1439,7 +1516,7 @@ class_<ResourceLoader>("gltfio$ResourceLoader")
     .constructor(EMBIND_LAMBDA(ResourceLoader*, (Engine* engine), {
         return new ResourceLoader({
             .engine = engine,
-            .gltfPath = utils::Path(),
+            .gltfPath = nullptr,
             .normalizeSkinningWeights = true,
             .recomputeBoundingBoxes = true
         });
@@ -1447,9 +1524,22 @@ class_<ResourceLoader>("gltfio$ResourceLoader")
 
     .function("addResourceData", EMBIND_LAMBDA(void, (ResourceLoader* self, std::string url,
             BufferDescriptor buffer), {
-        self->addResourceData(url, std::move(*buffer.bd));
+        self->addResourceData(url.c_str(), std::move(*buffer.bd));
     }), allow_raw_pointers())
 
-    .function("loadResources", &ResourceLoader::loadResources, allow_raw_pointers());
+    .function("hasResourceData", EMBIND_LAMBDA(bool, (ResourceLoader* self, std::string url), {
+        return self->hasResourceData(url.c_str());
+    }), allow_raw_pointers())
+
+    .function("loadResources", EMBIND_LAMBDA(bool, (ResourceLoader* self, FilamentAsset* asset), {
+        return self->loadResources(asset);
+    }), allow_raw_pointers())
+
+    .function("asyncBeginLoad", EMBIND_LAMBDA(bool, (ResourceLoader* self, FilamentAsset* asset), {
+        return self->asyncBeginLoad(asset);
+    }), allow_raw_pointers())
+
+    .function("asyncGetLoadProgress", &ResourceLoader::asyncGetLoadProgress)
+    .function("asyncUpdateLoad", &ResourceLoader::asyncUpdateLoad);
 
 } // EMSCRIPTEN_BINDINGS

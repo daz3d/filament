@@ -41,16 +41,8 @@ namespace details {
 
 FMaterialInstance::FMaterialInstance() noexcept = default;
 
-FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material) {
-    mMaterial = material;
-
-    // We inherit the resolved culling mode rather than the builder-set culling mode.
-    // This preserves the property whereby double-sidedness automatically disables culling.
-    mCulling = mMaterial->getRasterState().culling;
-
-    mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
-            material->getId(), material->generateMaterialInstanceId());
-
+FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material, const char* name) :
+        mName(name) {
     FEngine::DriverApi& driver = engine.getDriverApi();
 
     if (!material->getUniformInterfaceBlock().isEmpty()) {
@@ -63,20 +55,11 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material)
         mSbHandle = driver.createSamplerGroup(mSamplers.getSize());
     }
 
-    initParameters(material);
+    initialize(material);
 }
 
 // This version is used to initialize the default material instance
 void FMaterialInstance::initDefaultInstance(FEngine& engine, FMaterial const* material) {
-    mMaterial = material;
-
-    // We inherit the resolved culling mode rather than the builder-set culling mode.
-    // This preserves the property whereby double-sidedness automatically disables culling.
-    mCulling = mMaterial->getRasterState().culling;
-
-    mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
-            material->getId(), material->generateMaterialInstanceId());
-
     FEngine::DriverApi& driver = engine.getDriverApi();
 
     if (!material->getUniformInterfaceBlock().isEmpty()) {
@@ -89,7 +72,7 @@ void FMaterialInstance::initDefaultInstance(FEngine& engine, FMaterial const* ma
         mSbHandle = driver.createSamplerGroup(mSamplers.getSize());
     }
 
-    initParameters(material);
+    initialize(material);
 }
 
 FMaterialInstance::~FMaterialInstance() noexcept = default;
@@ -100,7 +83,21 @@ void FMaterialInstance::terminate(FEngine& engine) {
     driver.destroySamplerGroup(mSbHandle);
 }
 
-void FMaterialInstance::initParameters(FMaterial const* material) {
+void FMaterialInstance::initialize(FMaterial const* material) {
+    mMaterial = material;
+
+    const RasterState& rasterState = mMaterial->getRasterState();
+
+    // We inherit the resolved culling mode rather than the builder-set culling mode.
+    // This preserves the property whereby double-sidedness automatically disables culling.
+    mCulling = rasterState.culling;
+
+    mColorWrite = rasterState.colorWrite;
+    mDepthWrite = rasterState.depthWrite;
+    mDepthFunc = rasterState.depthFunc;
+
+    mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
+            material->getId(), material->generateMaterialInstanceId());
 
     if (material->getBlendingMode() == BlendingMode::MASKED) {
         static_cast<MaterialInstance*>(this)->setParameter(
@@ -130,7 +127,7 @@ void FMaterialInstance::commitSlow(DriverApi& driver) const {
     }
 }
 
-template<typename T>
+template<typename T, typename>
 inline void FMaterialInstance::setParameter(const char* name, T value) noexcept {
     ssize_t offset = mMaterial->getUniformInterfaceBlock().getUniformOffset(name, 0);
     if (offset >= 0) {
@@ -138,7 +135,7 @@ inline void FMaterialInstance::setParameter(const char* name, T value) noexcept 
     }
 }
 
-template <typename T>
+template <typename T, typename >
 inline void FMaterialInstance::setParameter(const char* name, const T* value, size_t count) noexcept {
     ssize_t offset = mMaterial->getUniformInterfaceBlock().getUniformOffset(name, 0);
     if (offset >= 0) {
@@ -170,6 +167,28 @@ void FMaterialInstance::setDoubleSided(bool doubleSided) noexcept {
 
 void FMaterialInstance::setCullingMode(CullingMode culling) noexcept {
     mCulling = culling;
+}
+
+void FMaterialInstance::setColorWrite(bool enable) noexcept {
+    mColorWrite = enable;
+}
+
+void FMaterialInstance::setDepthWrite(bool enable) noexcept {
+    mDepthWrite = enable;
+}
+
+void FMaterialInstance::setDepthCulling(bool enable) noexcept {
+    mDepthFunc = enable ? RasterState::DepthFunc::LE : RasterState::DepthFunc::A;
+}
+
+const char* FMaterialInstance::getName() const noexcept {
+    // To decide whether to use the parent material name as a fallback, we check for the nullness of
+    // the instance's CString rather than calling empty(). This allows instances to override the
+    // parent material's name with a blank string.
+    if (mName.data() == nullptr) {
+        return mMaterial->getName().c_str();
+    }
+    return mName.c_str();
 }
 
 // explicit template instantiation of our supported types
@@ -215,15 +234,19 @@ template UTILS_NOINLINE void FMaterialInstance::setParameter<mat4f>   (const cha
 using namespace details;
 
 Material const* MaterialInstance::getMaterial() const noexcept {
-    return upcast(this)->mMaterial;
+    return upcast(this)->getMaterial();
 }
 
-template <typename T>
+const char* MaterialInstance::getName() const noexcept {
+    return upcast(this)->getName();
+}
+
+template <typename T, typename>
 void MaterialInstance::setParameter(const char* name, T value) noexcept {
     upcast(this)->setParameter<T>(name, value);
 }
 
-template <typename T>
+template <typename T, typename>
 void MaterialInstance::setParameter(const char* name, const T* value, size_t count) noexcept {
     upcast(this)->setParameter<T>(name, value, count);
 }
@@ -311,5 +334,18 @@ void MaterialInstance::setDoubleSided(bool doubleSided) noexcept {
 void MaterialInstance::setCullingMode(CullingMode culling) noexcept {
     upcast(this)->setCullingMode(culling);
 }
+
+void MaterialInstance::setColorWrite(bool enable) noexcept {
+    upcast(this)->setColorWrite(enable);
+}
+
+void MaterialInstance::setDepthWrite(bool enable) noexcept {
+    upcast(this)->setDepthWrite(enable);
+}
+
+void MaterialInstance::setDepthCulling(bool enable) noexcept {
+    upcast(this)->setDepthCulling(enable);
+}
+
 
 } // namespace filament

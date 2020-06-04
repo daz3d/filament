@@ -199,7 +199,10 @@ void OpenGLProgram::updateSamplers(OpenGLDriver* gl) noexcept {
 
             Handle<HwTexture> th = samplers[index].t;
             if (UTILS_UNLIKELY(!th)) {
-                continue; // this can happen if the SamplerGroup isn't initialized
+#ifndef NDEBUG
+                slog.w << "no texture bound to unit " << +index << io::endl;
+#endif
+                continue;
             }
 
             const GLTexture* const UTILS_RESTRICT t = gl->handle_cast<const GLTexture*>(th);
@@ -211,7 +214,6 @@ void OpenGLProgram::updateSamplers(OpenGLDriver* gl) noexcept {
 
             gl->bindTexture(tmu, t);
 
-            // FIXME: getSampler() is expensive because it's a hashmap lookup
             GLuint sampler = gl->getSampler(samplers[index].s);
             gl->getContext().bindSampler(tmu, sampler);
         }

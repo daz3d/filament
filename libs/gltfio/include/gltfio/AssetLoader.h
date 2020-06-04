@@ -54,6 +54,9 @@ struct AssetConfiguration {
     //! specified, AssetLoader will use the singleton EntityManager associated with the current
     //! process.
     utils::EntityManager* entities = nullptr;
+
+    //! Optional default node name for anonymous nodes
+    char* defaultNodeName = nullptr;
 };
 
 /**
@@ -173,6 +176,8 @@ public:
      * Gets the number of cached materials.
      */
     size_t getMaterialsCount() const noexcept;
+
+    utils::NameComponentManager* getNames() const noexcept;
 
     /*! \cond PRIVATE */
 protected:

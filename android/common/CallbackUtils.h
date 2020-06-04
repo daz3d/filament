@@ -23,6 +23,15 @@
 
 #include <filament/Engine.h>
 
+struct CallbackJni {
+#ifdef ANDROID
+    jclass handlerClass;
+    jmethodID post;
+#endif
+    jclass executorClass;
+    jmethodID execute;
+};
+
 struct JniBufferCallback {
     static JniBufferCallback* make(filament::Engine* engine,
             JNIEnv* env, jobject handler, jobject callback, AutoBuffer&& buffer);
@@ -31,12 +40,15 @@ struct JniBufferCallback {
 
 private:
     JniBufferCallback(JNIEnv* env, jobject handler, jobject callback, AutoBuffer&& buffer);
+    JniBufferCallback(JniBufferCallback const &) = delete;
+    JniBufferCallback(JniBufferCallback&&) = delete;
     ~JniBufferCallback();
 
     JNIEnv* mEnv;
     jobject mHandler;
     jobject mCallback;
     AutoBuffer mBuffer;
+    CallbackJni mCallbackUtils;
 };
 
 struct JniImageCallback {
@@ -47,10 +59,13 @@ struct JniImageCallback {
 
 private:
     JniImageCallback(JNIEnv* env, jobject handler, jobject runnable, long image);
+    JniImageCallback(JniBufferCallback const &) = delete;
+    JniImageCallback(JniBufferCallback&&) = delete;
     ~JniImageCallback();
 
     JNIEnv* mEnv;
     jobject mHandler;
     jobject mCallback;
     long mImage;
+    CallbackJni mCallbackUtils;
 };
