@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.6)
 
 option(FILAMENT_SUPPORTS_VULKAN "Enables Vulkan on Android" OFF)
+option(FILAMENT_ENABLE_MATDBG "Enables Material debugger" OFF)
 
 set(FILAMENT_DIR ${FILAMENT_DIST_DIR})
 
@@ -40,13 +41,19 @@ add_library(smol-v STATIC IMPORTED)
 set_target_properties(smol-v PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libsmol-v.a)
 
+if (FILAMENT_ENABLE_MATDBG)
+    add_library(matdbg STATIC IMPORTED)
+    set_target_properties(matdbg PROPERTIES IMPORTED_LOCATION
+            ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libmatdbg.a)
+endif()
+
 set(VERSION_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/libfilament-jni.map")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,--version-script=${VERSION_SCRIPT}")
 
 add_library(filament-jni SHARED
     src/main/cpp/Camera.cpp
     src/main/cpp/Colors.cpp
-    src/main/cpp/VertexBuffer.cpp
+    src/main/cpp/ColorGrading.cpp
     src/main/cpp/Engine.cpp
     src/main/cpp/EntityManager.cpp
     src/main/cpp/Fence.cpp
@@ -66,6 +73,7 @@ add_library(filament-jni SHARED
     src/main/cpp/Texture.cpp
     src/main/cpp/TextureSampler.cpp
     src/main/cpp/TransformManager.cpp
+    src/main/cpp/VertexBuffer.cpp
     src/main/cpp/View.cpp
     # Android specific
     src/main/cpp/nativewindow/Android.cpp
@@ -90,6 +98,7 @@ target_link_libraries(filament-jni
     PRIVATE android
     PRIVATE jnigraphics
     PRIVATE utils
+    $<$<STREQUAL:${FILAMENT_ENABLE_MATDBG},ON>:matdbg>
     $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:bluevk>
     $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:smol-v>
 )

@@ -17,6 +17,7 @@
 #include "vulkan/VulkanHandles.h"
 
 #include "DataReshaper.h"
+#include "VulkanPlatform.h"
 
 #include <utils/Panic.h>
 
@@ -88,62 +89,81 @@ VulkanProgram::~VulkanProgram() {
 }
 
 static VulkanAttachment createOffscreenAttachment(VulkanTexture* tex) {
-    if (!tex) {
-        return {};
-    }
-    return { tex->vkformat, tex->textureImage, tex->imageView, tex->textureImageMemory, tex };
+    return {
+        .format = tex->vkformat,
+        .image = tex->textureImage,
+        .view = tex->imageView,
+        .memory = tex->textureImageMemory,
+        .texture = tex,
+        .layout = getTextureLayout(tex->usage)
+    };
 }
 
-VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height,
-        TargetBufferInfo colorInfo, VulkanTexture* color, TargetBufferInfo depthInfo,
-        VulkanTexture* depth) : HwRenderTarget(width, height), mContext(context), mOffscreen(true),
-        mColorLevel(colorInfo.level), mDepthLevel(depthInfo.level) {
-    mColor = createOffscreenAttachment(color);
-    mDepth = createOffscreenAttachment(depth);
+// Creates a special "default" render target (i.e. associated with the swap chain)
+// Note that the attachment structs are unused in this case in favor of VulkanSurfaceContext.
+VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context) : HwRenderTarget(0, 0),
+        mContext(context), mOffscreen(false) {}
 
-    // We cannot use the VkImageView that's in the texture because we need to select a single level.
-    if (color) {
+VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height,
+            VulkanAttachment color[MRT::TARGET_COUNT], VulkanAttachment depthStencil[2]) :
+            HwRenderTarget(width, height), mContext(context), mOffscreen(true) {
+
+    for (int targetIndex = 0; targetIndex < MRT::TARGET_COUNT; targetIndex++) {
+        VulkanAttachment& attachment = mColor[targetIndex];
+        if (!color[targetIndex].texture) {
+            attachment = {};
+            continue;
+        }
+
+        attachment = createOffscreenAttachment(color[targetIndex].texture);
+        attachment.level = color[targetIndex].level;
+
         VkImageViewCreateInfo viewInfo = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = mColor.image,
-            .format = mColor.format,
+            .image = mColor[targetIndex].image,
+            .format = mColor[targetIndex].format,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = colorInfo.level,
+                .baseMipLevel = mColor[targetIndex].level,
                 .levelCount = 1
             }
         };
-        if (color->target == SamplerType::SAMPLER_CUBEMAP) {
+        if (attachment.texture->target == SamplerType::SAMPLER_CUBEMAP) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
             viewInfo.subresourceRange.layerCount = 6;
-        } else if (color->target == SamplerType::SAMPLER_2D_ARRAY) {
+        } else if (attachment.texture->target == SamplerType::SAMPLER_2D_ARRAY) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
             viewInfo.subresourceRange.layerCount = 1;
-            viewInfo.subresourceRange.baseArrayLayer = colorInfo.layer;
+            viewInfo.subresourceRange.baseArrayLayer = attachment.layer;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewInfo.subresourceRange.layerCount = 1;
         }
-        vkCreateImageView(context.device, &viewInfo, VKALLOC, &mColor.view);
+        vkCreateImageView(context.device, &viewInfo, VKALLOC, &attachment.view);
     }
-    if (depth) {
+
+    mDepth = depthStencil[0].texture ? createOffscreenAttachment(depthStencil[0].texture) : VulkanAttachment {};
+    mDepth.level = depthStencil[0].level;
+
+    VulkanTexture* depthTexture = mDepth.texture;
+    if (depthTexture) {
         VkImageViewCreateInfo viewInfo = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = mDepth.image,
             .format = mDepth.format,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = depthInfo.level,
+                .baseMipLevel = mDepth.level,
                 .levelCount = 1
             }
         };
-        if (depth->target == SamplerType::SAMPLER_CUBEMAP) {
+        if (depthTexture->target == SamplerType::SAMPLER_CUBEMAP) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
             viewInfo.subresourceRange.layerCount = 6;
-        } else if (depth->target == SamplerType::SAMPLER_2D_ARRAY) {
+        } else if (depthTexture->target == SamplerType::SAMPLER_2D_ARRAY) {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
             viewInfo.subresourceRange.layerCount = 1;
-            viewInfo.subresourceRange.baseArrayLayer = depthInfo.layer;
+            viewInfo.subresourceRange.baseArrayLayer = mDepth.layer;
         } else {
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
             viewInfo.subresourceRange.layerCount = 1;
@@ -153,12 +173,10 @@ VulkanRenderTarget::VulkanRenderTarget(VulkanContext& context, uint32_t width, u
 }
 
 VulkanRenderTarget::~VulkanRenderTarget() {
-    if (mColor.view) {
-        vkDestroyImageView(mContext.device, mColor.view, VKALLOC);
+    for (int targetIndex = 0; targetIndex < MRT::TARGET_COUNT; targetIndex++) {
+        vkDestroyImageView(mContext.device, mColor[targetIndex].view, VKALLOC);
     }
-    if (mDepth.view) {
-        vkDestroyImageView(mContext.device, mDepth.view, VKALLOC);
-    }
+    vkDestroyImageView(mContext.device, mDepth.view, VKALLOC);
 }
 
 void VulkanRenderTarget::transformClientRectToPlatform(VkRect2D* bounds) const {
@@ -211,12 +229,33 @@ VkExtent2D VulkanRenderTarget::getExtent() const {
     return mContext.currentSurface->surfaceCapabilities.currentExtent;
 }
 
-VulkanAttachment VulkanRenderTarget::getColor() const {
-    return mOffscreen ? mColor : getSwapContext(mContext).attachment;
+VulkanAttachment VulkanRenderTarget::getColor(int target) const {
+    return (mOffscreen || target > 0) ? mColor[target] : getSwapContext(mContext).attachment;
 }
 
 VulkanAttachment VulkanRenderTarget::getDepth() const {
     return mOffscreen ? mDepth : mContext.currentSurface->depth;
+}
+
+int VulkanRenderTarget::getColorTargetCount() const {
+    if (!mOffscreen) {
+        return 1;
+    }
+    int count = 0;
+    for (int i = 0; i < MRT::TARGET_COUNT; i++) {
+        if (mColor[i].format != VK_FORMAT_UNDEFINED) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool VulkanRenderTarget::invalidate() {
+    if (!mOffscreen && getSwapContext(mContext).invalid) {
+        getSwapContext(mContext).invalid = false;
+        return true;
+    }
+    return false;
 }
 
 VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
@@ -302,18 +341,19 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
 
     // Vulkan does not support 24-bit depth, use the official fallback format.
     if (tformat == TextureFormat::DEPTH24) {
-        vkformat = mContext.depthFormat;
+        vkformat = mContext.finalDepthFormat;
     }
 
     // Create an appropriately-sized device-only VkImage, but do not fill it yet.
     VkImageCreateInfo imageInfo {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
+        .imageType = target == SamplerType::SAMPLER_3D ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
         .format = vkformat,
-        .extent = { w, h, 1 },
+        .extent = { w, h, depth },
         .mipLevels = levels,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
         .usage = 0
     };
     if (target == SamplerType::SAMPLER_CUBEMAP) {
@@ -336,6 +376,17 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
     if (any(usage & TextureUsage::SAMPLEABLE)) {
+
+#if VK_ENABLE_VALIDATION
+        // Validate that the format is actually sampleable.
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(context.physicalDevice, vkformat, &props);
+        if (!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+            utils::slog.w << "Texture usage is SAMPLEABLE but format " << vkformat << " is not "
+                    "sampleable with optimal tiling." << utils::io::endl;
+        }
+#endif
+
         imageInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
     if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
@@ -377,12 +428,15 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
     error = vkBindImageMemory(context.device, textureImage, textureImageMemory, 0);
     ASSERT_POSTCONDITION(!error, "Unable to bind image.");
 
+    mAspect = any(usage & TextureUsage::DEPTH_ATTACHMENT) ? VK_IMAGE_ASPECT_DEPTH_BIT :
+            VK_IMAGE_ASPECT_COLOR_BIT;
+
     // Create a VkImageView so that shaders can sample from the image.
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = textureImage;
     viewInfo.format = vkformat;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.aspectMask = mAspect;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = levels;
     viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -392,24 +446,20 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
     } else if (target == SamplerType::SAMPLER_2D_ARRAY) {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         viewInfo.subresourceRange.layerCount = depth;
+    } else if (target == SamplerType::SAMPLER_3D) {
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
+        viewInfo.subresourceRange.layerCount = 1;
     } else {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.subresourceRange.layerCount = 1;
     }
-    if (any(usage & TextureUsage::DEPTH_ATTACHMENT)) {
-        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    }
     error = vkCreateImageView(context.device, &viewInfo, VKALLOC, &imageView);
     ASSERT_POSTCONDITION(!error, "Unable to create image view.");
 
-    // TODO: The following layout transition is a workaround for a potential validation bug. It
-    // lets us avoid an InvalidImageLayout validation error, which could be a false positive since
-    // we perform the necessary transition via beginRenderPass(). This comment block should be
-    // updated after investigating the LunarG validation layer.
-    if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
+    if (any(usage & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::DEPTH_ATTACHMENT))) {
         auto transition = [=](VulkanCommandBuffer commands) {
             VulkanTexture::transitionImageLayout(commands.cmdbuffer, textureImage,
-                    VK_IMAGE_LAYOUT_UNDEFINED, getTextureLayout(usage), 0, 1, levels);
+                    VK_IMAGE_LAYOUT_UNDEFINED, getTextureLayout(usage), 0, 1, levels, mAspect);
         };
         if (mContext.currentCommands) {
             transition(*mContext.currentCommands);
@@ -429,7 +479,12 @@ VulkanTexture::~VulkanTexture() {
 
 void VulkanTexture::update2DImage(const PixelBufferDescriptor& data, uint32_t width,
         uint32_t height, int miplevel) {
-    assert(width <= this->width && height <= this->height);
+    update3DImage(std::move(data), width, height, 1, miplevel);
+}
+
+void VulkanTexture::update3DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
+        uint32_t depth, int miplevel) {
+    assert(width <= this->width && height <= this->height && depth <= this->depth);
     const uint32_t srcBytesPerTexel = getBytesPerPixel(format);
     const bool reshape = srcBytesPerTexel == 3 || srcBytesPerTexel == 6;
     const void* cpuData = data.buffer;
@@ -458,13 +513,13 @@ void VulkanTexture::update2DImage(const PixelBufferDescriptor& data, uint32_t wi
     vmaFlushAllocation(mContext.allocator, stage->memory, 0, numDstBytes);
 
     // Create a copy-to-device functor.
-    auto copyToDevice = [this, stage, width, height, miplevel] (VulkanCommandBuffer& commands) {
+    auto copyToDevice = [this, stage, width, height, depth, miplevel] (VulkanCommandBuffer& commands) {
         transitionImageLayout(commands.cmdbuffer, textureImage, VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 1);
-        copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height, nullptr,
-                miplevel);
-        transitionImageLayout(commands.cmdbuffer, textureImage,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, getTextureLayout(usage), miplevel, 1);
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 1, 1, mAspect);
+        copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height, depth,
+                nullptr, miplevel);
+        transitionImageLayout(commands.cmdbuffer, textureImage,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                getTextureLayout(usage), miplevel, 1, 1, mAspect);
 
         mStagePool.releaseStage(stage, commands);
     };
@@ -504,11 +559,12 @@ void VulkanTexture::updateCubeImage(const PixelBufferDescriptor& data,
         uint32_t width = std::max(1u, this->width >> miplevel);
         uint32_t height = std::max(1u, this->height >> miplevel);
         transitionImageLayout(commands.cmdbuffer, textureImage, VK_IMAGE_LAYOUT_UNDEFINED,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 6);
-        copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 6, 1, mAspect);
+        copyBufferToImage(commands.cmdbuffer, stage->buffer, textureImage, width, height, 1,
                 &faceOffsets, miplevel);
         transitionImageLayout(commands.cmdbuffer, textureImage,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, getTextureLayout(usage), miplevel, 6);
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, getTextureLayout(usage), miplevel, 6,
+                1, mAspect);
 
         mStagePool.releaseStage(stage, commands);
     };
@@ -523,9 +579,10 @@ void VulkanTexture::updateCubeImage(const PixelBufferDescriptor& data,
     }
 }
 
+// TODO: replace the last 4 args with VkImageSubresourceRange
 void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
         VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
-        uint32_t layerCount, uint32_t levelCount) {
+        uint32_t layerCount, uint32_t levelCount, VkImageAspectFlags aspect) {
     if (oldLayout == newLayout) {
         return;
     }
@@ -536,7 +593,7 @@ void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask = aspect;
     barrier.subresourceRange.baseMipLevel = miplevel;
     barrier.subresourceRange.levelCount = levelCount;
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -576,8 +633,8 @@ void VulkanTexture::transitionImageLayout(VkCommandBuffer cmd, VkImage image,
 }
 
 void VulkanTexture::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
-        uint32_t width, uint32_t height, FaceOffsets const* faceOffsets, uint32_t miplevel) {
-    VkExtent3D extent { width, height, 1 };
+        uint32_t width, uint32_t height, uint32_t depth, FaceOffsets const* faceOffsets, uint32_t miplevel) {
+    VkExtent3D extent { width, height, depth };
     if (target == SamplerType::SAMPLER_CUBEMAP) {
         assert(faceOffsets);
         VkBufferImageCopy regions[6] = {{}};
@@ -646,12 +703,16 @@ void VulkanRenderPrimitive::setBuffers(VulkanVertexBuffer* vertexBuffer,
         Attribute attrib = vertexBuffer->attributes[attribIndex];
         VkFormat vkformat = getVkFormat(attrib.type, attrib.flags & Attribute::FLAG_NORMALIZED);
 
-        // We re-use the positions buffer as a dummy buffer for any disabled attribute that might
-        // be consumed by the shader.
+        // HACK: Re-use the positions buffer as a dummy buffer for disabled attributes.
+        // We know that position exists (see earlier assert)
         if (!(enabledAttributes & (1U << attribIndex))) {
 
+            // HACK: Presently, Filament's vertex shaders declare all attributes as either vec4 or
+            // uvec4 (the latter is for bone indices), and positions are always at least 32 bits per
+            // element. Therefore we can assign a dummy type of either R8G8B8A8_UINT or
+            // R8G8B8A8_SNORM, depending on whether the shader expects to receive floats or ints.
             const bool isInteger = attrib.flags & Attribute::FLAG_INTEGER_TARGET;
-            vkformat = isInteger ? VK_FORMAT_R8G8B8A8_UINT : vkformat;
+            vkformat = isInteger ? VK_FORMAT_R8G8B8A8_UINT : VK_FORMAT_R8G8B8A8_SNORM;
 
             if (UTILS_LIKELY(enabledAttributes & 1)) {
                 attrib = vertexBuffer->attributes[0];
@@ -678,7 +739,8 @@ void VulkanRenderPrimitive::setBuffers(VulkanVertexBuffer* vertexBuffer,
 }
 
 VulkanTimerQuery::VulkanTimerQuery(VulkanContext& context) : mContext(context) {
-    auto& bitset = context.timestamps.used;
+    std::unique_lock<utils::Mutex> lock(context.timestamps.mutex);
+    utils::bitset32& bitset = context.timestamps.used;
     const size_t maxTimers = bitset.size();
     assert(bitset.count() < maxTimers);
     for (size_t timerIndex = 0; timerIndex < maxTimers; ++timerIndex) {
@@ -695,6 +757,7 @@ VulkanTimerQuery::VulkanTimerQuery(VulkanContext& context) : mContext(context) {
 }
 
 VulkanTimerQuery::~VulkanTimerQuery() {
+    std::unique_lock<utils::Mutex> lock(mContext.timestamps.mutex);
     mContext.timestamps.used.unset(startingQueryIndex / 2);
 }
 

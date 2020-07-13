@@ -35,7 +35,6 @@ using namespace utils;
 
 namespace filament {
 
-using namespace details;
 using namespace backend;
 
 struct Texture::BuilderDetails {
@@ -134,8 +133,6 @@ Texture* Texture::Builder::build(Engine& engine) {
 
 // ------------------------------------------------------------------------------------------------
 
-namespace details {
-
 FTexture::FTexture(FEngine& engine, const Builder& builder) {
     mWidth  = static_cast<uint32_t>(builder->mWidth);
     mHeight = static_cast<uint32_t>(builder->mHeight);
@@ -147,7 +144,7 @@ FTexture::FTexture(FEngine& engine, const Builder& builder) {
 
     FEngine::DriverApi& driver = engine.getDriverApi();
     if (UTILS_LIKELY(builder->mImportedId == 0)) {
-        if (UTILS_LIKELY(builder->mTextureIsSwizzled)) {
+        if (UTILS_LIKELY(!builder->mTextureIsSwizzled)) {
             mHandle = driver.createTexture(
                     mTarget, mLevelCount, mFormat, mSampleCount, mWidth, mHeight, mDepth, mUsage);
         } else {
@@ -504,15 +501,9 @@ void FTexture::generatePrefilterMipmap(FEngine& engine,
     // by the caller (without being move()d here).
 }
 
-
-} // namespace details
-
 // ------------------------------------------------------------------------------------------------
 // Trampoline calling into private implementation
 // ------------------------------------------------------------------------------------------------
-
-using namespace details;
-
 
 size_t Texture::getWidth(size_t level) const noexcept {
     return upcast(this)->getWidth(level);

@@ -24,6 +24,7 @@ import com.google.android.filament.*
 import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.*
+import kotlinx.coroutines.*
 import java.nio.Buffer
 
 private const val kNearPlane = 0.5
@@ -69,6 +70,9 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
     val progress
         get() = resourceLoader.asyncGetLoadProgress()
 
+    var normalizeSkinningWeights = true
+    var recomputeBoundingBoxes = false
+
     val scene: Scene
     val view: View
     val camera: Camera
@@ -100,7 +104,7 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
         view.camera = camera
 
         assetLoader = AssetLoader(engine, MaterialProvider(engine), EntityManager.get())
-        resourceLoader = ResourceLoader(engine)
+        resourceLoader = ResourceLoader(engine, normalizeSkinningWeights, recomputeBoundingBoxes)
 
         // Always add a direct light source since it is required for shadowing.
         // We highly recommend adding an indirect light as well.
@@ -141,6 +145,7 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
 
         this.textureView = textureView
         gestureDetector = GestureDetector(textureView, cameraManipulator)
+        displayHelper = DisplayHelper(textureView.context)
         uiHelper.renderCallback = SurfaceCallback()
         uiHelper.attachTo(textureView)
         addDetachListener(textureView)
@@ -161,6 +166,8 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
 
     /**
      * Loads a JSON-style glTF file and populates the Filament scene.
+     *
+     * The given callback is triggered for each requested resource.
      */
     fun loadModelGltf(buffer: Buffer, callback: (String) -> Buffer) {
         destroyModel()
@@ -172,6 +179,19 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
             resourceLoader.asyncBeginLoad(asset)
             animator = asset.animator
             asset.releaseSourceData()
+        }
+    }
+
+    /**
+     * Loads a JSON-style glTF file and populates the Filament scene.
+     *
+     * The given callback is triggered from a worker thread for each requested resource.
+     */
+    fun loadModelGltfAsync(buffer: Buffer, callback: (String) -> Buffer) {
+        destroyModel()
+        asset = assetLoader.createAssetFromJson(buffer)
+        CoroutineScope(Dispatchers.IO).launch {
+            fetchResources(asset!!, callback)
         }
     }
 
@@ -241,6 +261,7 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
         while (popRenderables()) {
             scene.addEntities(readyRenderables.take(count).toIntArray())
         }
+        scene.addEntities(asset.lightEntities)
     }
 
     private fun addDetachListener(view: android.view.View) {
@@ -277,6 +298,23 @@ class ModelViewer(val engine: Engine) : android.view.View.OnTouchListener {
     override fun onTouch(view: android.view.View, event: MotionEvent): Boolean {
         onTouchEvent(event)
         return true
+    }
+
+    private suspend fun fetchResources(asset: FilamentAsset, callback: (String) -> Buffer) {
+        val items = HashMap<String, Buffer>()
+        val resourceUris = asset.resourceUris
+        for (resourceUri in resourceUris) {
+            items[resourceUri] = callback(resourceUri)
+        }
+
+        withContext(Dispatchers.Main) {
+            for ((uri, buffer) in items) {
+                resourceLoader.addResourceData(uri, buffer)
+            }
+            resourceLoader.asyncBeginLoad(asset)
+            animator = asset.animator
+            asset.releaseSourceData()
+        }
     }
 
     inner class SurfaceCallback : UiHelper.RendererCallback {

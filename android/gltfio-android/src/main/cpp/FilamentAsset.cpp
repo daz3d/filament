@@ -65,6 +65,86 @@ Java_com_google_android_filament_gltfio_FilamentAsset_nGetEntities(JNIEnv* env, 
     env->ReleaseIntArrayElements(result, (jint*) entities, 0);
 }
 
+extern "C" JNIEXPORT jint
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetFirstEntityByName(JNIEnv* env, jclass,
+        jlong nativeAsset, jstring name) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    const char* cname = env->GetStringUTFChars(name, nullptr);
+    Entity result = asset->getFirstEntityByName(cname);
+    env->ReleaseStringUTFChars(name, cname);
+    return result.getId();
+}
+
+extern "C" JNIEXPORT jint
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetEntitiesByName(JNIEnv* env, jclass,
+        jlong nativeAsset, jstring name, jintArray result) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    const char* cname = env->GetStringUTFChars(name, nullptr);
+    size_t numEntities = asset->getEntitiesByName(cname, nullptr, 0);
+    if (result == nullptr) {
+        env->ReleaseStringUTFChars(name, cname);
+        return numEntities;
+    }
+    Entity* entities = (Entity*) env->GetIntArrayElements(result, nullptr);
+    numEntities = asset->getEntitiesByName(cname, entities, env->GetArrayLength(result));
+    env->ReleaseIntArrayElements(result, (jint*) entities, 0);
+    env->ReleaseStringUTFChars(name, cname);
+    return numEntities;
+}
+
+extern "C" JNIEXPORT jint
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetEntitiesByPrefix(JNIEnv* env, jclass,
+        jlong nativeAsset, jstring prefix, jintArray result) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    const char* cprefix = env->GetStringUTFChars(prefix, nullptr);
+    size_t numEntities = asset->getEntitiesByPrefix(cprefix, nullptr, 0);
+    if (result == nullptr) {
+        env->ReleaseStringUTFChars(prefix, cprefix);
+        return numEntities;
+    }
+    Entity* entities = (Entity*) env->GetIntArrayElements(result, nullptr);
+    numEntities = asset->getEntitiesByPrefix(cprefix, entities, env->GetArrayLength(result));
+    env->ReleaseIntArrayElements(result, (jint*) entities, 0);
+    env->ReleaseStringUTFChars(prefix, cprefix);
+    return numEntities;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetLightEntityCount(JNIEnv*, jclass,
+        jlong nativeAsset) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    return asset->getLightEntityCount();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetLightEntities(JNIEnv* env, jclass,
+        jlong nativeAsset, jintArray result) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    jsize available = env->GetArrayLength(result);
+    Entity* entities = (Entity*) env->GetIntArrayElements(result, nullptr);
+    std::copy_n(asset->getLightEntities(),
+            std::min(available, (jsize) asset->getLightEntityCount()), entities);
+    env->ReleaseIntArrayElements(result, (jint*) entities, 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetCameraEntities(JNIEnv* env, jclass,
+        jlong nativeAsset, jintArray result) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    jsize available = env->GetArrayLength(result);
+    Entity* entities = (Entity*) env->GetIntArrayElements(result, nullptr);
+    std::copy_n(asset->getCameraEntities(),
+            std::min(available, (jsize) asset->getCameraEntityCount()), entities);
+    env->ReleaseIntArrayElements(result, (jint*) entities, 0);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_google_android_filament_gltfio_FilamentAsset_nGetCameraEntityCount(JNIEnv*, jclass,
+        jlong nativeAsset) {
+    FilamentAsset* asset = (FilamentAsset*) nativeAsset;
+    return asset->getCameraEntityCount();
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_google_android_filament_gltfio_FilamentAsset_nGetMaterialInstanceCount(JNIEnv*, jclass,
         jlong nativeAsset) {

@@ -18,11 +18,12 @@
 #define GLTFIO_ANIMATOR_H
 
 #include <gltfio/FilamentAsset.h>
+#include <gltfio/FilamentInstance.h>
 
 namespace gltfio {
 
-namespace details { struct FFilamentAsset; }
-
+struct FFilamentAsset;
+struct FFilamentInstance;
 struct AnimatorImpl;
 
 /**
@@ -70,10 +71,11 @@ public:
 private:
 
     /*! \cond PRIVATE */
-    friend struct details::FFilamentAsset;
+    friend struct FFilamentAsset;
+    friend struct FFilamentInstance;
     /*! \endcond */
 
-    Animator(FilamentAsset* asset);
+    Animator(FFilamentAsset* asset, FFilamentInstance* instance);
     ~Animator();
     AnimatorImpl* mImpl;
 };

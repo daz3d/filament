@@ -26,7 +26,6 @@
 #include <utils/compiler.h>
 
 namespace filament {
-namespace details {
 
 class FEngine;
 class FStream;
@@ -122,7 +121,6 @@ private:
 
 FILAMENT_UPCAST(Texture)
 
-} // namespace details
 } // namespace filament
 
 #endif // TNT_FILAMENT_DETAILS_TEXTURE_H

@@ -21,6 +21,7 @@
 #include "GltfEnums.h"
 
 #include <filament/Box.h>
+#include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
 #include <filament/LightManager.h>
@@ -37,7 +38,9 @@
 
 #include <utils/EntityManager.h>
 #include <utils/Log.h>
+#include <utils/Panic.h>
 #include <utils/NameComponentManager.h>
+#include <utils/Systrace.h>
 
 #include <tsl/robin_map.h>
 
@@ -54,7 +57,6 @@ using namespace filament::math;
 using namespace utils;
 
 namespace gltfio {
-namespace details {
 
 static const auto FREE_CALLBACK = [](void* mem, size_t, void*) { free(mem); };
 
@@ -104,6 +106,7 @@ static const char* getNodeName(const cgltf_node* node, const char* defaultNodeNa
     if (node->name) return node->name;
     if (node->mesh && node->mesh->name) return node->mesh->name;
     if (node->light && node->light->name) return node->light->name;
+    if (node->camera && node->camera->name) return node->camera->name;
     return defaultNodeName;
 }
 
@@ -118,7 +121,12 @@ struct FAssetLoader : public AssetLoader {
             mDefaultNodeName(config.defaultNodeName) {}
 
     FFilamentAsset* createAssetFromJson(const uint8_t* bytes, uint32_t nbytes);
-    FilamentAsset* createAssetFromBinary(const uint8_t* bytes, uint32_t nbytes);
+    FFilamentAsset* createAssetFromBinary(const uint8_t* bytes, uint32_t nbytes);
+    FFilamentAsset* createInstancedAsset(const uint8_t* bytes, uint32_t numBytes,
+        FilamentInstance** instances, size_t numInstances);
+
+    bool createAssets(const uint8_t* bytes, uint32_t numBytes, FilamentAsset** assets,
+            size_t numAssets);
 
     ~FAssetLoader() {
         delete mMaterials;
@@ -140,12 +148,14 @@ struct FAssetLoader : public AssetLoader {
         return mMaterials->getMaterials();
     }
 
-    void createAsset(const cgltf_data* srcAsset);
-    void createEntity(const cgltf_node* node, Entity parent);
+    void createAsset(const cgltf_data* srcAsset, size_t numInstances);
+    void createEntity(const cgltf_node* node, Entity parent, bool enableLight,
+            FFilamentInstance* instance);
     void createRenderable(const cgltf_node* node, Entity entity, const char* name);
     bool createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim, const UvMap& uvmap,
             const char* name);
-    void createLight(const cgltf_node* node, Entity entity);
+    void createLight(const cgltf_light* light, Entity entity);
+    void createCamera(const cgltf_camera* camera, Entity entity);
     MaterialInstance* createMaterialInstance(const cgltf_material* inputMat, UvMap* uvmap,
             bool vertexColor);
     void addTextureBinding(MaterialInstance* materialInstance, const char* parameterName,
@@ -172,10 +182,6 @@ struct FAssetLoader : public AssetLoader {
 
 FILAMENT_UPCAST(AssetLoader)
 
-} // namespace details
-
-using namespace details;
-
 FFilamentAsset* FAssetLoader::createAssetFromJson(const uint8_t* bytes, uint32_t nbytes) {
     cgltf_options options { cgltf_file_type_invalid };
     cgltf_data* sourceAsset;
@@ -184,11 +190,11 @@ FFilamentAsset* FAssetLoader::createAssetFromJson(const uint8_t* bytes, uint32_t
         slog.e << "Unable to parse JSON file." << io::endl;
         return nullptr;
     }
-    createAsset(sourceAsset);
+    createAsset(sourceAsset, 0);
     return mResult;
 }
 
-FilamentAsset* FAssetLoader::createAssetFromBinary(const uint8_t* bytes, uint32_t nbytes) {
+FFilamentAsset* FAssetLoader::createAssetFromBinary(const uint8_t* bytes, uint32_t nbytes) {
 
     // The cgltf library handles GLB efficiently by pointing all buffer views into the source data.
     // However, we wish our API to be simple and safe, allowing clients to free up their source blob
@@ -206,14 +212,42 @@ FilamentAsset* FAssetLoader::createAssetFromBinary(const uint8_t* bytes, uint32_
         slog.e << "Unable to parse glb file." << io::endl;
         return nullptr;
     }
-    createAsset(sourceAsset);
+    createAsset(sourceAsset, 0);
     if (mResult) {
         glbdata.swap(mResult->mGlbData);
     }
     return mResult;
 }
 
-void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
+FFilamentAsset* FAssetLoader::createInstancedAsset(const uint8_t* bytes, uint32_t numBytes,
+        FilamentInstance** instances, size_t numInstances) {
+    ASSERT_PRECONDITION(numInstances > 0, "Instance count must be 1 or more.");
+
+    // This method can be used to load JSON or GLB. By using a default options struct, we are asking
+    // cgltf to examine the magic identifier to determine which type of file is being loaded.
+    cgltf_options options {};
+
+    // Clients can free up their source blob immediately, but cgltf has pointers into the data that
+    // need to stay valid. Therefore we create a copy of the source blob and stash it inside the
+    // asset.
+    std::vector<uint8_t> glbdata(bytes, bytes + numBytes);
+
+    cgltf_data* sourceAsset;
+    cgltf_result result = cgltf_parse(&options, glbdata.data(), numBytes, &sourceAsset);
+    if (result != cgltf_result_success) {
+        slog.e << "Unable to parse glTF file." << io::endl;
+        return nullptr;
+    }
+    createAsset(sourceAsset, numInstances);
+    if (mResult) {
+        glbdata.swap(mResult->mGlbData);
+        std::copy_n(mResult->mInstances.data(), numInstances, instances);
+    }
+    return mResult;
+}
+
+void FAssetLoader::createAsset(const cgltf_data* srcAsset, size_t numInstances) {
+    SYSTRACE_CALL();
     #if !GLTFIO_DRACO_SUPPORTED
     for (cgltf_size i = 0; i < srcAsset->extensions_required_count; i++) {
         if (!strcmp(srcAsset->extensions_required[i], "KHR_draco_mesh_compression")) {
@@ -224,7 +258,7 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
     }
     #endif
 
-    mResult = new FFilamentAsset(mEngine, mNameManager);
+    mResult = new FFilamentAsset(mEngine, mNameManager, &mEntityManager);
     mResult->mSourceAsset = srcAsset;
     mResult->acquireSourceAsset();
 
@@ -239,11 +273,36 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
     mResult->mRoot = mEntityManager.create();
     mTransformManager.create(mResult->mRoot);
 
-    // One scene may have multiple root nodes. Recurse down and create an entity for each node.
-    cgltf_node** nodes = scene->nodes;
-    for (cgltf_size i = 0, len = scene->nodes_count; i < len; ++i) {
-        const cgltf_node* root = nodes[i];
-        createEntity(root, mResult->mRoot);
+    if (numInstances == 0) {
+        // For each scene root, recursively create all entities.
+        for (cgltf_size i = 0, len = scene->nodes_count; i < len; ++i) {
+            cgltf_node** nodes = scene->nodes;
+            createEntity(nodes[i], mResult->mRoot, true, nullptr);
+        }
+    } else {
+        // Create a separate entity hierarchy for each instance. Note that mMeshCache (vertex
+        // buffers and index buffers) and mMatInstanceCache (materials and textures) help avoid
+        // needless duplication of resources.
+        for (size_t index = 0; index < numInstances; ++index) {
+            // Create a root node within each instance that is a child of the master root.
+            auto rootTransform = mTransformManager.getInstance(mResult->mRoot);
+            Entity instanceRoot = mEntityManager.create();
+            mTransformManager.create(instanceRoot, rootTransform);
+
+            // Create an instance object, which is a just a lightweight wrapper around a vector of
+            // entities and a lazily created animator.
+            FFilamentInstance* instance = new FFilamentInstance;
+            instance->root = instanceRoot;
+            instance->animator = nullptr;
+            instance->owner = mResult;
+            mResult->mInstances.push_back(instance);
+
+            // For each scene root, recursively create all entities.
+            for (cgltf_size i = 0, len = scene->nodes_count; i < len; ++i) {
+                cgltf_node** nodes = scene->nodes;
+                createEntity(nodes[i], instanceRoot, index == 0, instance);
+            }
+        }
     }
 
     if (mError) {
@@ -276,7 +335,8 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
     mError = false;
 }
 
-void FAssetLoader::createEntity(const cgltf_node* node, Entity parent) {
+void FAssetLoader::createEntity(const cgltf_node* node, Entity parent, bool enableLight,
+        FFilamentInstance* instance) {
     Entity entity = mEntityManager.create();
 
     // Always create a transform component to reflect the original hierarchy.
@@ -295,13 +355,21 @@ void FAssetLoader::createEntity(const cgltf_node* node, Entity parent) {
 
     // Update the asset's entity list and private node mapping.
     mResult->mEntities.push_back(entity);
-    mResult->mNodeMap[node] = entity;
+    if (instance) {
+        instance->entities.push_back(entity);
+        instance->nodeMap[node] = entity;
+    } else {
+        mResult->mNodeMap[node] = entity;
+    }
 
     const char* name = getNodeName(node, mDefaultNodeName);
 
-    if (mNameManager && name) {
-        mNameManager->addComponent(entity);
-        mNameManager->setName(mNameManager->getInstance(entity), name);
+    if (name) {
+        mResult->mNameToEntity[name].push_back(entity);
+        if (mNameManager) {
+            mNameManager->addComponent(entity);
+            mNameManager->setName(mNameManager->getInstance(entity), name);
+        }
     }
 
     // If no name is provided in the glTF or AssetConfiguration, use "node" for error messages.
@@ -312,12 +380,16 @@ void FAssetLoader::createEntity(const cgltf_node* node, Entity parent) {
         createRenderable(node, entity, name);
     }
 
-    if (node->light) {
-        createLight(node, entity);
+    if (node->light && enableLight) {
+        createLight(node->light, entity);
+    }
+
+    if (node->camera) {
+        createCamera(node->camera, entity);
     }
 
     for (cgltf_size i = 0, len = node->children_count; i < len; ++i) {
-        createEntity(node->children[i], entity);
+        createEntity(node->children[i], entity, enableLight, instance);
     }
 }
 
@@ -513,8 +585,7 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             hasVertexColor = true;
         }
 
-        // Translate the cgltf attribute enum into a Filament enum and ignore all uv sets
-        // that do not have entries in the mapping table.
+        // Translate the cgltf attribute enum into a Filament enum.
         VertexAttribute semantic;
         if (!getVertexAttrType(atype, &semantic)) {
             utils::slog.e << "Unrecognized vertex semantic in " << name << utils::io::endl;
@@ -536,8 +607,18 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                     hasUv1 = true;
                     break;
                 case UNUSED:
-                    // It is perfectly acceptable to drop unused texture coordinate sets. In fact
-                    // this can occur quite frequently, e.g. if the material has attached textures.
+                    // If we have a free slot, then include this unused UV set in the VertexBuffer.
+                    // This allows clients to swap the glTF material with a custom material.
+                    if (!hasUv0 && getNumUvSets(uvmap) == 0) {
+                        semantic = VertexAttribute::UV0;
+                        hasUv0 = true;
+                        break;
+                    }
+
+                    // If there are no free slots then drop this unused texture coordinate set.
+                    // This should not print an error or warning because the glTF spec stipulates an
+                    // order of degradation for gracefully dropping UV sets. We implement this in
+                    // constrainMaterial in MaterialProvider.
                     continue;
             }
         }
@@ -639,10 +720,12 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         if (!hasUv0) {
             needsDummyData = true;
             vbb.attribute(VertexAttribute::UV0, slot, VertexBuffer::AttributeType::USHORT2);
+            vbb.normalized(VertexAttribute::UV0);
         }
         if (!hasUv1) {
             needsDummyData = true;
             vbb.attribute(VertexAttribute::UV1, slot, VertexBuffer::AttributeType::USHORT2);
+            vbb.normalized(VertexAttribute::UV1);
         }
         if (!hasVertexColor) {
             needsDummyData = true;
@@ -654,11 +737,13 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         if (!hasUv0 && numUvSets > 0) {
             needsDummyData = true;
             vbb.attribute(VertexAttribute::UV0, slot, VertexBuffer::AttributeType::USHORT2);
+            vbb.normalized(VertexAttribute::UV0);
             slog.w << "Missing UV0 data in " << name << io::endl;
         }
         if (!hasUv1 && numUvSets > 1) {
             needsDummyData = true;
             vbb.attribute(VertexAttribute::UV1, slot, VertexBuffer::AttributeType::USHORT2);
+            vbb.normalized(VertexAttribute::UV1);
             slog.w << "Missing UV1 data in " << name << io::endl;
         }
     }
@@ -687,9 +772,7 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
     return true;
 }
 
-void FAssetLoader::createLight(const cgltf_node* node, Entity entity) {
-    const cgltf_light* light = node->light;
-
+void FAssetLoader::createLight(const cgltf_light* light, Entity entity) {
     LightManager::Type type = getLightType(light->type);
     LightManager::Builder builder(type);
 
@@ -723,6 +806,44 @@ void FAssetLoader::createLight(const cgltf_node* node, Entity entity) {
 
     builder.build(*mEngine, entity);
     mResult->mLightEntities.push_back(entity);
+}
+
+void FAssetLoader::createCamera(const cgltf_camera* camera, Entity entity) {
+    Camera* filamentCamera = mEngine->createCamera(entity);
+
+    if (camera->type == cgltf_camera_type_perspective) {
+        auto& projection = camera->data.perspective;
+
+        const cgltf_float yfovDegrees = 180.0 / F_PI * projection.yfov;
+
+        // Use an "infinite" zfar plane if the provided one is missing (set to 0.0).
+        const double far = projection.zfar > 0.0 ? projection.zfar : 100000000;
+
+        filamentCamera->setProjection(yfovDegrees, 1.0,
+                projection.znear, far,
+                filament::Camera::Fov::VERTICAL);
+
+        // Use a default aspect ratio of 1.0 if the provided one is missing.
+        const double aspect = projection.aspect_ratio > 0.0 ? projection.aspect_ratio : 1.0;
+
+        // Use the scaling matrix to set the aspect ratio, so clients can easily change it.
+        filamentCamera->setScaling(double4 {1.0, aspect, 1.0, 1.0});
+    } else if (camera->type == cgltf_camera_type_orthographic) {
+        auto& projection = camera->data.orthographic;
+
+        const double left   = -projection.xmag * 0.5;
+        const double right  =  projection.xmag * 0.5;
+        const double bottom = -projection.ymag * 0.5;
+        const double top    =  projection.ymag * 0.5;
+
+        filamentCamera->setProjection(Camera::Projection::ORTHO,
+                left, right, bottom, top, projection.znear, projection.zfar);
+    } else {
+        slog.e << "Invalid GLTF camera type." << io::endl;
+        return;
+    }
+
+    mResult->mCameraEntities.push_back(entity);
 }
 
 MaterialInstance* FAssetLoader::createMaterialInstance(const cgltf_material* inputMat,
@@ -1015,9 +1136,14 @@ FilamentAsset* AssetLoader::createAssetFromBinary(uint8_t const* bytes, uint32_t
     return upcast(this)->createAssetFromBinary(bytes, nbytes);
 }
 
+FilamentAsset* AssetLoader::createInstancedAsset(const uint8_t* bytes, uint32_t numBytes,
+        FilamentInstance** instances, size_t numInstances) {
+    return upcast(this)->createInstancedAsset(bytes, numBytes, instances, numInstances);
+}
+
 FilamentAsset* AssetLoader::createAssetFromHandle(const void* handle) {
     const cgltf_data* sourceAsset = (const cgltf_data*) handle;
-    upcast(this)->createAsset(sourceAsset);
+    upcast(this)->createAsset(sourceAsset, 0);
     upcast(this)->mResult->mSharedSourceAsset = true;
     return upcast(this)->mResult;
 }

@@ -8,8 +8,8 @@
 //     Path to the Filament distribution/install directory for desktop.
 //     This directory must contain bin/matc.
 //
-// filament_supports_vulkan
-//     When set, support for Vulkan will be enabled.
+// filament_exclude_vulkan
+//     When set, support for Vulkan will be excluded.
 //
 // filament_skip_samples
 //     Exclude samples from the project. Useful to speed up compilation.
@@ -31,7 +31,8 @@ buildscript {
     // variable, so here we convert the native path to a forward-slash path.
     filamentPath = filamentPath.replace(File.separator, '/')
 
-    def hasVulkan = project.hasProperty("filament_supports_vulkan")
+    // Warning: changing this property does not work well with incremental builds.
+    def excludeVulkan = project.hasProperty("filament_exclude_vulkan")
 
     def abis = ["arm64-v8a", "armeabi-v7a", "x86_64", "x86"]
     if (project.hasProperty("filament_abis")) {
@@ -60,6 +61,7 @@ buildscript {
     ]
 
     dependencies {
+        // NOTE: Do not update to 4.0.0, there is a bug breaking our build, 4.0.1 will have a fix
         classpath 'com.android.tools.build:gradle:3.6.3'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${versions.kotlin}"
     }
@@ -69,7 +71,7 @@ buildscript {
         "-DANDROID_PLATFORM=21",
         "-DANDROID_STL=c++_static",
         "-DFILAMENT_DIST_DIR=${filamentPath}".toString(),
-        "-DFILAMENT_SUPPORTS_VULKAN=${hasVulkan ? 'ON' : 'OFF'}".toString()
+        "-DFILAMENT_SUPPORTS_VULKAN=${excludeVulkan ? 'OFF' : 'ON'}".toString()
     ]
 
     ext.cppFlags = [

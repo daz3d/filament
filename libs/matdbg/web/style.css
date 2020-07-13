@@ -24,6 +24,10 @@ a.inactive {
     color: #aaa;
 }
 
+a.inactive.current {
+    color: #5af;
+}
+
 pre {
     font-family: Menlo, Monaco, "Courier New", monospace;
 }
@@ -47,7 +51,7 @@ pre {
 }
 
 .stretchy {
-    flex-grow: 4;
+    flex-grow: 1;
 }
 
 .hbox {

@@ -14,6 +14,7 @@ set(PUBLIC_HDRS
         include/gltfio/ResourceLoader.h
         include/gltfio/SimpleViewer.h
         include/gltfio/FilamentAsset.h
+        include/gltfio/FilamentInstance.h
 )
 
 set(SRCS
@@ -25,6 +26,8 @@ set(SRCS
         src/DracoCache.cpp
         src/FFilamentAsset.h
         src/FilamentAsset.cpp
+        src/FFilamentInstance.h
+        src/FilamentInstance.cpp
         src/GltfEnums.h
         src/MaterialProvider.cpp
         src/ResourceLoader.cpp
@@ -155,7 +158,7 @@ add_library(gltfio_resources_lite ${DUMMY_SRC} ${RESGEN_SOURCE})
 # ==================================================================================================
 
 include_directories(${PUBLIC_HDR_DIR} ${RESOURCE_DIR})
-link_libraries(math utils filament cgltf stb geometry gltfio_resources)
+link_libraries(math utils filament cgltf stb geometry gltfio_resources tsl trie)
 
 add_library(gltfio_core STATIC ${PUBLIC_HDRS} ${SRCS})
 

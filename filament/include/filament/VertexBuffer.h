@@ -29,9 +29,7 @@
 
 namespace filament {
 
-namespace details {
 class FVertexBuffer;
-} // namespace details
 
 class Engine;
 
@@ -144,7 +142,7 @@ public:
         VertexBuffer* build(Engine& engine);
 
     private:
-        friend class details::FVertexBuffer;
+        friend class FVertexBuffer;
     };
 
     /**
@@ -210,6 +208,7 @@ public:
      * has additional capabilities and a daisy-chain API. Be sure to explicitly link libgeometry
      * since its dependency might be removed in future versions of libfilament.
      */
+    UTILS_DEPRECATED
     static void populateTangentQuaternions(const QuatTangentContext& ctx);
 };
 

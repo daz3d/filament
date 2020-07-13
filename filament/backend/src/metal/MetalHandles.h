@@ -44,10 +44,10 @@ namespace metal {
 class MetalSwapChain : public HwSwapChain {
 public:
 
-    MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow);
+    MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow, uint64_t flags);
 
     // Instantiate a headless SwapChain.
-    MetalSwapChain(int32_t width, int32_t height);
+    MetalSwapChain(int32_t width, int32_t height, uint64_t flags);
 
     bool isHeadless() const { return layer == nullptr; }
     CAMetalLayer* getLayer() const { return layer; }
@@ -121,15 +121,24 @@ struct MetalTexture : public HwTexture {
     MetalTexture(MetalContext& context, SamplerType target, uint8_t levels, TextureFormat format,
             uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage)
             noexcept;
+
+    // Constructor for importing an id<MTLTexture> outside of Filament.
+    MetalTexture(MetalContext& context, SamplerType target, uint8_t levels, TextureFormat format,
+            uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage,
+            id<MTLTexture> texture) noexcept;
+
     ~MetalTexture();
 
     void load2DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-            uint32_t height, PixelBufferDescriptor&& p) noexcept;
-    void loadCubeImage(const FaceOffsets& faceOffsets, int miplevel, PixelBufferDescriptor&& p);
-    void loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-            uint32_t height, uint32_t byteOffset, uint32_t slice,
+            uint32_t height, PixelBufferDescriptor& p) noexcept;
+    void load3DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
+            uint32_t width, uint32_t height, uint32_t depth, PixelBufferDescriptor& p) noexcept;
+    void loadCubeImage(const FaceOffsets& faceOffsets, int miplevel, PixelBufferDescriptor& p);
+    void loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
+            uint32_t width, uint32_t height, uint32_t depth, uint32_t byteOffset, uint32_t slice,
             PixelBufferDescriptor& data, id<MTLBlitCommandEncoder> blitCommandEncoder,
             id<MTLCommandBuffer> blitCommandBuffer) noexcept;
+    void updateLodRange(uint32_t level);
 
     MetalContext& context;
     MetalExternalImage externalImage;
@@ -139,6 +148,8 @@ struct MetalTexture : public HwTexture {
     uint8_t blockHeight; // The number of vertical pixels per block (only for compressed texture formats).
     TextureReshaper reshaper;
     MTLPixelFormat metalPixelFormat;
+    uint32_t minLod = UINT_MAX;
+    uint32_t maxLod = 0;
 };
 
 struct MetalSamplerGroup : public HwSamplerGroup {
@@ -148,32 +159,33 @@ struct MetalSamplerGroup : public HwSamplerGroup {
 class MetalRenderTarget : public HwRenderTarget {
 public:
 
-    struct TargetInfo {
-        uint8_t level;
-        uint16_t layer;
+    struct Attachment {
+        id<MTLTexture> texture = nil;
+        uint8_t level = 0;
+        uint16_t layer = 0;
+
+        explicit operator bool() const {
+            return texture != nil;
+        }
     };
 
     MetalRenderTarget(MetalContext* context, uint32_t width, uint32_t height, uint8_t samples,
-            id<MTLTexture> color, TargetInfo colorInfo, id<MTLTexture> depth, TargetInfo depthInfo);
+            Attachment colorAttachments[MRT::TARGET_COUNT], Attachment depthAttachment);
     explicit MetalRenderTarget(MetalContext* context)
             : HwRenderTarget(0, 0), context(context), defaultRenderTarget(true) {}
 
+    void setUpRenderPassAttachments(MTLRenderPassDescriptor* descriptor, const RenderPassParams& params);
+
     bool isDefaultRenderTarget() const { return defaultRenderTarget; }
     uint8_t getSamples() const { return samples; }
-    MTLLoadAction getLoadAction(const RenderPassParams& params, TargetBufferFlags buffer);
-    MTLStoreAction getStoreAction(const RenderPassParams& params, TargetBufferFlags buffer);
 
-    id<MTLTexture> getColor();
-    id<MTLTexture> getColorResolve();
-    id<MTLTexture> getDepth();
-    id<MTLTexture> getDepthResolve();
-    id<MTLTexture> getBlitColorSource();
-    id<MTLTexture> getBlitDepthSource();
-
-    const TargetInfo& getColorInfo() const { return colorInfo; }
-    const TargetInfo& getDepthInfo() const { return depthInfo; }
+    Attachment getColorAttachment(size_t index);
+    Attachment getDepthAttachment();
 
 private:
+
+    static MTLLoadAction getLoadAction(const RenderPassParams& params, TargetBufferFlags buffer);
+    static MTLStoreAction getStoreAction(const RenderPassParams& params, TargetBufferFlags buffer);
     static id<MTLTexture> createMultisampledTexture(id<MTLDevice> device, MTLPixelFormat format,
             uint32_t width, uint32_t height, uint8_t samples);
 
@@ -181,9 +193,11 @@ private:
     bool defaultRenderTarget = false;
     uint8_t samples = 1;
 
-    id<MTLTexture> color = nil, depth = nil;
-    TargetInfo colorInfo = {}, depthInfo = {};
-    id<MTLTexture> multisampledColor = nil;
+    Attachment color[MRT::TARGET_COUNT] = {};
+    Attachment depth = {};
+
+    // "Sidecar" textures used to implement automatic MSAA resolve.
+    id<MTLTexture> multisampledColor[MRT::TARGET_COUNT] = { 0 };
     id<MTLTexture> multisampledDepth = nil;
 };
 

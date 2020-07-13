@@ -31,7 +31,6 @@ using namespace filament::math;
 using namespace utils;
 
 namespace filament {
-namespace details {
 
 static constexpr const float MIN_APERTURE = 0.5f;
 static constexpr const float MAX_APERTURE = 64.0f;
@@ -158,6 +157,10 @@ void UTILS_NOINLINE FCamera::setProjection(Camera::Projection projection,
     mFar = float(far);
 }
 
+void FCamera::setScaling(math::double4 const& scaling) noexcept {
+    mScaling = scaling;
+}
+
 void UTILS_NOINLINE FCamera::setModelMatrix(const mat4f& modelMatrix) noexcept {
     FTransformManager& transformManager = mEngine.getTransformManager();
     transformManager.setTransform(transformManager.getInstance(mEntity), modelMatrix);
@@ -178,7 +181,7 @@ mat4f UTILS_NOINLINE FCamera::getViewMatrix() const noexcept {
 
 Frustum FCamera::getFrustum() const noexcept {
     // for culling purposes we keep the far plane where it is
-    return FCamera::getFrustum(mProjectionForCulling, getViewMatrix());
+    return FCamera::getFrustum(getCullingProjectionMatrix(), getViewMatrix());
 }
 
 void FCamera::setExposure(float aperture, float shutterSpeed, float sensitivity) noexcept {
@@ -225,10 +228,11 @@ math::details::TMat44<T> inverseProjection(const math::details::TMat44<T>& p) no
     return r;
 }
 
-
 UTILS_NOINLINE
 mat4f FCamera::getViewMatrix(mat4f const& model) noexcept {
-    return FCamera::rigidTransformInverse(model);
+    // We can't use rigidTransformInverse here. The camera's model matrix might have scaling, which
+    // would make it non-rigid.
+    return inverse(model);
 }
 
 Frustum FCamera::getFrustum(mat4 const& projection, mat4f const& viewMatrix) noexcept {
@@ -264,19 +268,15 @@ CameraInfo::CameraInfo(FCamera const& camera, const math::mat4f& worldOriginCame
     worldOrigin        = worldOriginCamera;
 }
 
-} // namespace details
-
 // ------------------------------------------------------------------------------------------------
 // Trampoline calling into private implementation
 // ------------------------------------------------------------------------------------------------
 
-using namespace details;
-
 mat4f Camera::inverseProjection(const mat4f& p) noexcept {
-    return details::inverseProjection(p);
+    return filament::inverseProjection(p);
 }
 mat4 Camera::inverseProjection(const mat4 & p) noexcept {
-    return details::inverseProjection(p);
+    return filament::inverseProjection(p);
 }
 
 void Camera::setProjection(Camera::Projection projection, double left, double right, double bottom,
@@ -297,12 +297,20 @@ void Camera::setCustomProjection(mat4 const& projection, double near, double far
     upcast(this)->setCustomProjection(projection, near, far);
 }
 
-const mat4& Camera::getProjectionMatrix() const noexcept {
+void Camera::setScaling(math::double4 const& scaling) noexcept {
+    upcast(this)->setScaling(scaling);
+}
+
+const mat4 Camera::getProjectionMatrix() const noexcept {
     return upcast(this)->getProjectionMatrix();
 }
 
-const mat4& Camera::getCullingProjectionMatrix() const noexcept {
+const mat4 Camera::getCullingProjectionMatrix() const noexcept {
     return upcast(this)->getCullingProjectionMatrix();
+}
+
+const math::double4& Camera::getScaling() const noexcept {
+    return upcast(this)->getScaling();
 }
 
 float Camera::getNear() const noexcept {

@@ -39,10 +39,8 @@ namespace filament {
 class Texture;
 class TextureSampler;
 
-namespace details {
 class FEngine;
 class FMaterial;
-} // namespace details
 
 class Engine;
 
@@ -116,7 +114,7 @@ public:
          */
         Material* build(Engine& engine);
     private:
-        friend class details::FMaterial;
+        friend class FMaterial;
     };
 
     /**
@@ -212,6 +210,9 @@ public:
 
     //! Indicates whether a parameter of the given name exists on this material.
     bool hasParameter(const char* name) const noexcept;
+
+    //! Indicates whether an existing parameter is a sampler or not.
+    bool isSampler(const char* name) const noexcept;
 
     /**
      * Sets the value of the given parameter on this material's default instance.

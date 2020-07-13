@@ -32,6 +32,7 @@
 #include "details/IndexBuffer.h"
 #include "details/RenderTarget.h"
 #include "details/ResourceList.h"
+#include "details/ColorGrading.h"
 #include "details/Skybox.h"
 
 #include "private/backend/CommandStream.h"
@@ -47,6 +48,7 @@
 #include <filament/Material.h>
 #include <filament/MaterialEnums.h>
 #include <filament/Texture.h>
+#include <filament/ColorGrading.h>
 #include <filament/Skybox.h>
 
 #include <filament/Stream.h>
@@ -86,9 +88,6 @@ namespace fg {
 class ResourceAllocator;
 } // namespace fg
 
-
-namespace details {
-
 class FFence;
 class FMaterialInstance;
 class FRenderer;
@@ -124,10 +123,10 @@ public:
     static constexpr size_t CONFIG_FROXEL_SLICE_COUNT      = 16;
     static constexpr bool   CONFIG_IBL_USE_IRRADIANCE_MAP  = false;
 
-    static constexpr size_t CONFIG_PER_RENDER_PASS_ARENA_SIZE   = details::CONFIG_PER_RENDER_PASS_ARENA_SIZE;
-    static constexpr size_t CONFIG_PER_FRAME_COMMANDS_SIZE      = details::CONFIG_PER_FRAME_COMMANDS_SIZE;
-    static constexpr size_t CONFIG_MIN_COMMAND_BUFFERS_SIZE     = details::CONFIG_MIN_COMMAND_BUFFERS_SIZE;
-    static constexpr size_t CONFIG_COMMAND_BUFFERS_SIZE         = details::CONFIG_COMMAND_BUFFERS_SIZE;
+    static constexpr size_t CONFIG_PER_RENDER_PASS_ARENA_SIZE   = filament::CONFIG_PER_RENDER_PASS_ARENA_SIZE;
+    static constexpr size_t CONFIG_PER_FRAME_COMMANDS_SIZE      = filament::CONFIG_PER_FRAME_COMMANDS_SIZE;
+    static constexpr size_t CONFIG_MIN_COMMAND_BUFFERS_SIZE     = filament::CONFIG_MIN_COMMAND_BUFFERS_SIZE;
+    static constexpr size_t CONFIG_COMMAND_BUFFERS_SIZE         = filament::CONFIG_COMMAND_BUFFERS_SIZE;
 
 public:
     static FEngine* create(Backend backend = Backend::DEFAULT,
@@ -153,6 +152,7 @@ public:
     const FMaterial* getSkyboxMaterial() const noexcept;
     const FIndirectLight* getDefaultIndirectLight() const noexcept { return mDefaultIbl; }
     const FTexture* getDummyCubemap() const noexcept { return mDefaultIblTexture; }
+    const FColorGrading* getDefaultColorGrading() const noexcept { return mDefaultColorGrading; }
 
     backend::Handle<backend::HwRenderPrimitive> getFullScreenRenderPrimitive() const noexcept {
         return mFullScreenTriangleRph;
@@ -223,6 +223,7 @@ public:
     FMaterial* createMaterial(const Material::Builder& builder) noexcept;
     FTexture* createTexture(const Texture::Builder& builder) noexcept;
     FSkybox* createSkybox(const Skybox::Builder& builder) noexcept;
+    FColorGrading* createColorGrading(const ColorGrading::Builder& builder) noexcept;
     FStream* createStream(const Stream::Builder& builder) noexcept;
     FRenderTarget* createRenderTarget(const RenderTarget::Builder& builder) noexcept;
 
@@ -252,6 +253,7 @@ public:
     bool destroy(const FRenderer* p);
     bool destroy(const FScene* p);
     bool destroy(const FSkybox* p);
+    bool destroy(const FColorGrading* p);
     bool destroy(const FStream* p);
     bool destroy(const FTexture* p);
     bool destroy(const FRenderTarget* p);
@@ -340,6 +342,7 @@ private:
     ResourceList<FMaterial> mMaterials{ "Material" };
     ResourceList<FTexture> mTextures{ "Texture" };
     ResourceList<FSkybox> mSkyboxes{ "Skybox" };
+    ResourceList<FColorGrading> mColorGradings{ "ColorGrading" };
     ResourceList<FRenderTarget> mRenderTargets{ "RenderTarget" };
 
     mutable uint32_t mMaterialId = 0;
@@ -366,11 +369,15 @@ private:
     mutable FTexture* mDefaultIblTexture = nullptr;
     mutable FIndirectLight* mDefaultIbl = nullptr;
 
+    mutable FColorGrading* mDefaultColorGrading = nullptr;
+
     mutable utils::CountDownLatch mDriverBarrier;
 
     mutable filaflat::ShaderBuilder mVertexShaderBuilder;
     mutable filaflat::ShaderBuilder mFragmentShaderBuilder;
     FDebugRegistry mDebugRegistry;
+
+    std::thread::id mMainThreadId{};
 
 public:
     // these are the debug properties used by FDebug. They're accessed directly by modules who need them.
@@ -381,6 +388,7 @@ public:
             bool checkerboard = false;
             bool lispsm = true;
             bool visualize_cascades = false;
+            bool tightly_bound_scene = true;
             float dzn = -1.0f;
             float dzf =  1.0f;
         } shadowmap;
@@ -396,7 +404,6 @@ public:
 
 FILAMENT_UPCAST(Engine)
 
-} // namespace details
 } // namespace filament
 
 #endif // TNT_FILAMENT_DETAILS_ENGINE_H

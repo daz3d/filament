@@ -95,11 +95,67 @@ public class FilamentAsset {
      * Gets the list of entities, one for each glTF node.
      *
      * <p>All of these have a transform component. Some of the returned entities may also have a
-     * renderable component.</p>
+     * renderable or light component.</p>
      */
     public @NonNull @Entity int[] getEntities() {
         int[] result = new int[nGetEntityCount(mNativeObject)];
         nGetEntities(mNativeObject, result);
+        return result;
+    }
+
+    /**
+     * Gets only the entities that have light components.
+     */
+    public @NonNull @Entity int[] getLightEntities() {
+        int[] result = new int[nGetLightEntityCount(mNativeObject)];
+        nGetLightEntities(mNativeObject, result);
+        return result;
+    }
+
+    /**
+     * Gets only the entities that have camera components.
+     *
+     * <p>
+     * Note about aspect ratios:<br>
+     *
+     * gltfio always uses an aspect ratio of 1.0 when setting the projection matrix for perspective
+     * cameras. gltfio then sets the camera's scaling matrix with the aspect ratio specified in the
+     * glTF file (if present).<br>
+     *
+     * The camera's scaling matrix allows clients to adjust the aspect ratio independently from the
+     * camera's projection.
+     * </p>
+     *
+     * @see com.google.android.filament.Camera#setScaling
+     */
+    public @NonNull @Entity int[] getCameraEntities() {
+        int[] result = new int[nGetCameraEntityCount(mNativeObject)];
+        nGetCameraEntities(mNativeObject, result);
+        return result;
+    }
+
+    /**
+     * Returns the first entity with the given name, or 0 if none exist.
+     */
+    public @Entity int getFirstEntityByName(String name) {
+        return nGetFirstEntityByName(mNativeObject, name);
+    }
+
+    /**
+     * Gets a list of entities with the given name.
+     */
+    public @NonNull @Entity int[] getEntitiesByName(String name) {
+        int[] result = new int[nGetEntitiesByName(mNativeObject, name, null)];
+        nGetEntitiesByName(mNativeObject, name, result);
+        return result;
+    }
+
+    /**
+     * Gets a list of entities whose names start with the given prefix.
+     */
+    public @NonNull @Entity int[] getEntitiesByPrefix(String prefix) {
+        int[] result = new int[nGetEntitiesByPrefix(mNativeObject, prefix, null)];
+        nGetEntitiesByPrefix(mNativeObject, prefix, result);
         return result;
     }
 
@@ -131,10 +187,11 @@ public class FilamentAsset {
     }
 
     /**
-     * Creates or retrieves the <code>Animator</code> for this asset.
+     * Creates or retrieves the <code>Animator</code> interface for this asset.
      *
      * <p>When calling this for the first time, this must be called after
-     * {@link ResourceLoader#loadResources}.</p>
+     * {@link ResourceLoader#loadResources}. When the asset is destroyed, its
+     * animator becomes invalid.</p>
      */
     public @NonNull Animator getAnimator() {
         if (mAnimator != null) {
@@ -164,6 +221,7 @@ public class FilamentAsset {
     }
 
     void clearNativeObject() {
+        mAnimator.clearNativeObject();
         mNativeObject = 0;
     }
 
@@ -173,6 +231,16 @@ public class FilamentAsset {
 
     private static native int nGetEntityCount(long nativeAsset);
     private static native void nGetEntities(long nativeAsset, int[] result);
+
+    private static native int nGetFirstEntityByName(long nativeAsset, String name);
+    private static native int nGetEntitiesByName(long nativeAsset, String name, int[] result);
+    private static native int nGetEntitiesByPrefix(long nativeAsset, String prefix, int[] result);
+
+    private static native int nGetLightEntityCount(long nativeAsset);
+    private static native void nGetLightEntities(long nativeAsset, int[] result);
+
+    private static native int nGetCameraEntityCount(long nativeAsset);
+    private static native void nGetCameraEntities(long nativeAsset, int[] result);
 
     private static native int nGetMaterialInstanceCount(long nativeAsset);
     private static native void nGetMaterialInstances(long nativeAsset, long[] nativeResults);

@@ -75,10 +75,11 @@ fragment {
         if (gl_FrontFacing) {
             c = texture(materialParams_IMAGE_A, uv);
         } else {
+            uv.x = 1.0 - uv.x;
             c = texture(materialParams_IMAGE_B, uv);
         }
 
-        material.baseColor.rgb = c.rgb;
+        material.baseColor.rgb = inverseTonemapSRGB(c.rgb);
         material.roughness = materialParams.ROUGHNESS;
         material.metallic = 0.0;
     }

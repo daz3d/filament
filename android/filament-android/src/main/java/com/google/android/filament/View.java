@@ -23,6 +23,8 @@ import androidx.annotation.Size;
 
 import java.util.EnumSet;
 
+import static com.google.android.filament.Asserts.assertFloat3In;
+import static com.google.android.filament.Asserts.assertFloat4In;
 import static com.google.android.filament.Colors.LinearColor;
 
 /**
@@ -70,9 +72,11 @@ public class View {
     private RenderTarget mRenderTarget;
     private BlendMode mBlendMode;
     private DepthOfFieldOptions mDepthOfFieldOptions;
+    private VignetteOptions mVignetteOptions;
+    private ColorGrading mColorGrading;
 
     /**
-     * Generic Quality Level
+     * Generic quality level.
      */
     public enum QualityLevel {
         LOW,
@@ -125,9 +129,9 @@ public class View {
         public float maxScale = 1.0f;
 
         /**
-         * Upscaling quality. LOW: 1 bilinear taps, MEDIUM: 4 bilinear taps, HIGH: 9 bilinear taps.
+         * Upscaling quality. LOW: 1 bilinear tap, MEDIUM: 4 bilinear taps, HIGH: 9 bilinear taps.
          * If minScale needs to be very low, it might help to use MEDIUM or HIGH here.
-         * The default upsacling quality is set to LOW.
+         * The default upscaling quality is set to LOW.
          */
         @NonNull
         public QualityLevel quality = QualityLevel.LOW;
@@ -155,7 +159,7 @@ public class View {
         public float power = 1.0f;
 
         /**
-         * How each dimension of the AO buffer is scaled. Must be positive and <= 1.
+         * How each dimension of the AO buffer is scaled. Must be either 0.5 or 1.0.
          */
         public float resolution = 0.5f;
 
@@ -171,6 +175,14 @@ public class View {
          */
         @NonNull
         public QualityLevel quality = QualityLevel.LOW;
+
+        /**
+         * The upsampling setting controls the quality of the ambient occlusion buffer upsampling.
+         * The default is QualityLevel.LOW and uses bilinear filtering, a value of
+         * QualityLevel.HIGH or more enables a better bilateral filter.
+         */
+        @NonNull
+        public QualityLevel upsampling = QualityLevel.LOW;
     }
 
     /**
@@ -280,9 +292,10 @@ public class View {
         public float heightFalloff = 1.0f;
 
         /**
-         * fog's color (linear)
+         * Fog's color as a linear RGB color.
          */
         @NonNull
+        @Size(min = 3)
         public float[] color = { 0.5f, 0.5f, 0.5f };
 
         /**
@@ -330,6 +343,40 @@ public class View {
         /** enable or disable Depth of field effect */
         public boolean enabled = false;
     };
+
+    /**
+     * Options to control the vignetting effect.
+     */
+    public static class VignetteOptions {
+        /**
+         * High values restrict the vignette closer to the corners, between 0 and 1.
+         */
+        public float midPoint = 0.5f;
+
+        /**
+         * Controls the shape of the vignette, from a rounded rectangle (0.0), to an oval (0.5),
+         * to a circle (1.0). The value must be between 0 and 1.
+         */
+        public float roundness = 0.5f;
+
+        /**
+         * Softening amount of the vignette effect, between 0 and 1.
+         */
+        public float feather = 0.5f;
+
+        /**
+         * Color of the vignette effect as a linear RGBA color. The alpha channel is currently
+         * ignored.
+         */
+        @NonNull
+        @Size(min = 4)
+        public float[] color = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+        /**
+         * Enables or disables the vignette effect.
+         */
+        public boolean enabled = false;
+    }
 
     /**
      * Structure used to set the color precision for the rendering of a <code>View</code>.
@@ -385,7 +432,10 @@ public class View {
 
     /**
      * List of available tone-mapping operators
+     *
+     * @deprecated Use ColorGrading instead
      */
+    @Deprecated
     public enum ToneMapping {
         /**
          * Equivalent to disabling tone-mapping.
@@ -717,18 +767,46 @@ public class View {
      * Enables or disables tone-mapping in the post-processing stage. Enabled by default.
      *
      * @param type Tone-mapping function.
+     *
+     * @deprecated Use {@link #setColorGrading(com.google.android.filament.ColorGrading)}
      */
+    @Deprecated
     public void setToneMapping(@NonNull ToneMapping type) {
-        nSetToneMapping(getNativeObject(), type.ordinal());
     }
 
     /**
      * Returns the tone-mapping function.
      * @return tone-mapping function.
+     *
+     * @deprecated Use {@link #getColorGrading()}. This always returns {@link ToneMapping#ACES}
      */
+    @Deprecated
     @NonNull
     public ToneMapping getToneMapping() {
-        return ToneMapping.values()[nGetToneMapping(getNativeObject())];
+        return ToneMapping.ACES;
+    }
+
+    /**
+     * Sets this View's color grading transforms.
+     *
+     * @param colorGrading Associate the specified {@link ColorGrading} to this view. A ColorGrading
+     *                     can be associated to several View instances. Can be null to dissociate
+     *                     the currently set ColorGrading from this View. Doing so will revert to
+     *                     the use of the default color grading transforms.
+     */
+    public void setColorGrading(@Nullable ColorGrading colorGrading) {
+        nSetColorGrading(getNativeObject(),
+                colorGrading != null ? colorGrading.getNativeObject() : 0);
+        mColorGrading = colorGrading;
+    }
+
+    /**
+     * Returns the {@link ColorGrading} associated to this view.
+     *
+     * @return A {@link ColorGrading} or null if the default {@link ColorGrading} is in use
+     */
+    public ColorGrading getColorGrading() {
+        return mColorGrading;
     }
 
     /**
@@ -924,7 +1002,7 @@ public class View {
     public void setAmbientOcclusionOptions(@NonNull AmbientOcclusionOptions options) {
         mAmbientOcclusionOptions = options;
         nSetAmbientOcclusionOptions(getNativeObject(), options.radius, options.bias, options.power,
-                options.resolution, options.intensity, options.quality.ordinal());
+                options.resolution, options.intensity, options.quality.ordinal(), options.upsampling.ordinal());
     }
 
     /**
@@ -969,12 +1047,42 @@ public class View {
     }
 
     /**
+     * Sets vignette options.
+     *
+     * @param options Options for vignetting.
+     * @see #getVignetteOptions
+     */
+    public void setVignetteOptions(@NonNull VignetteOptions options) {
+        assertFloat4In(options.color);
+        mVignetteOptions = options;
+        nSetVignetteOptions(getNativeObject(),
+                options.midPoint, options.roundness, options.feather,
+                options.color[0], options.color[1], options.color[2], options.color[3],
+                options.enabled);
+    }
+
+    /**
+     * Gets the vignette options
+     * @see #setVignetteOptions
+     *
+     * @return vignetting options currently set.
+     */
+    @NonNull
+    public VignetteOptions getVignetteOptions() {
+        if (mVignetteOptions == null) {
+            mVignetteOptions = new VignetteOptions();
+        }
+        return mVignetteOptions;
+    }
+
+    /**
      * Sets fog options.
      *
      * @param options Options for fog.
      * @see #getFogOptions
      */
     public void setFogOptions(@NonNull FogOptions options) {
+        assertFloat3In(options.color);
         mFogOptions = options;
         nSetFogOptions(getNativeObject(), options.distance, options.maximumOpacity, options.height,
                 options.heightFalloff, options.color[0], options.color[1], options.color[2],
@@ -1046,22 +1154,22 @@ public class View {
     private static native int nGetSampleCount(long nativeView);
     private static native void nSetAntiAliasing(long nativeView, int type);
     private static native int nGetAntiAliasing(long nativeView);
-    private static native void nSetToneMapping(long nativeView, int type);
-    private static native int nGetToneMapping(long nativeView);
     private static native void nSetDithering(long nativeView, int dithering);
     private static native int nGetDithering(long nativeView);
     private static native void nSetDynamicResolutionOptions(long nativeView, boolean enabled, boolean homogeneousScaling, float minScale, float maxScale, int quality);
     private static native void nSetRenderQuality(long nativeView, int hdrColorBufferQuality);
     private static native void nSetDynamicLightingOptions(long nativeView, float zLightNear, float zLightFar);
+    private static native void nSetColorGrading(long nativeView, long nativeColorGrading);
     private static native void nSetPostProcessingEnabled(long nativeView, boolean enabled);
     private static native boolean nIsPostProcessingEnabled(long nativeView);
     private static native void nSetFrontFaceWindingInverted(long nativeView, boolean inverted);
     private static native boolean nIsFrontFaceWindingInverted(long nativeView);
     private static native void nSetAmbientOcclusion(long nativeView, int ordinal);
     private static native int nGetAmbientOcclusion(long nativeView);
-    private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity, int quality);
+    private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity, int quality, int upsampling);
     private static native void nSetBloomOptions(long nativeView, long dirtNativeObject, float dirtStrength, float strength, int resolution, float anamorphism, int levels, int blendMode, boolean threshold, boolean enabled);
     private static native void nSetFogOptions(long nativeView, float distance, float maximumOpacity, float height, float heightFalloff, float v, float v1, float v2, float density, float inScatteringStart, float inScatteringSize, boolean fogColorFromIbl, boolean enabled);
     private static native void nSetBlendMode(long nativeView, int blendMode);
     private static native void nSetDepthOfFieldOptions(long nativeView, float focusDistance, float blurScale, float maxApertureDiameter, boolean enabled);
+    private static native void nSetVignetteOptions(long nativeView, float midPoint, float roundness, float feather, float r, float g, float b, float a, boolean enabled);
 }

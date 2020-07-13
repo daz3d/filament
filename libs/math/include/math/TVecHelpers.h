@@ -463,6 +463,13 @@ private:
         return v;
     }
 
+    friend inline VECTOR<T> MATH_PURE exp(VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = std::exp(v[i]);
+        }
+        return v;
+    }
+
     friend inline VECTOR<T> MATH_PURE pow(VECTOR<T> v, T p) {
         for (size_t i = 0; i < v.size(); i++) {
             v[i] = std::pow(v[i], p);
@@ -470,9 +477,37 @@ private:
         return v;
     }
 
+    friend inline VECTOR<T> MATH_PURE pow(T v, VECTOR<T> p) {
+        for (size_t i = 0; i < p.size(); i++) {
+            p[i] = std::pow(v, p[i]);
+        }
+        return p;
+    }
+
+    friend inline VECTOR<T> MATH_PURE pow(VECTOR<T> v, VECTOR<T> p) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = std::pow(v[i], p[i]);
+        }
+        return v;
+    }
+
     friend inline VECTOR<T> MATH_PURE log(VECTOR<T> v) {
         for (size_t i = 0; i < v.size(); i++) {
             v[i] = std::log(v[i]);
+        }
+        return v;
+    }
+
+    friend inline VECTOR<T> MATH_PURE log10(VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = std::log10(v[i]);
+        }
+        return v;
+    }
+
+    friend inline VECTOR<T> MATH_PURE log2(VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = std::log2(v[i]);
         }
         return v;
     }
@@ -531,6 +566,32 @@ private:
             r = min(r, v[i]);
         }
         return r;
+    }
+
+    friend inline constexpr VECTOR<T> MATH_PURE mix(const VECTOR<T>& u, VECTOR<T> v, T a) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = u[i] * (T(1) - a) + v[i] * a;
+        }
+        return v;
+    }
+
+    friend inline constexpr VECTOR<T> MATH_PURE smoothstep(T edge0, T edge1, VECTOR<T> v) {
+        VECTOR<T> t = saturate((v - edge0) / (edge1 - edge0));
+        return t * t * (T(3) - T(2) * t);
+    }
+
+    friend inline constexpr VECTOR<T> MATH_PURE step(T edge, VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = v[i] < edge ? T(0) : T(1);
+        }
+        return v;
+    }
+
+    friend inline constexpr VECTOR<T> MATH_PURE step(VECTOR<T> edge, VECTOR<T> v) {
+        for (size_t i = 0; i < v.size(); i++) {
+            v[i] = v[i] < edge[i] ? T(0) : T(1);
+        }
+        return v;
     }
 
     friend inline constexpr bool MATH_PURE any(const VECTOR<T>& v) {

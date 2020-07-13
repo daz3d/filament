@@ -32,43 +32,36 @@ struct VulkanProgram : public HwProgram {
     Program::SamplerGroupInfo samplerGroupInfo;
 };
 
-struct VulkanTexture;
-
 // The render target bundles together a set of attachments, each of which can have one of the
 // following ownership semantics:
 //
-// - The attachment's VkImage is shared and the owner is VulkanSwapChain (mOffScreen = false).
-// - The attachment's VkImage is shared and the owner is VulkanTexture   (mOffScreen = true).
+// - The attachment's VkImage is shared and the owner is VulkanSwapChain (mOffscreen = false).
+// - The attachment's VkImage is shared and the owner is VulkanTexture   (mOffscreen = true).
 //
 // We use private inheritance to shield clients from the width / height fields in HwRenderTarget,
 // which are not representative when this is the default render target.
 struct VulkanRenderTarget : private HwRenderTarget {
-
     // Creates an offscreen render target.
-    VulkanRenderTarget(VulkanContext& context, uint32_t w, uint32_t h, TargetBufferInfo colorInfo,
-            VulkanTexture* color, TargetBufferInfo depthInfo, VulkanTexture* depth);
+    VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height,
+            VulkanAttachment color[MRT::TARGET_COUNT], VulkanAttachment depthStencil[2]);
 
     // Creates a special "default" render target (i.e. associated with the swap chain)
-    explicit VulkanRenderTarget(VulkanContext& context) : HwRenderTarget(0, 0), mContext(context),
-            mOffscreen(false), mColorLevel(0), mDepthLevel(0) {}
+    explicit VulkanRenderTarget(VulkanContext& context);
 
     ~VulkanRenderTarget();
 
-    bool isOffscreen() const { return mOffscreen; }
     void transformClientRectToPlatform(VkRect2D* bounds) const;
     void transformClientRectToPlatform(VkViewport* bounds) const;
     VkExtent2D getExtent() const;
-    VulkanAttachment getColor() const;
+    VulkanAttachment getColor(int target) const;
     VulkanAttachment getDepth() const;
-    uint32_t getColorLevel() const { return mColorLevel; }
-    uint32_t getDepthLevel() const { return mDepthLevel; }
+    int getColorTargetCount() const;
+    bool invalidate();
 private:
-    VulkanAttachment mColor = {};
+    VulkanAttachment mColor[MRT::TARGET_COUNT] = {};
     VulkanAttachment mDepth = {};
     VulkanContext& mContext;
     bool mOffscreen;
-    uint32_t mColorLevel;
-    uint32_t mDepthLevel;
 };
 
 struct VulkanSwapChain : public HwSwapChain {
@@ -116,6 +109,8 @@ struct VulkanTexture : public HwTexture {
     ~VulkanTexture();
     void update2DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
             int miplevel);
+    void update3DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
+            uint32_t depth, int miplevel);
     void updateCubeImage(const PixelBufferDescriptor& data, const FaceOffsets& faceOffsets,
             int miplevel);
 
@@ -123,7 +118,7 @@ struct VulkanTexture : public HwTexture {
     // layout to a GPU-readable layout.
     static void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
             VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
-            uint32_t layers, uint32_t levels = 1);
+            uint32_t layers, uint32_t levels, VkImageAspectFlags aspect);
 
     VkFormat vkformat;
     VkImageView imageView = VK_NULL_HANDLE;
@@ -134,8 +129,10 @@ private:
     // Issues a copy from a VkBuffer to a specified miplevel in a VkImage. The given width and
     // height define a subregion within the miplevel.
     void copyBufferToImage(VkCommandBuffer cmdbuffer, VkBuffer buffer, VkImage image,
-            uint32_t width, uint32_t height, FaceOffsets const* faceOffsets, uint32_t miplevel);
+            uint32_t width, uint32_t height, uint32_t depth,
+            FaceOffsets const* faceOffsets, uint32_t miplevel);
 
+    VkImageAspectFlags mAspect;
     VulkanContext& mContext;
     VulkanStagePool& mStagePool;
 };
@@ -161,12 +158,18 @@ struct VulkanFence : public HwFence {
     std::shared_ptr<VulkanCmdFence> fence;
 };
 
+struct VulkanSync : public HwSync {
+    VulkanSync(const VulkanCommandBuffer& commands) : fence(commands.fence) {}
+    std::shared_ptr<VulkanCmdFence> fence;
+};
+
 struct VulkanTimerQuery : public HwTimerQuery {
     VulkanTimerQuery(VulkanContext& context);
     ~VulkanTimerQuery();
     uint32_t startingQueryIndex;
     uint32_t stoppingQueryIndex;
     VulkanContext& mContext;
+    std::atomic<VulkanCommandBuffer*> cmdbuffer;
 };
 
 } // namespace filament

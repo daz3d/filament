@@ -29,6 +29,7 @@ class JobSystem;
 namespace filament {
 
 class Camera;
+class ColorGrading;
 class DebugRegistry;
 class Fence;
 class IndexBuffer;
@@ -306,7 +307,7 @@ public:
     Camera* createCamera(utils::Entity entity) noexcept;
 
     /**
-     * Returns the Camera component of the given its entity.
+     * Returns the Camera component of the given entity.
      *
      * @param entity An entity.
      * @return A pointer to the Camera component for this entity or nullptr if the entity didn't
@@ -347,6 +348,7 @@ public:
     bool destroy(const Renderer* p);            //!< Destroys a Renderer object.
     bool destroy(const Scene* p);               //!< Destroys a Scene object.
     bool destroy(const Skybox* p);              //!< Destroys a SkyBox object.
+    bool destroy(const ColorGrading* p);        //!< Destroys a ColorGrading object.
     bool destroy(const SwapChain* p);           //!< Destroys a SwapChain object.
     bool destroy(const Stream* p);              //!< Destroys a Stream object.
     bool destroy(const Texture* p);             //!< Destroys a Texture object.
@@ -401,6 +403,7 @@ public:
      *
      * @return A camera component
      */
+    UTILS_DEPRECATED
     Camera* createCamera() noexcept;
 
     /**
@@ -409,6 +412,7 @@ public:
      * @param camera Camera component to destroy. The associated entity is also destroyed.
      * @deprecated use destroyCameraComponent(Entity) instead
      */
+    UTILS_DEPRECATED
     void destroy(const Camera* camera);
 
    /**

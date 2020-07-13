@@ -54,6 +54,10 @@ material {
             name : spiralTurns
         },
         {
+            type : float2,
+            name : angleIncCosSin
+        },
+        {
             type : float,
             name : invFarPlane
         },
@@ -154,11 +158,23 @@ fragment {
         return vec3(cos(angle), sin(angle), radius);
     }
 
+    highp mat2 tapAngleStep() {
+        highp vec2 t = materialParams.angleIncCosSin;
+        return mat2(t.x, t.y, -t.y, t.x);
+    }
+
+    vec3 tapLocation(float i, vec2 p) {
+        float radius = (i + 0.5) * materialParams.sampleCount.y;
+        return vec3(p, radius);
+    }
+
+
     void computeAmbientOcclusionSAO(inout float occlusion, float i, float ssDiskRadius,
             const highp vec2 uv,  const highp vec3 origin, const vec3 normal,
-            const float noise) {
+            const vec2 tapPosition, const float noise) {
 
-        vec3 tap = tapLocation(i, noise);
+        vec3 tap = tapLocation(i, tapPosition);
+
         float ssRadius = max(1.0, tap.z * ssDiskRadius); // at least 1 pixel screen-space radius
 
         vec2 uvSamplePos = uv + vec2(ssRadius * tap.xy) * materialParams.resolution.zw;
@@ -184,6 +200,8 @@ fragment {
 
         vec3 normal = computeViewSpaceNormal(origin, uv);
         float noise = random(gl_FragCoord.xy);
+        highp vec2 tapPosition = tapLocation(0.0, noise).xy;
+        highp mat2 angleStep = tapAngleStep();
 
         // Choose the screen-space sample radius
         // proportional to the projected area of the sphere
@@ -191,20 +209,18 @@ fragment {
 
         float occlusion = 0.0;
         for (float i = 0.0; i < materialParams.sampleCount.x; i += 1.0) {
-            computeAmbientOcclusionSAO(occlusion, i, ssDiskRadius, uv, origin, normal, noise);
+            computeAmbientOcclusionSAO(occlusion, i, ssDiskRadius, uv, origin, normal, tapPosition, noise);
+            tapPosition = angleStep * tapPosition;
         }
 
         float ao = max(0.0, 1.0 - occlusion * (materialParams.intensity * materialParams.sampleCount.y));
         ao = pow(ao, materialParams.power);
 
-        // Apply a 2x2 bilateral box filter, taking advantage of quad shading. If we were not
-        // applying the bilateral filter, this would be equivalent to downsampling the AO buffer
-        // using a 2x2 box. Thanks to the bilateral filter, we keep some sharp edges.
-        // mod2() below will return either 0.5 or 1.5
-        // This assumes full derivatives are supported.
-        ivec2 coords = ivec2(gl_FragCoord.xy);
-        ao += (1.0 - step(kEdgeDistance, abs(dFdx(origin.z)))) * dFdx(ao) * (0.5 - float(coords.x & 1));
-        ao += (1.0 - step(kEdgeDistance, abs(dFdy(origin.z)))) * dFdy(ao) * (0.5 - float(coords.y & 1));
+#if defined(TARGET_MOBILE)
+        // this line is needed to workaround what seems to be a bug on qualcomm hardware
+        ao += gl_FragCoord.x * MEDIUMP_FLT_MIN;
+#endif
+
         postProcess.color.rgb = vec3(ao, pack(origin.z));
     }
 }

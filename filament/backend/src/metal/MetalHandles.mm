@@ -18,6 +18,8 @@
 
 #include "MetalEnums.h"
 
+#include <filament/SwapChain.h>
+
 #include "private/backend/BackendUtils.h"
 
 #include <utils/Panic.h>
@@ -47,12 +49,29 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     return MTLTextureUsage(u);
 }
 
-MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow)
+MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow, uint64_t flags)
         : layer(nativeWindow) {
+
+    if (!(flags & SwapChain::CONFIG_TRANSPARENT) && !nativeWindow.opaque) {
+        utils::slog.w << "Warning: Filament SwapChain has no CONFIG_TRANSPARENT flag, "
+                         "but the CAMetaLayer(" << (__bridge void*) nativeWindow << ")"
+                         " has .opaque set to NO." << utils::io::endl;
+    }
+    if ((flags & SwapChain::CONFIG_TRANSPARENT) && nativeWindow.opaque) {
+        utils::slog.w << "Warning: Filament SwapChain has the CONFIG_TRANSPARENT flag, "
+                         "but the CAMetaLayer(" << (__bridge void*) nativeWindow << ")"
+                         " has .opaque set to YES." << utils::io::endl;
+    }
+
+    // Needed so we can use the SwapChain as a blit source.
+    if (flags & SwapChain::CONFIG_READABLE) {
+        nativeWindow.framebufferOnly = NO;
+    }
+
     layer.device = device;
 }
 
-MetalSwapChain::MetalSwapChain(int32_t width, int32_t height) : headlessWidth(width),
+MetalSwapChain::MetalSwapChain(int32_t width, int32_t height, uint64_t flags) : headlessWidth(width),
         headlessHeight(height) { }
 
 MetalVertexBuffer::MetalVertexBuffer(MetalContext& context, uint8_t bufferCount,
@@ -224,7 +243,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
             "iOS does not support multisampled texture arrays.");
 #endif
 
-    const auto getTextureType = [](bool isArray, bool isMultisampled) {
+    const auto get2DTextureType = [](bool isArray, bool isMultisampled) {
         uint8_t value = 0;
         if (isMultisampled) {
             value |= 0b10u;
@@ -256,7 +275,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
         case SamplerType::SAMPLER_2D_ARRAY:
             descriptor = [MTLTextureDescriptor new];
             descriptor.pixelFormat = metalPixelFormat;
-            descriptor.textureType = getTextureType(textureArray, multisampled);
+            descriptor.textureType = get2DTextureType(textureArray, multisampled);
             descriptor.width = width;
             descriptor.height = height;
             descriptor.arrayLength = depth;
@@ -279,6 +298,19 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
             texture = [context.device newTextureWithDescriptor:descriptor];
             ASSERT_POSTCONDITION(texture != nil, "Could not create Metal texture. Out of memory?");
             break;
+        case SamplerType::SAMPLER_3D:
+            descriptor = [MTLTextureDescriptor new];
+            descriptor.pixelFormat = metalPixelFormat;
+            descriptor.textureType = MTLTextureType3D;
+            descriptor.width = width;
+            descriptor.height = height;
+            descriptor.depth = depth;
+            descriptor.mipmapLevelCount = levels;
+            descriptor.usage = getMetalTextureUsage(usage);
+            descriptor.storageMode = MTLStorageModePrivate;
+            texture = [context.device newTextureWithDescriptor:descriptor];
+            ASSERT_POSTCONDITION(texture != nil, "Could not create Metal texture. Out of memory?");
+            break;
         case SamplerType::SAMPLER_EXTERNAL:
             // If we're using external textures (CVPixelBufferRefs), we don't need to make any
             // texture allocations.
@@ -287,26 +319,63 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
     }
 }
 
+MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t levels, TextureFormat format,
+        uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage,
+        id<MTLTexture> metalTexture) noexcept
+    : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
+        externalImage(context), reshaper(format) {
+    texture = metalTexture;
+    minLod = 0;
+    maxLod = levels - 1;
+}
+
 MetalTexture::~MetalTexture() {
     externalImage.set(nullptr);
 }
 
 void MetalTexture::load2DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-        uint32_t height, PixelBufferDescriptor&& p) noexcept {
-    PixelBufferDescriptor data = reshaper.reshape(std::move(p));
+        uint32_t height, PixelBufferDescriptor& p) noexcept {
+    PixelBufferDescriptor* data = &p;
+    PixelBufferDescriptor reshapedData;
+    if (UTILS_UNLIKELY(reshaper.needsReshaping())) {
+        reshapedData = reshaper.reshape(p);
+        data = &reshapedData;
+    }
 
     id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
     id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
 
-    loadSlice(level, xoffset, yoffset, width, height, 0, 0, data, blitCommandEncoder,
+    loadSlice(level, xoffset, yoffset, 0, width, height, 1, 0, 0, *data, blitCommandEncoder,
             blitCommandBuffer);
+
+    updateLodRange(level);
+
+    [blitCommandEncoder endEncoding];
+}
+
+void MetalTexture::load3DImage(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
+        uint32_t width, uint32_t height, uint32_t depth, PixelBufferDescriptor& p) noexcept {
+    // TODO: support texture reshaping for 3D textures.
+
+    id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
+    id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
+
+    loadSlice(level, xoffset, yoffset, zoffset, width, height, depth, 0, 0, p,
+            blitCommandEncoder, blitCommandBuffer);
+
+    updateLodRange(level);
 
     [blitCommandEncoder endEncoding];
 }
 
 void MetalTexture::loadCubeImage(const FaceOffsets& faceOffsets, int miplevel,
-        PixelBufferDescriptor&& p) {
-    PixelBufferDescriptor data = reshaper.reshape(std::move(p));
+        PixelBufferDescriptor& p) {
+    PixelBufferDescriptor* data = &p;
+    PixelBufferDescriptor reshapedData;
+    if (UTILS_UNLIKELY(reshaper.needsReshaping())) {
+        reshapedData = reshaper.reshape(p);
+        data = &reshapedData;
+    }
 
     id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
     id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
@@ -315,15 +384,17 @@ void MetalTexture::loadCubeImage(const FaceOffsets& faceOffsets, int miplevel,
 
     for (NSUInteger slice = 0; slice < 6; slice++) {
         FaceOffsets::size_type faceOffset = faceOffsets.offsets[slice];
-        loadSlice(miplevel, 0, 0, faceWidth, faceWidth, faceOffset, slice, data, blitCommandEncoder,
-                blitCommandBuffer);
+        loadSlice(miplevel, 0, 0, 0, faceWidth, faceWidth, 1, faceOffset, slice, *data,
+                blitCommandEncoder, blitCommandBuffer);
     }
+
+    updateLodRange((uint32_t) miplevel);
 
     [blitCommandEncoder endEncoding];
 }
 
-void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width,
-        uint32_t height, uint32_t byteOffset, uint32_t slice,
+void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
+        uint32_t width, uint32_t height, uint32_t depth, uint32_t byteOffset, uint32_t slice,
         PixelBufferDescriptor& data, id<MTLBlitCommandEncoder> blitCommandEncoder,
         id<MTLCommandBuffer> blitCommandBuffer) noexcept {
     const size_t stride = data.stride ? data.stride : width;
@@ -352,7 +423,7 @@ void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset,
 
     // Depending on the size of the required buffer, we either allocate a staging buffer or a
     // staging texture. Then the texture data is blited to the "real" texture.
-    const size_t stagingBufferSize = bytesPerSlice;
+    const size_t stagingBufferSize = bytesPerSlice * depth;
     if (UTILS_LIKELY(stagingBufferSize <= context.device.maxBufferLength)) {
         auto entry = context.bufferPool->acquireBuffer(stagingBufferSize);
         memcpy(entry->buffer.contents,
@@ -361,12 +432,12 @@ void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset,
         [blitCommandEncoder copyFromBuffer:entry->buffer
                               sourceOffset:0
                          sourceBytesPerRow:bytesPerRow
-                       sourceBytesPerImage:0
-                                sourceSize:MTLSizeMake(width, height, 1)
+                       sourceBytesPerImage:bytesPerSlice
+                                sourceSize:MTLSizeMake(width, height, depth)
                                  toTexture:texture
                           destinationSlice:slice
                           destinationLevel:level
-                         destinationOrigin:MTLOriginMake(xoffset, yoffset, 0)];
+                         destinationOrigin:MTLOriginMake(xoffset, yoffset, zoffset)];
         // We must ensure we only capture a pointer to bufferPool, not "this", as this texture could
         // be deallocated before the completion handler runs. The MetalBufferPool is guaranteed to
         // outlive the completion handler.
@@ -375,126 +446,150 @@ void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset,
             bufferPool->releaseBuffer(entry);
         }];
     } else {
-       // The texture is too large to fit into a single buffer, create a staging texture instead.
-       MTLTextureDescriptor* descriptor =
-               [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
-                                                                  width:width
-                                                                 height:height
-                                                              mipmapped:NO];
+        // The texture is too large to fit into a single buffer, create a staging texture instead.
+        MTLTextureDescriptor* descriptor =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:metalPixelFormat
+                                                                   width:width
+                                                                  height:height
+                                                               mipmapped:NO];
+        if (depth > 1) {
+            descriptor.textureType = MTLTextureType3D;
+            descriptor.depth = depth;
+        }
 #if defined(IOS)
-       descriptor.storageMode = MTLStorageModeShared;
+        descriptor.storageMode = MTLStorageModeShared;
 #else
-       descriptor.storageMode = MTLStorageModeManaged;
+        descriptor.storageMode = MTLStorageModeManaged;
 #endif
-       id<MTLTexture> stagingTexture = [context.device newTextureWithDescriptor:descriptor];
-       [stagingTexture replaceRegion:MTLRegionMake2D(0, 0, width, height)
-                         mipmapLevel:0
-                               slice:0
-                           withBytes:static_cast<uint8_t*>(data.buffer) + sourceOffset
-                         bytesPerRow:bytesPerRow
-                       bytesPerImage:0];
-       [blitCommandEncoder copyFromTexture:stagingTexture
-                               sourceSlice:0
-                               sourceLevel:0
-                              sourceOrigin:MTLOriginMake(0, 0, 0)
-                                sourceSize:MTLSizeMake(width, height, 1)
-                                 toTexture:texture
-                          destinationSlice:slice
-                          destinationLevel:level
-                         destinationOrigin:MTLOriginMake(xoffset, yoffset, 0)];
+        id<MTLTexture> stagingTexture = [context.device newTextureWithDescriptor:descriptor];
+        [stagingTexture replaceRegion:MTLRegionMake3D(0, 0, 0, width, height, depth)
+                          mipmapLevel:0
+                                slice:0
+                            withBytes:static_cast<uint8_t*>(data.buffer) + sourceOffset
+                          bytesPerRow:bytesPerRow
+                        bytesPerImage:bytesPerSlice];
+        [blitCommandEncoder copyFromTexture:stagingTexture
+                                sourceSlice:0
+                                sourceLevel:0
+                               sourceOrigin:MTLOriginMake(0, 0, 0)
+                                 sourceSize:MTLSizeMake(width, height, depth)
+                                  toTexture:texture
+                           destinationSlice:slice
+                           destinationLevel:level
+                          destinationOrigin:MTLOriginMake(xoffset, yoffset, zoffset)];
     }
+}
+
+void MetalTexture::updateLodRange(uint32_t level) {
+    minLod = std::min(minLod, level);
+    maxLod = std::max(maxLod, level);
 }
 
 MetalRenderTarget::MetalRenderTarget(MetalContext* context, uint32_t width, uint32_t height,
-        uint8_t samples, id<MTLTexture> color, TargetInfo colorInfo, id<MTLTexture> depth,
-        TargetInfo depthInfo) : HwRenderTarget(width, height), context(context), samples(samples),
-        colorInfo(colorInfo), depthInfo(depthInfo) {
-    ASSERT_PRECONDITION(color || depth, "Must provide either a color or depth texture.");
+        uint8_t samples, Attachment colorAttachments[MRT::TARGET_COUNT], Attachment depthAttachment) :
+        HwRenderTarget(width, height), context(context), samples(samples) {
+    // If we were given a single-sampled texture but the samples parameter is > 1, we create
+    // multisampled sidecar textures and do a resolve automatically.
+    const bool msaaResolve = samples > 1;
 
-    if (color) {
-        if (color.textureType == MTLTextureType2DMultisample) {
-            this->multisampledColor = color;
-        } else {
-            this->color = color;
+    for (size_t i = 0; i < MRT::TARGET_COUNT; i++) {
+        if (!colorAttachments[i]) {
+            continue;
+        }
+        this->color[i] = colorAttachments[i];
+
+        const auto textureSampleCount = this->color[i].texture.sampleCount;
+
+        ASSERT_PRECONDITION(textureSampleCount <= samples,
+                "MetalRenderTarget was initialized with a MSAA COLOR%d texture, but sample count is %d.",
+                i, samples);
+
+        if (msaaResolve && textureSampleCount == 1) {
+            multisampledColor[i] =
+                    createMultisampledTexture(context->device, color[0].texture.pixelFormat,
+                            width, height, samples);
         }
     }
 
-    if (depth) {
-        if (depth.textureType == MTLTextureType2DMultisample) {
-            this->multisampledDepth = depth;
-        } else {
-            this->depth = depth;
-        }
-    }
+    if (depthAttachment) {
+        this->depth = depthAttachment;
 
-    ASSERT_PRECONDITION(samples > 1 || (!multisampledDepth && !multisampledColor),
-            "MetalRenderTarget was initialized with a MSAA texture, but sample count is %d.", samples);
+        const auto textureSampleCount = this->depth.texture.sampleCount;
 
-    // Handle special cases. If we were given a single-sampled texture but the samples parameter
-    // is > 1, we create multisampled textures and do a resolve automatically.
-    if (samples > 1) {
-        if (color && !multisampledColor) {
-            multisampledColor =
-                    createMultisampledTexture(context->device, color.pixelFormat, width, height,
-                            samples);
-        }
+        ASSERT_PRECONDITION(textureSampleCount <= samples,
+                "MetalRenderTarget was initialized with a MSAA DEPTH texture, but sample count is %d.",
+                samples);
 
-        if (depth && !multisampledDepth) {
+        if (msaaResolve && this->depth.texture.sampleCount == 1) {
             // TODO: we only need to resolve depth if the depth texture is not SAMPLEABLE.
-            multisampledDepth = createMultisampledTexture(context->device, depth.pixelFormat, width,
-                    height, samples);
+            multisampledDepth = createMultisampledTexture(context->device, depth.texture.pixelFormat,
+                    width, height, samples);
         }
     }
 }
 
-id<MTLTexture> MetalRenderTarget::getColor() {
-    if (defaultRenderTarget) {
-        return acquireDrawable(context);
-    }
-    if (multisampledColor) {
-        return multisampledColor;
-    }
-    return color;
-}
+void MetalRenderTarget::setUpRenderPassAttachments(MTLRenderPassDescriptor* descriptor,
+        const RenderPassParams& params) {
 
-id<MTLTexture> MetalRenderTarget::getDepth() {
-    if (defaultRenderTarget) {
-        return acquireDepthTexture(context);
+    const auto discardFlags = params.flags.discardEnd;
+
+    for (size_t i = 0; i < MRT::TARGET_COUNT; i++) {
+        Attachment attachment = getColorAttachment(i);
+        if (!attachment) {
+            continue;
+        }
+
+        descriptor.colorAttachments[i].texture = attachment.texture;
+        descriptor.colorAttachments[i].level = attachment.level;
+        descriptor.colorAttachments[i].slice = attachment.layer;
+        descriptor.colorAttachments[i].loadAction = getLoadAction(params, getMRTColorFlag(i));
+        descriptor.colorAttachments[i].storeAction = getStoreAction(params, getMRTColorFlag(i));
+        descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
+                params.clearColor.r, params.clearColor.g, params.clearColor.b, params.clearColor.a);
+
+        if (multisampledColor[i]) {
+            descriptor.colorAttachments[i].texture = multisampledColor[i];
+            const bool discard = any(discardFlags & getMRTColorFlag(i));
+            if (!discard) {
+                descriptor.colorAttachments[i].resolveTexture = attachment.texture;
+                descriptor.colorAttachments[i].storeAction = MTLStoreActionMultisampleResolve;
+            }
+        }
     }
+
+    Attachment depthAttachment = getDepthAttachment();
+    descriptor.depthAttachment.texture = depthAttachment.texture;
+    descriptor.depthAttachment.level = depthAttachment.level;
+    descriptor.depthAttachment.slice = depthAttachment.layer;
+    descriptor.depthAttachment.loadAction = getLoadAction(params, TargetBufferFlags::DEPTH);
+    descriptor.depthAttachment.storeAction = getStoreAction(params, TargetBufferFlags::DEPTH);
+    descriptor.depthAttachment.clearDepth = params.clearDepth;
+
     if (multisampledDepth) {
-        return multisampledDepth;
+        descriptor.depthAttachment.texture = multisampledDepth;
+        const bool discard = any(discardFlags & TargetBufferFlags::DEPTH);
+        if (!discard) {
+            descriptor.depthAttachment.resolveTexture = depthAttachment.texture;
+            descriptor.depthAttachment.storeAction = MTLStoreActionMultisampleResolve;
+        }
     }
-    return depth;
 }
 
-id<MTLTexture> MetalRenderTarget::getColorResolve() {
-    const bool shouldResolveColor = (multisampledColor && color);
-    return shouldResolveColor ? color : nil;
+MetalRenderTarget::Attachment MetalRenderTarget::getColorAttachment(size_t index) {
+    assert(index < MRT::TARGET_COUNT);
+    Attachment result = color[index];
+    if (index == 0 && defaultRenderTarget) {
+        result.texture = acquireDrawable(context);
+    }
+    return result;
 }
 
-id<MTLTexture> MetalRenderTarget::getDepthResolve() {
-    const bool shouldResolveDepth = (multisampledDepth && depth);
-    return shouldResolveDepth ? depth : nil;
-}
-
-id<MTLTexture> MetalRenderTarget::getBlitColorSource() {
+MetalRenderTarget::Attachment MetalRenderTarget::getDepthAttachment() {
+    Attachment result = depth;
     if (defaultRenderTarget) {
-        return acquireDrawable(context);
+        result.texture = acquireDepthTexture(context);
     }
-    if (color) {
-        return color;
-    }
-    return multisampledColor;
-}
-
-id<MTLTexture> MetalRenderTarget::getBlitDepthSource() {
-    if (defaultRenderTarget) {
-        return acquireDepthTexture(context);
-    }
-    if (depth) {
-        return depth;
-    }
-    return multisampledDepth;
+    return result;
 }
 
 MTLLoadAction MetalRenderTarget::getLoadAction(const RenderPassParams& params,
@@ -515,15 +610,6 @@ MTLStoreAction MetalRenderTarget::getStoreAction(const RenderPassParams& params,
     if (any(discardEndFlags & buffer)) {
         return MTLStoreActionDontCare;
     }
-    if (any(buffer & TargetBufferFlags::COLOR)) {
-        const bool shouldResolveColor = (multisampledColor && color);
-        return shouldResolveColor ? MTLStoreActionMultisampleResolve : MTLStoreActionStore;
-    }
-    if (any(buffer & TargetBufferFlags::DEPTH)) {
-        const bool shouldResolveDepth = (multisampledDepth && depth);
-        return shouldResolveDepth ? MTLStoreActionMultisampleResolve : MTLStoreActionStore;
-    }
-    // Shouldn't get here.
     return MTLStoreActionStore;
 }
 

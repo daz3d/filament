@@ -18,7 +18,6 @@
 #define GLTFIO_FFILAMENTASSET_H
 
 #include <gltfio/FilamentAsset.h>
-#include <gltfio/Animator.h>
 
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -32,29 +31,28 @@
 #include <math/mat4.h>
 
 #include <utils/Entity.h>
-#include <utils/NameComponentManager.h>
 
 #include <cgltf.h>
 
 #include "upcast.h"
-#include "Wireframe.h"
 #include "DependencyGraph.h"
 #include "DracoCache.h"
+#include "FFilamentInstance.h"
 
 #include <tsl/robin_map.h>
+#include <tsl/htrie_map.h>
 
-#include <string>
 #include <vector>
 
-namespace gltfio {
-namespace details {
+namespace utils {
+    class NameComponentManager;
+    class EntityManager;
+}
 
-struct Skin {
-    std::string name;
-    std::vector<filament::math::mat4f> inverseBindMatrices;
-    std::vector<utils::Entity> joints;
-    std::vector<utils::Entity> targets;
-};
+namespace gltfio {
+
+class Animator;
+class Wireframe;
 
 // Encapsulates VertexBuffer::setBufferAt() or IndexBuffer::setBuffer().
 struct BufferSlot {
@@ -76,30 +74,11 @@ struct TextureSlot {
 };
 
 struct FFilamentAsset : public FilamentAsset {
-    FFilamentAsset(filament::Engine* engine, utils::NameComponentManager* names) :
-            mEngine(engine), mNameManager(names) {}
+    FFilamentAsset(filament::Engine* engine, utils::NameComponentManager* names,
+            utils::EntityManager* entityManager) :
+            mEngine(engine), mNameManager(names), mEntityManager(entityManager) {}
 
-    ~FFilamentAsset() {
-        releaseSourceData();
-        delete mAnimator;
-        delete mWireframe;
-        mEngine->destroy(mRoot);
-        for (auto entity : mEntities) {
-            mEngine->destroy(entity);
-        }
-        for (auto mi : mMaterialInstances) {
-            mEngine->destroy(mi);
-        }
-        for (auto vb : mVertexBuffers) {
-            mEngine->destroy(vb);
-        }
-        for (auto ib : mIndexBuffers) {
-            mEngine->destroy(ib);
-        }
-        for (auto tx : mTextures) {
-            mEngine->destroy(tx);
-        }
-    }
+    ~FFilamentAsset();
 
     size_t getEntityCount() const noexcept {
         return mEntities.size();
@@ -115,6 +94,14 @@ struct FFilamentAsset : public FilamentAsset {
 
     size_t getLightEntityCount() const noexcept {
         return mLightEntities.size();
+    }
+
+    const utils::Entity* getCameraEntities() const noexcept {
+        return mCameraEntities.empty() ? nullptr : mCameraEntities.data();
+    }
+
+    size_t getCameraEntityCount() const noexcept {
+        return mCameraEntities.size();
     }
 
     utils::Entity getRoot() const noexcept {
@@ -149,66 +136,43 @@ struct FFilamentAsset : public FilamentAsset {
         return mBoundingBox;
     }
 
-    const char* getName(utils::Entity entity) const noexcept {
-        if (mNameManager == nullptr) {
-            return nullptr;
-        }
-        auto nameInstance = mNameManager->getInstance(entity);
-        return nameInstance ? mNameManager->getName(nameInstance) : nullptr;
-    }
+    const char* getName(utils::Entity entity) const noexcept;
 
-    Animator* getAnimator() noexcept {
-        if (!mAnimator) {
-            mAnimator = new Animator(this);
-        }
-        return mAnimator;
-    }
+    utils::Entity getFirstEntityByName(const char* name) noexcept;
 
-    utils::Entity getWireframe() noexcept {
-        if (!mWireframe) {
-            mWireframe = new Wireframe(this);
-        }
-        return mWireframe->mEntity;
-    }
+    size_t getEntitiesByName(const char* name, utils::Entity* entities,
+            size_t maxCount) const noexcept;
+
+    size_t getEntitiesByPrefix(const char* prefix, utils::Entity* entities,
+            size_t maxCount) const noexcept;
+
+    Animator* getAnimator() noexcept;
+
+    utils::Entity getWireframe() noexcept;
 
     filament::Engine* getEngine() const noexcept {
         return mEngine;
     }
 
-    void releaseSourceData() noexcept {
-        // To ensure that all possible memory is freed, we reassign to new containers rather than
-        // calling clear(). With many container types (such as robin_map), clearing is a fast
-        // operation that merely frees the storage for the items.
-        mResourceUris = {};
-        mNodeMap = {};
-        mPrimitives = {};
-        mBufferSlots = {};
-        mTextureSlots = {};
-        releaseSourceAsset();
-    }
+    void releaseSourceData() noexcept;
 
     const void* getSourceAsset() noexcept {
         return mSourceAsset;
+    }
+
+    FilamentInstance** getAssetInstances() noexcept {
+        return (FilamentInstance**) mInstances.data();
+    }
+
+    size_t getAssetInstanceCount() const noexcept {
+        return mInstances.size();
     }
 
     void acquireSourceAsset() {
         ++mSourceAssetRefCount;
     }
 
-    void releaseSourceAsset() {
-        if (--mSourceAssetRefCount == 0) {
-            // At this point, all vertex buffers have been uploaded to the GPU and we can finally
-            // release all remaining CPU-side source data, such as aggregated GLB buffers and Draco
-            // meshes. Note that sidecar bin data is already released, because external resources
-            // are released eagerly via BufferDescriptor callbacks.
-            mDracoCache = {};
-            mGlbData = {};
-            if (!mSharedSourceAsset) {
-                cgltf_free((cgltf_data*) mSourceAsset);
-            }
-            mSourceAsset = nullptr;
-        }
-    }
+    void releaseSourceAsset();
 
     void takeOwnership(filament::Texture* texture) {
         mTextures.push_back(texture);
@@ -221,16 +185,19 @@ struct FFilamentAsset : public FilamentAsset {
 
     filament::Engine* mEngine;
     utils::NameComponentManager* mNameManager;
+    utils::EntityManager* mEntityManager;
     std::vector<uint8_t> mGlbData;
     std::vector<utils::Entity> mEntities;
     std::vector<utils::Entity> mLightEntities;
+    std::vector<utils::Entity> mCameraEntities;
     std::vector<filament::MaterialInstance*> mMaterialInstances;
     std::vector<filament::VertexBuffer*> mVertexBuffers;
     std::vector<filament::IndexBuffer*> mIndexBuffers;
     std::vector<filament::Texture*> mTextures;
     filament::Aabb mBoundingBox;
     utils::Entity mRoot;
-    std::vector<Skin> mSkins;
+    std::vector<FFilamentInstance*> mInstances;
+    SkinVector mSkins; // unused for instanced assets
     Animator* mAnimator = nullptr;
     Wireframe* mWireframe = nullptr;
     int mSourceAssetRefCount = 0;
@@ -238,6 +205,7 @@ struct FFilamentAsset : public FilamentAsset {
     bool mSharedSourceAsset = false;
     DependencyGraph mDependencyGraph;
     DracoCache mDracoCache;
+    tsl::htrie_map<char, std::vector<utils::Entity>> mNameToEntity;
 
     // Sentinels for situations where ResourceLoader needs to generate data.
     const cgltf_accessor mGenerateNormals = {};
@@ -248,13 +216,12 @@ struct FFilamentAsset : public FilamentAsset {
     std::vector<TextureSlot> mTextureSlots;
     std::vector<const char*> mResourceUris;
     const cgltf_data* mSourceAsset = nullptr;
-    tsl::robin_map<const cgltf_node*, utils::Entity> mNodeMap;
+    NodeMap mNodeMap; // unused for instanced assets
     std::vector<std::pair<const cgltf_primitive*, filament::VertexBuffer*> > mPrimitives;
 };
 
 FILAMENT_UPCAST(FilamentAsset)
 
-} // namespace details
 } // namespace gltfio
 
 #endif // GLTFIO_FFILAMENTASSET_H

@@ -44,7 +44,6 @@ using namespace filaflat;
 
 namespace filament {
 
-using namespace details;
 using namespace backend;
 
 
@@ -112,8 +111,6 @@ Material* Material::Builder::build(Engine& engine) {
 
     return result;
 }
-
-namespace details {
 
 static void addSamplerGroup(Program& pb, uint8_t bindingPoint, SamplerInterfaceBlock const& sib,
         SamplerBindingMap const& map) {
@@ -295,6 +292,10 @@ bool FMaterial::hasParameter(const char* name) const noexcept {
         return mSamplerInterfaceBlock.hasSampler(name);
     }
     return true;
+}
+
+bool FMaterial::isSampler(const char* name) const noexcept {
+    return mSamplerInterfaceBlock.hasSampler(name);
 }
 
 UniformInterfaceBlock::UniformInfo const* FMaterial::reflect(
@@ -485,12 +486,19 @@ void FMaterial::onQueryCallback(void* userdata, uint16_t* pvariants) {
 }
 
  /** @}*/
- 
+
 MaterialParser* FMaterial::createParser(backend::Backend backend, const void* data, size_t size) {
     MaterialParser* materialParser = new MaterialParser(backend, data, size);
 
-    bool materialOK = materialParser->parse();
-    if (!ASSERT_POSTCONDITION_NON_FATAL(materialOK, "could not parse the material package")) {
+    MaterialParser::ParseResult materialResult = materialParser->parse();
+
+    if (!ASSERT_POSTCONDITION_NON_FATAL(materialResult != MaterialParser::ParseResult::ERROR_MISSING_BACKEND,
+                "the material was not built for the %s backend\n", backendToString(backend))) {
+        return nullptr;
+    }
+
+    if (!ASSERT_POSTCONDITION_NON_FATAL(materialResult == MaterialParser::ParseResult::SUCCESS,
+                "could not parse the material package")) {
         return nullptr;
     }
 
@@ -521,13 +529,9 @@ void FMaterial::destroyPrograms(FEngine& engine) {
     }
 }
 
-} // namespace details
-
 // ------------------------------------------------------------------------------------------------
 // Trampoline calling into private implementation
 // ------------------------------------------------------------------------------------------------
-
-using namespace details;
 
 MaterialInstance* Material::createInstance(const char* name) const noexcept {
     return upcast(this)->createInstance(name);
@@ -623,6 +627,10 @@ RefractionType Material::getRefractionType() const noexcept {
 
 bool Material::hasParameter(const char* name) const noexcept {
     return upcast(this)->hasParameter(name);
+}
+
+bool Material::isSampler(const char* name) const noexcept {
+    return upcast(this)->isSampler(name);
 }
 
 MaterialInstance* Material::getDefaultInstance() noexcept {

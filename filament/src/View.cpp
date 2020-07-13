@@ -21,7 +21,6 @@
 #include "details/DFG.h"
 #include "details/Froxelizer.h"
 #include "details/IndirectLight.h"
-#include "details/MaterialInstance.h"
 #include "details/Renderer.h"
 #include "details/RenderTarget.h"
 #include "details/Scene.h"
@@ -33,7 +32,6 @@
 #include <private/filament/SibGenerator.h>
 #include <private/filament/UibGenerator.h>
 
-#include <utils/Allocator.h>
 #include <utils/Profiler.h>
 #include <utils/Slice.h>
 #include <utils/Systrace.h>
@@ -44,15 +42,12 @@
 #include <memory>
 #include <filament/View.h>
 
-
 using namespace filament::math;
 using namespace utils;
 
 namespace filament {
 
 using namespace backend;
-
-namespace details {
 
 FView::FView(FEngine& engine)
     : mFroxelizer(engine),
@@ -82,6 +77,8 @@ FView::FView(FEngine& engine)
     mShadowUbh = driver.createUniformBuffer(mShadowUb.getSize(), backend::BufferUsage::DYNAMIC);
 
     mIsDynamicResolutionSupported = driver.isFrameTimeSupported();
+
+    mDefaultColorGrading = mColorGrading = engine.getDefaultColorGrading();
 }
 
 FView::~FView() noexcept = default;
@@ -634,9 +631,18 @@ void FView::prepareViewport(const filament::Viewport &viewport) const noexcept {
 }
 
 void FView::prepareSSAO(Handle<HwTexture> ssao) const noexcept {
+    // High quality sampling is enabled only if AO itself is enabled and upsampling quality is at
+    // least set to high and of course only if upsampling is needed.
+    const bool highQualitySampling = mAmbientOcclusionOptions.upsampling >= QualityLevel::HIGH
+            && mAmbientOcclusionOptions.resolution < 1.0f;
+
+    // LINEAR filtering is only needed when AO is enabled and low-quality upsampling is used.
     mPerViewSb.setSampler(PerViewSib::SSAO, ssao, {
-            .filterMag = SamplerMagFilter::LINEAR
+            .filterMag = mAmbientOcclusion != AmbientOcclusion::NONE && !highQualitySampling ?
+                         SamplerMagFilter::LINEAR : SamplerMagFilter::NEAREST
     });
+    mPerViewUb.setUniform(offsetof(PerViewUib, aoSamplingQuality),
+            mAmbientOcclusion != AmbientOcclusion::NONE && highQualitySampling ? 1.0f : 0.0f);
 }
 
 void FView::prepareSSR(backend::Handle<backend::HwTexture> ssr, float refractionLodOffset) const noexcept {
@@ -794,13 +800,9 @@ void FView::renderShadowMaps(FEngine& engine, FEngine::DriverApi& driver, Render
     mShadowMapManager.render(engine, *this, driver, pass);
 }
 
-} // namespace details
-
 // ------------------------------------------------------------------------------------------------
 // Trampoline calling into private implementation
 // ------------------------------------------------------------------------------------------------
-
-using namespace details;
 
 void View::setScene(Scene* scene) {
     return upcast(this)->setScene(upcast(scene));
@@ -818,7 +820,6 @@ void View::setCamera(Camera* camera) noexcept {
 Camera& View::getCamera() noexcept {
     return upcast(this)->getCameraUser();
 }
-
 
 void View::setViewport(filament::Viewport const& viewport) noexcept {
     upcast(this)->setViewport(viewport);
@@ -892,6 +893,14 @@ View::ToneMapping View::getToneMapping() const noexcept {
     return upcast(this)->getToneMapping();
 }
 
+void View::setColorGrading(ColorGrading* colorGrading) noexcept {
+    return upcast(this)->setColorGrading(upcast(colorGrading));
+}
+
+const ColorGrading* View::getColorGrading() const noexcept {
+    return upcast(this)->getColorGrading();
+}
+
 void View::setDithering(Dithering dithering) noexcept {
     upcast(this)->setDithering(dithering);
 }
@@ -956,16 +965,32 @@ void View::setBloomOptions(View::BloomOptions options) noexcept {
     upcast(this)->setBloomOptions(options);
 }
 
+View::BloomOptions View::getBloomOptions() const noexcept {
+    return upcast(this)->getBloomOptions();
+}
+
 void View::setFogOptions(View::FogOptions options) noexcept {
     upcast(this)->setFogOptions(options);
+}
+
+View::FogOptions View::getFogOptions() const noexcept {
+    return upcast(this)->getFogOptions();
 }
 
 void View::setDepthOfFieldOptions(DepthOfFieldOptions options) noexcept {
     upcast(this)->setDepthOfFieldOptions(options);
 }
 
-View::BloomOptions View::getBloomOptions() const noexcept {
-    return upcast(this)->getBloomOptions();
+View::DepthOfFieldOptions View::getDepthOfFieldOptions() const noexcept {
+    return upcast(this)->getDepthOfFieldOptions();
+}
+
+void View::setVignetteOptions(View::VignetteOptions options) noexcept {
+    upcast(this)->setVignetteOptions(options);
+}
+
+View::VignetteOptions View::getVignetteOptions() const noexcept {
+    return upcast(this)->getVignetteOptions();
 }
 
 void View::setBlendMode(BlendMode blendMode) noexcept {
@@ -976,4 +1001,8 @@ View::BlendMode View::getBlendMode() const noexcept {
     return upcast(this)->getBlendMode();
 }
 
+uint8_t View::getVisibleLayers() const noexcept {
+  return upcast(this)->getVisibleLayers();
+}
+  
 } // namespace filament

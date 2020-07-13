@@ -16,6 +16,7 @@
 
 #include <jni.h>
 
+#include <filament/Color.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
 
@@ -37,10 +38,19 @@ Java_com_google_android_filament_View_nSetScene(JNIEnv*, jclass, jlong nativeVie
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_View_nSetCamera(JNIEnv*, jclass, jlong nativeView, jlong nativeCamera) {
+Java_com_google_android_filament_View_nSetCamera(JNIEnv*, jclass,
+        jlong nativeView, jlong nativeCamera) {
     View* view = (View*) nativeView;
     Camera* camera = (Camera*) nativeCamera;
     view->setCamera(camera);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetColorGrading(JNIEnv*, jclass,
+        jlong nativeView, jlong nativeColorGrading) {
+    View* view = (View*) nativeView;
+    ColorGrading* colorGrading = (ColorGrading*) nativeColorGrading;
+    view->setColorGrading(colorGrading);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -91,18 +101,6 @@ extern "C" JNIEXPORT jint JNICALL
 Java_com_google_android_filament_View_nGetAntiAliasing(JNIEnv*, jclass, jlong nativeView) {
     View* view = (View*) nativeView;
     return (jint) view->getAntiAliasing();
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_View_nSetToneMapping(JNIEnv*, jclass, jlong nativeView, jint type) {
-    View* view = (View*) nativeView;
-    view->setToneMapping(View::ToneMapping(type));
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_google_android_filament_View_nGetToneMapping(JNIEnv*, jclass, jlong nativeView) {
-    View* view = (View*) nativeView;
-    return (jint) view->getToneMapping();
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -192,7 +190,7 @@ Java_com_google_android_filament_View_nGetAmbientOcclusion(JNIEnv*, jclass, jlon
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetAmbientOcclusionOptions(JNIEnv*, jclass,
     jlong nativeView, jfloat radius, jfloat bias, jfloat power, jfloat resolution, jfloat intensity,
-    jint quality) {
+    jint quality, jint upsampling) {
     View* view = (View*) nativeView;
     View::AmbientOcclusionOptions options = {
             .radius = radius,
@@ -200,7 +198,8 @@ Java_com_google_android_filament_View_nSetAmbientOcclusionOptions(JNIEnv*, jclas
             .bias = bias,
             .resolution = resolution,
             .intensity = intensity,
-            .quality = (View::QualityLevel)quality
+            .quality = (View::QualityLevel)quality,
+            .upsampling = (View::QualityLevel)upsampling
     };
     view->setAmbientOcclusionOptions(options);
 }
@@ -259,4 +258,13 @@ Java_com_google_android_filament_View_nSetDepthOfFieldOptions(JNIEnv *, jclass ,
     View* view = (View*) nativeView;
     view->setDepthOfFieldOptions({.focusDistance = focusDistance, .blurScale = blurScale,
             .maxApertureDiameter = maxApertureDiameter, .enabled = (bool)enabled});
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetVignetteOptions(JNIEnv*, jclass, jlong nativeView, jfloat midPoint, jfloat roundness,
+        jfloat feather, jfloat r, jfloat g, jfloat b, jfloat a, jboolean enabled) {
+    View* view = (View*) nativeView;
+    view->setVignetteOptions({.midPoint = midPoint, .roundness = roundness, .feather = feather,
+            .color = LinearColorA{r, g, b, a}, .enabled = (bool)enabled});
 }

@@ -213,22 +213,23 @@ private:
 // Pipeline state
 
 struct PipelineState {
-    id<MTLFunction> vertexFunction = nil;                               // 8 bytes
-    id<MTLFunction> fragmentFunction = nil;                             // 8 bytes
-    VertexDescription vertexDescription;                                // 528 bytes
-    MTLPixelFormat colorAttachmentPixelFormat = MTLPixelFormatInvalid;  // 8 bytes
-    MTLPixelFormat depthAttachmentPixelFormat = MTLPixelFormatInvalid;  // 8 bytes
-    NSUInteger sampleCount = 1;                                         // 8 bytes
-    BlendState blendState;                                              // 56 bytes
-    bool colorWrite = true;                                             // 1 byte
-    char padding[7] = { 0 };                                            // 7 bytes
+    id<MTLFunction> vertexFunction = nil;                                      // 8 bytes
+    id<MTLFunction> fragmentFunction = nil;                                    // 8 bytes
+    VertexDescription vertexDescription;                                       // 528 bytes
+    MTLPixelFormat colorAttachmentPixelFormat[4] = { MTLPixelFormatInvalid };  // 32 bytes
+    MTLPixelFormat depthAttachmentPixelFormat = MTLPixelFormatInvalid;         // 8 bytes
+    NSUInteger sampleCount = 1;                                                // 8 bytes
+    BlendState blendState;                                                     // 56 bytes
+    bool colorWrite = true;                                                    // 1 byte
+    char padding[7] = { 0 };                                                   // 7 bytes
 
     bool operator==(const PipelineState& rhs) const noexcept {
         return (
                 this->vertexFunction == rhs.vertexFunction &&
                 this->fragmentFunction == rhs.fragmentFunction &&
                 this->vertexDescription == rhs.vertexDescription &&
-                this->colorAttachmentPixelFormat == rhs.colorAttachmentPixelFormat &&
+                std::equal(this->colorAttachmentPixelFormat, this->colorAttachmentPixelFormat + 4,
+                        rhs.colorAttachmentPixelFormat) &&
                 this->depthAttachmentPixelFormat == rhs.depthAttachmentPixelFormat &&
                 this->sampleCount == rhs.sampleCount &&
                 this->blendState == rhs.blendState &&
@@ -243,7 +244,7 @@ struct PipelineState {
 
 // This assert checks that the struct is the size we expect without any "hidden" padding bytes
 // inserted by the compiler.
-static_assert(sizeof(PipelineState) == 632, "PipelineState unexpected size.");
+static_assert(sizeof(PipelineState) == 656, "PipelineState unexpected size.");
 
 struct PipelineStateCreator {
     id<MTLRenderPipelineState> operator()(id<MTLDevice> device, const PipelineState& state)
@@ -311,13 +312,29 @@ using UniformBufferStateTracker = StateTracker<UniformBufferState>;
 
 // Sampler states
 
-struct SamplerStateCreator {
-    id<MTLSamplerState> operator()(id<MTLDevice> device, const backend::SamplerParams& state)
-            noexcept;
+struct SamplerState {
+    backend::SamplerParams samplerParams;
+    uint32_t minLod = 0;
+    uint32_t maxLod = UINT_MAX;
+
+    bool operator==(const SamplerState& rhs) const noexcept {
+        return this->samplerParams == rhs.samplerParams &&
+               this->minLod == rhs.minLod &&
+               this->maxLod == rhs.maxLod;
+    }
+
+    bool operator!=(const SamplerState& rhs) const noexcept {
+        return !operator==(rhs);
+    }
 };
 
-using SamplerStateCache = StateCache<backend::SamplerParams, id<MTLSamplerState>,
-        SamplerStateCreator>;
+static_assert(sizeof(SamplerState) == 12, "SamplerState unexpected size.");
+
+struct SamplerStateCreator {
+    id<MTLSamplerState> operator()(id<MTLDevice> device, const SamplerState& state) noexcept;
+};
+
+using SamplerStateCache = StateCache<SamplerState, id<MTLSamplerState>, SamplerStateCreator>;
 
 // Raster-related state
 

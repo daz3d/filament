@@ -64,7 +64,7 @@ document.querySelector("body").addEventListener("click", (evt) => {
 
     // Handle selection of a material.
     if (anchor.classList.contains("material")) {
-        selectMaterial(anchor.dataset.matid);
+        selectMaterial(anchor.dataset.matid, true);
         return;
     }
 
@@ -124,9 +124,6 @@ function fetchMaterial(matid) {
         }
         matInfo.matid = matid;
         gMaterialDatabase[matid] = matInfo;
-        for (const shader of matInfo.opengl) fetchShader({glindex: shader.index}, matInfo);
-        for (const shader of matInfo.vulkan) fetchShader({vkindex: shader.index}, matInfo);
-        for (const shader of matInfo.metal)  fetchShader({metalindex: shader.index}, matInfo);
         renderMaterialList();
     });
 }
@@ -162,6 +159,10 @@ function queryActiveShaders() {
         }
         renderMaterialList();
         renderMaterialDetail();
+    })
+    .catch((error) => {
+        // This is expected to fail when the server is hosted from matinfo instead of Engine, since
+        // there are no active shaders in that situation.
     });
 }
 
@@ -208,15 +209,12 @@ function fetchMaterials() {
                 continue;
             }
             gMaterialDatabase[matInfo.matid] = matInfo;
-            for (const shader of matInfo.opengl) fetchShader({glindex: shader.index}, matInfo);
-            for (const shader of matInfo.vulkan) fetchShader({vkindex: shader.index}, matInfo);
-            for (const shader of matInfo.metal)  fetchShader({metalindex: shader.index}, matInfo);
         }
-        selectMaterial(matJson[0].matid);
+        selectMaterial(matJson[0].matid, true);
     });
 }
 
-function fetchShader(selection, matinfo) {
+function fetchShader(selection, matinfo, onDone) {
     let query, target;
     if (selection.glindex >= 0) {
         query = `type=glsl&glindex=${selection.glindex}`;
@@ -234,20 +232,37 @@ function fetchShader(selection, matinfo) {
         return response.text();
     }).then(function(shaderText) {
         target.text = shaderText;
+        onDone();
     });
 }
 
 function renderMaterialList() {
-    const materials = [];
+    const items = [];
+
     for (const matid in gMaterialDatabase) {
-        const item = gMaterialDatabase[matid];
+        const item =  Object.assign({}, gMaterialDatabase[matid]);
         item.classes = matid === gCurrentMaterial ? "current " : "";
         if (!item.active) {
             item.classes += "inactive "
         }
-        materials.push(item);
+        item.domain = item.shading.material_domain === "surface" ? "surface" : "postpro";
+        item.is_material = true;
+        items.push(item);
     }
-    materialList.innerHTML = Mustache.render(matListTemplate.innerHTML, { "material": materials } );
+
+    const label = {"is_label": true, "name": "0"};
+    items.push(Object.assign({"label": "Surface materials", "domain": "surface"}, label));
+    items.push(Object.assign({"label": "PostProcess materials", "domain": "postpro"}, label));
+
+    items.sort((a, b) => {
+        if (a.domain > b.domain) return -1;
+        if (a.domain < b.domain) return +1;
+        if (a.name < b.name) return -1;
+        if (a.name > b.name) return +1;
+        return 0;
+    });
+
+    materialList.innerHTML = Mustache.render(matListTemplate.innerHTML, { "item": items } );
 }
 
 function updateClassList(array, indexProperty, selectedIndex) {
@@ -266,7 +281,11 @@ function renderMaterialDetail() {
     updateClassList(mat.opengl, "index", ok ? parseInt(gCurrentShader.glindex) : -1);
     updateClassList(mat.vulkan, "index", ok ? parseInt(gCurrentShader.vkindex) : -1);
     updateClassList(mat.metal, "index", ok ? parseInt(gCurrentShader.metalindex) : -1);
-    materialDetail.innerHTML = Mustache.render(matDetailTemplate.innerHTML, mat);
+    const item =  Object.assign({}, mat);
+    if (item.shading.material_domain !== "surface") {
+        delete item.shading;
+    }
+    materialDetail.innerHTML = Mustache.render(matDetailTemplate.innerHTML, item);
 }
 
 function getShaderRecord(selection) {
@@ -288,18 +307,26 @@ function renderShaderStatus() {
 
 function selectShader(selection) {
     const shader = getShaderRecord(selection);
-    if (!shader || !shader.text) {
-        console.error("Shader source not yet available.");
+    if (!shader) {
+        console.error("Shader not yet available.")
         return;
     }
-    gCurrentShader = selection;
-    gCurrentShader.matid = gCurrentMaterial;
-    renderMaterialDetail();
-    gEditorIsLoading = true;
-    gEditor.setValue(shader.text);
-    gEditorIsLoading = false;
-    shaderSource.style.visibility = "visible";
-    renderShaderStatus();
+    const showShaderSource = () => {
+        gCurrentShader = selection;
+        gCurrentShader.matid = gCurrentMaterial;
+        renderMaterialDetail();
+        gEditorIsLoading = true;
+        gEditor.setValue(shader.text);
+        gEditorIsLoading = false;
+        shaderSource.style.visibility = "visible";
+        renderShaderStatus();
+    };
+    if (!shader.text) {
+        const matInfo = gMaterialDatabase[gCurrentMaterial];
+        fetchShader(selection, matInfo, showShaderSource);
+    } else {
+        showShaderSource();
+    }
 }
 
 function onEdit(changes) {

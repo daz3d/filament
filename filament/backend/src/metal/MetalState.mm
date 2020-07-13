@@ -58,19 +58,24 @@ id<MTLRenderPipelineState> PipelineStateCreator::operator()(id<MTLDevice> device
     descriptor.vertexDescriptor = vertex;
 
     // Color attachments
-    descriptor.colorAttachments[0].pixelFormat = state.colorAttachmentPixelFormat;
+    for (size_t i = 0; i < 4; i++) {
+        if (state.colorAttachmentPixelFormat[i] == MTLPixelFormatInvalid) {
+            continue;
+        }
 
-    descriptor.colorAttachments[0].writeMask =
-            state.colorWrite ? MTLColorWriteMaskAll : MTLColorWriteMaskNone;
+        descriptor.colorAttachments[i].pixelFormat = state.colorAttachmentPixelFormat[i];
+        descriptor.colorAttachments[i].writeMask =
+                state.colorWrite ? MTLColorWriteMaskAll : MTLColorWriteMaskNone;
 
-    const auto& bs = state.blendState;
-    descriptor.colorAttachments[0].blendingEnabled = bs.blendingEnabled;
-    descriptor.colorAttachments[0].alphaBlendOperation = bs.alphaBlendOperation;
-    descriptor.colorAttachments[0].rgbBlendOperation = bs.rgbBlendOperation;
-    descriptor.colorAttachments[0].destinationAlphaBlendFactor = bs.destinationAlphaBlendFactor;
-    descriptor.colorAttachments[0].destinationRGBBlendFactor = bs.destinationRGBBlendFactor;
-    descriptor.colorAttachments[0].sourceAlphaBlendFactor = bs.sourceAlphaBlendFactor;
-    descriptor.colorAttachments[0].sourceRGBBlendFactor = bs.sourceRGBBlendFactor;
+        const auto& bs = state.blendState;
+        descriptor.colorAttachments[i].blendingEnabled = bs.blendingEnabled;
+        descriptor.colorAttachments[i].alphaBlendOperation = bs.alphaBlendOperation;
+        descriptor.colorAttachments[i].rgbBlendOperation = bs.rgbBlendOperation;
+        descriptor.colorAttachments[i].destinationAlphaBlendFactor = bs.destinationAlphaBlendFactor;
+        descriptor.colorAttachments[i].destinationRGBBlendFactor = bs.destinationRGBBlendFactor;
+        descriptor.colorAttachments[i].sourceAlphaBlendFactor = bs.sourceAlphaBlendFactor;
+        descriptor.colorAttachments[i].sourceRGBBlendFactor = bs.sourceRGBBlendFactor;
+    }
 
     // Depth attachment
     descriptor.depthAttachmentPixelFormat = state.depthAttachmentPixelFormat;
@@ -99,18 +104,32 @@ id<MTLDepthStencilState> DepthStateCreator::operator()(id<MTLDevice> device,
 }
 
 id<MTLSamplerState> SamplerStateCreator::operator()(id<MTLDevice> device,
-        const backend::SamplerParams& state) noexcept {
+        const SamplerState& state) noexcept {
+    backend::SamplerParams params = state.samplerParams;
     MTLSamplerDescriptor* samplerDescriptor = [MTLSamplerDescriptor new];
-    samplerDescriptor.minFilter = getFilter(state.filterMin);
-    samplerDescriptor.magFilter = getFilter(state.filterMag);
-    samplerDescriptor.mipFilter = getMipFilter(state.filterMin);
-    samplerDescriptor.sAddressMode = getAddressMode(state.wrapS);
-    samplerDescriptor.tAddressMode = getAddressMode(state.wrapT);
-    samplerDescriptor.rAddressMode = getAddressMode(state.wrapR);
-    samplerDescriptor.maxAnisotropy = 1u << state.anisotropyLog2;
+    samplerDescriptor.minFilter = getFilter(params.filterMin);
+    samplerDescriptor.magFilter = getFilter(params.filterMag);
+    samplerDescriptor.mipFilter = getMipFilter(params.filterMin);
+    samplerDescriptor.sAddressMode = getAddressMode(params.wrapS);
+    samplerDescriptor.tAddressMode = getAddressMode(params.wrapT);
+    samplerDescriptor.rAddressMode = getAddressMode(params.wrapR);
+    samplerDescriptor.maxAnisotropy = 1u << params.anisotropyLog2;
+    samplerDescriptor.lodMaxClamp = (float) state.maxLod;
+    samplerDescriptor.lodMinClamp = (float) state.minLod;
     samplerDescriptor.compareFunction =
-            state.compareMode == SamplerCompareMode::NONE ?
-                MTLCompareFunctionNever : getCompareFunction(state.compareFunc);
+            params.compareMode == SamplerCompareMode::NONE ?
+                MTLCompareFunctionNever : getCompareFunction(params.compareFunc);
+
+#if defined(IOS)
+    // Older Apple devices (and the simulator) don't support setting a comparison function in
+    // MTLSamplerDescriptor.
+    // In practice, this means shadows are not supported when running in the simulator.
+    if (![device supportsFeatureSet:MTLFeatureSet_iOS_GPUFamily3_v1]) {
+        utils::slog.w << "Warning: sample comparison not supported by this GPU" << utils::io::endl;
+        samplerDescriptor.compareFunction = MTLCompareFunctionNever;
+    }
+#endif
+
     return [device newSamplerStateWithDescriptor:samplerDescriptor];
 }
 

@@ -310,7 +310,8 @@ if (APPLE)
         test/Arguments.cpp
         test/test_MissingRequiredAttributes.cpp
         test/test_ReadPixels.cpp
-        test/test_BufferUpdates.cpp)
+        test/test_BufferUpdates.cpp
+        test/test_MRT.cpp)
 
     target_link_libraries(backend_test PRIVATE
         backend

@@ -26,14 +26,15 @@ import * as glm from "gl-matrix";
 export as namespace Filament;
 
 export function getSupportedFormatSuffix(desired: string): void;
-export function init(assets: string[], onready: () => void): void;
-export function fetch(assets: string[], onready: () => void, onfetched: (name: string) => void): void;
+export function init(assets: string[], onready?: (() => void) | null): void;
+export function fetch(assets: string[], onDone?: (() => void) | null, onFetched?: ((name: string) => void) | null): void;
 
 export const assets: {[url: string]: Uint8Array};
 
 export type float2 = glm.vec2|number[];
 export type float3 = glm.vec3|number[];
 export type float4 = glm.vec4|number[];
+export type double4 = glm.vec4|number[];
 export type mat3 = glm.mat3|number[];
 export type mat4 = glm.mat4|number[];
 export type quat = glm.quat|number[];
@@ -66,6 +67,13 @@ export interface View$AmbientOcclusionOptions {
     quality?: View$QualityLevel;
 }
 
+export interface View$DepthOfFieldOptions {
+    focusDistance?: number;
+    blurScale?: number;
+    maxApertureDiameter?: number;
+    enabled?: boolean;
+}
+
 export interface View$BloomOptions {
     dirtStrength?: number;
     strength?: number;
@@ -85,6 +93,11 @@ export class Entity {
 
 export class EntityVector {
     public get(index: number): Entity;
+    public size(): number;
+}
+
+export class MaterialInstanceVector {
+    public get(index: number): MaterialInstance;
     public size(): number;
 }
 
@@ -180,11 +193,17 @@ export class RenderTarget$Builder {
 
 export class LightManager$Builder {
     public build(engine: Engine, entity: Entity): void;
-    public castShadows(value: boolean): LightManager$Builder;
+    public castLight(enable: boolean): LightManager$Builder;
+    public castShadows(enable: boolean): LightManager$Builder;
     public color(rgb: float3): LightManager$Builder;
     public direction(value: float3): LightManager$Builder;
     public intensity(value: number): LightManager$Builder;
+    public falloff(value: number): LightManager$Builder;
     public position(value: float3): LightManager$Builder;
+    public spotLightCone(inner: number, outer: number): LightManager$Builder;
+    public sunAngularRadius(angularRadius: number): LightManager$Builder;
+    public sunHaloFalloff(haloFalloff: number): LightManager$Builder;
+    public sunHaloSize(haloSize: number): LightManager$Builder;
 }
 
 export class Skybox$Builder {
@@ -304,8 +323,10 @@ export class Camera {
             near: number, far: number, fov: Camera$Fov): void;
     public setLensProjection(focalLength: number, aspect: number, near: number, far: number): void;
     public setCustomProjection(projection: mat4, near: number, far: number): void;
+    public setScaling(scale: double4): void;
     public getProjectionMatrix(): mat4;
     public getCullingProjectionMatrix(): mat4;
+    public getScaling(): double4;
     public getNear(): number;
     public getCullingFar(): number;
     public setModelMatrix(view: mat4): void;
@@ -346,14 +367,15 @@ export class IndirectLight$Builder {
 
 export class IcoSphere {
     constructor(nsubdivs: number);
+    public subdivide(): void;
     vertices: Float32Array;
-    tangents: Uint16Array;
+    tangents: Int16Array;
     triangles: Uint16Array;
 }
 
 export class Scene {
     public addEntity(entity: Entity): void;
-    public addEntities(entities: EntityVector): void;
+    public addEntities(entities: Entity[]): void;
     public getLightCount(): number;
     public getRenderableCount(): number;
     public remove(entity: Entity): void;
@@ -371,11 +393,13 @@ export class View {
     public setCamera(camera: Camera): void;
     public setScene(scene: Scene): void;
     public setViewport(viewport: float4): void;
+    public setVisibleLayers(select: number, values: number): void;
     public setRenderTarget(renderTarget: RenderTarget): void;
     public setAmbientOcclusionOptions(options: View$AmbientOcclusionOptions): void;
+    public setDepthOfFieldOptions(options: View$DepthOfFieldOptions): void;
     public setBloomOptions(options: View$BloomOptions): void;
-    public setAmbientOcclusion(enable: boolean): void;
-    public getAmbientOcclusion(): boolean;
+    public setAmbientOcclusion(ambientOcclusion: View$AmbientOcclusion): void;
+    public getAmbientOcclusion(): View$AmbientOcclusion;
     public setBlendMode(mode: View$BlendMode): void;
     public getBlendMode(): View$BlendMode;
 }
@@ -401,15 +425,15 @@ interface Filamesh {
 
 export class Engine {
     public static create(canvas: HTMLCanvasElement, contextOptions?: object): Engine;
-    public createCamera(): Camera;
+    public createCamera(entity: Entity): Camera;
     public createIblFromKtx(url: string): IndirectLight;
     public createMaterial(url: string): Material;
     public createRenderer(): Renderer;
     public createScene(): Scene;
     public createSkyFromKtx(url: string): Skybox;
     public createSwapChain(): SwapChain;
-    public createTextureFromJpeg(url: string): Texture;
-    public createTextureFromPng(url: string): Texture;
+    public createTextureFromJpeg(url: string, options?: object): Texture;
+    public createTextureFromPng(url: string, options?: object): Texture;
     public createTextureFromKtx(url: string, options?: object): Texture;
     public createView(): View;
 
@@ -419,7 +443,7 @@ export class Engine {
     public destroyRenderer(renderer: Renderer): void;
     public destroyView(view: View): void;
     public destroyScene(scene: Scene): void;
-    public destroyCamera(camera: Camera): void;
+    public destroyCameraComponent(camera: Entity): void;
     public destroyMaterial(material: Material): void;
     public destroyEntity(entity: Entity): void;
     public destroyIndexBuffer(indexBuffer: IndexBuffer): void;
@@ -429,6 +453,7 @@ export class Engine {
     public destroySkybox(skybox: Skybox): void;
     public destroyTexture(texture: Texture): void;
 
+    public getCameraComponent(entity: Entity): Camera;
     public getLightManager(): LightManager;
     public destroyVertexBuffer(vertexBuffer: VertexBuffer): void;
     public getRenderableManager(): RenderableManager;
@@ -441,16 +466,23 @@ export class Engine {
 export class gltfio$AssetLoader {
     public createAssetFromJson(buffer: any): gltfio$FilamentAsset;
     public createAssetFromBinary(buffer: any): gltfio$FilamentAsset;
+    public createInstancedAsset(buffer: any,
+            instances: (gltfio$FilamentInstance | null)[]): gltfio$FilamentAsset;
     public delete(): void;
 }
 
 export class gltfio$FilamentAsset {
     public loadResources(onDone: () => void|null, onFetched: (s: string) => void|null,
-            basePath: string|null, asyncInterval: number|null): void;
-    public getEntities(): EntityVector;
+            basePath: string|null, asyncInterval: number|null, options?: object): void;
+    public getEntities(): Entity[];
+    public getEntitiesByName(name: string): Entity[];
+    public getEntityByName(name: string): Entity;
+    public getEntitiesByPrefix(name: string): Entity[];
+    public getLightEntities(): Entity[];
+    public getCameraEntities(): Entity[];
     public getRoot(): Entity;
     public popRenderable(): Entity;
-    public getMaterialInstances(): MaterialInstance[];
+    public getMaterialInstances(): MaterialInstanceVector;
     public getResourceUris(): string[];
     public getBoundingBox(): Aabb;
     public getName(entity: Entity): string;
@@ -460,12 +492,35 @@ export class gltfio$FilamentAsset {
     public releaseSourceData(): void;
 }
 
+export class gltfio$FilamentInstance {
+    public getEntities(): EntityVector;
+    public getRoot(): Entity;
+    public getAnimator(): gltfio$Animator;
+}
+
 export class gltfio$Animator {
     public applyAnimation(index: number): void;
     public updateBoneMatrices(): void;
     public getAnimationCount(): number;
     public getAnimationDuration(index: number): number;
     public getAnimationName(index: number): string;
+}
+
+export class SurfaceOrientation$Builder {
+    public constructor();
+    public vertexCount(count: number): SurfaceOrientation$Builder;
+    public normals(vec3array: Float32Array, stride: number): SurfaceOrientation$Builder;
+    public uvs(vec2array: Float32Array, stride: number): SurfaceOrientation$Builder;
+    public positions(vec3array: Float32Array, stride: number): SurfaceOrientation$Builder;
+    public triangleCount(count: number): SurfaceOrientation$Builder;
+    public triangles16(indices: Uint16Array): SurfaceOrientation$Builder;
+    public triangles32(indices: Uint32Array): SurfaceOrientation$Builder;
+    public build(): SurfaceOrientation;
+}
+
+export class SurfaceOrientation {
+    public getQuats(quatCount: number): Int16Array;
+    public delete(): void;
 }
 
 export enum Frustum$Plane {
@@ -837,20 +892,3 @@ interface HeapInterface {
 }
 
 export const HEAPU8 : HeapInterface;
-
-export class SurfaceOrientation$Builder {
-    public constructor();
-    public vertexCount(count: number): SurfaceOrientation$Builder;
-    public normals(count: number, stride: number): SurfaceOrientation$Builder;
-    public uvs(uvs: number, stride: number): SurfaceOrientation$Builder;
-    public positions(positions: number, stride: number): SurfaceOrientation$Builder;
-    public triangleCount(count: number): SurfaceOrientation$Builder;
-    public triangles16(triangles: number): SurfaceOrientation$Builder;
-    public triangles32(triangles: number): SurfaceOrientation$Builder;
-    public build(): SurfaceOrientation;
-}
-
-export class SurfaceOrientation {
-    public getQuats(out: number, quatCount: number, attrType: VertexBuffer$AttributeType);
-    public delete();
-}

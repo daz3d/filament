@@ -59,6 +59,21 @@ enum class Backend : uint8_t {
     NOOP = 4,     //!< Selects the no-op driver for testing purposes.
 };
 
+static constexpr const char* backendToString(backend::Backend backend) {
+    switch (backend) {
+        case backend::Backend::NOOP:
+            return "Noop";
+        case backend::Backend::OPENGL:
+            return "OpenGL";
+        case backend::Backend::VULKAN:
+            return "Vulkan";
+        case backend::Backend::METAL:
+            return "Metal";
+        default:
+            return "Unknown";
+    }
+}
+
 /**
  * Bitmask for selecting render buffers
  */
@@ -189,6 +204,7 @@ enum class SamplerType : uint8_t {
     SAMPLER_2D_ARRAY,   //!< 2D array texture
     SAMPLER_CUBEMAP,    //!< Cube map texture
     SAMPLER_EXTERNAL,   //!< External texture
+    SAMPLER_3D,         //!< 3D texture
 };
 
 //! Texture sampler format
@@ -469,12 +485,12 @@ enum class TextureFormat : uint16_t {
 
 //! Bitmask describing the intended Texture Usage
 enum class TextureUsage : uint8_t {
-    COLOR_ATTACHMENT    = 0x1,  //!< Texture can be used as a color attachment
-    DEPTH_ATTACHMENT    = 0x2,  //!< Texture can be used as a depth attachment
-    STENCIL_ATTACHMENT  = 0x4,  //!< Texture can be used as a stencil attachment
-    UPLOADABLE          = 0x8,  //!< Data can be uploaded into this texture (default)
-    SAMPLEABLE          = 0x10, //!< Texture can be sampled (default)
-    DEFAULT = UPLOADABLE | SAMPLEABLE   //!< Default texture usage
+    COLOR_ATTACHMENT    = 0x1,                      //!< Texture can be used as a color attachment
+    DEPTH_ATTACHMENT    = 0x2,                      //!< Texture can be used as a depth attachment
+    STENCIL_ATTACHMENT  = 0x4,                      //!< Texture can be used as a stencil attachment
+    UPLOADABLE          = 0x8,                      //!< Data can be uploaded into this texture (default)
+    SAMPLEABLE          = 0x10,                     //!< Texture can be sampled (default)
+    DEFAULT             = UPLOADABLE | SAMPLEABLE   //!< Default texture usage
 };
 
 //! Texture swizzle

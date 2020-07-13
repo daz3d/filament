@@ -31,6 +31,7 @@
 #include <utils/Condition.h>
 #include <utils/Mutex.h>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -40,6 +41,10 @@ namespace backend {
 // All vkCreate* functions take an optional allocator. For now we select the default allocator by
 // passing in a null pointer, and we highlight the argument by using the VKALLOC constant.
 constexpr VkAllocationCallbacks* VKALLOC = nullptr;
+
+// At the time of this writing, our copy of MoltenVK supports Vulkan 1.0 only.
+constexpr static const int VK_REQUIRED_VERSION_MAJOR = 1;
+constexpr static const int VK_REQUIRED_VERSION_MINOR = 0;
 
 struct VulkanSurfaceContext;
 struct VulkanTexture;
@@ -53,6 +58,10 @@ struct VulkanCmdFence {
     VkFence fence;
     utils::Condition condition;
     utils::Mutex mutex;
+    std::atomic<VkResult> status;
+
+    // TODO: for non-work buffers the following field indicates if the fence has EVER been
+    // submitted, which is a bit misleading or un-useful. This needs to be refactored.
     bool submitted = false;
 };
 
@@ -68,6 +77,7 @@ struct VulkanCommandBuffer {
 struct VulkanTimestamps {
     VkQueryPool pool;
     utils::bitset32 used;
+    utils::Mutex mutex;
 };
 
 // For now we only support a single-device, single-instance scenario. Our concept of "context" is a
@@ -89,7 +99,7 @@ struct VulkanContext {
     VulkanSurfaceContext* currentSurface;
     VkRenderPassBeginInfo currentRenderPass;
     VkViewport viewport;
-    VkFormat depthFormat;
+    VkFormat finalDepthFormat;
     VmaAllocator allocator;
 
     // The work context is used for activities unrelated to the swap chain or draw calls, such as
@@ -102,7 +112,10 @@ struct VulkanAttachment {
     VkImage image;
     VkImageView view;
     VkDeviceMemory memory;
-    VulkanTexture* offscreen = nullptr;
+    VulkanTexture* texture = nullptr;
+    VkImageLayout layout;
+    uint8_t level;
+    uint16_t layer;
 };
 
 // The SwapContext is the set of objects that gets "swapped" at each beginFrame().
@@ -110,6 +123,7 @@ struct VulkanAttachment {
 struct SwapContext {
     VulkanAttachment attachment;
     VulkanCommandBuffer commands;
+    bool invalid;
 };
 
 // The SurfaceContext stores various state (including the swap chain) that we tightly associate
@@ -127,16 +141,18 @@ struct VulkanSurfaceContext {
     VkSemaphore imageAvailable;
     VkSemaphore renderingFinished;
     VulkanAttachment depth;
+    bool suboptimal;
     void* nativeWindow;
 };
 
 void selectPhysicalDevice(VulkanContext& context);
-void createVirtualDevice(VulkanContext& context);
+void createLogicalDevice(VulkanContext& context);
 void getPresentationQueue(VulkanContext& context, VulkanSurfaceContext& sc);
 void getSurfaceCaps(VulkanContext& context, VulkanSurfaceContext& sc);
 
 void createSwapChain(VulkanContext& context, VulkanSurfaceContext& sc);
 void destroySwapChain(VulkanContext& context, VulkanSurfaceContext& sc, VulkanDisposer& disposer);
+void transitionSwapChain(VulkanContext& context);
 
 uint32_t selectMemoryType(VulkanContext& context, uint32_t flags, VkFlags reqs);
 SwapContext& getSwapContext(VulkanContext& context);
@@ -148,7 +164,7 @@ VkFormat findSupportedFormat(VulkanContext& context, const std::vector<VkFormat>
         VkImageTiling tiling, VkFormatFeatureFlags features);
 VkCommandBuffer acquireWorkCommandBuffer(VulkanContext& context);
 void flushWorkCommandBuffer(VulkanContext& context);
-void createDepthBuffer(VulkanContext& context, VulkanSurfaceContext& sc, VkFormat depthFormat);
+void createFinalDepthBuffer(VulkanContext& context, VulkanSurfaceContext& sc, VkFormat depthFormat);
 VkImageLayout getTextureLayout(TextureUsage usage);
 
 } // namespace filament

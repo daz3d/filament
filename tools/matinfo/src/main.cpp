@@ -73,7 +73,7 @@ static void printUsage(const char* name) {
             "   --print-glsl=[index], -g\n"
             "       Print GLSL for the nth shader (0 is the first OpenGL shader)\n\n"
             "   --print-spirv=[index], -s\n"
-            "       Print disasm for the nth shader (0 is the first Vulkan shader)\n\n"
+            "       Validate and print disasm for the nth shader (0 is the first Vulkan shader)\n\n"
             "   --print-metal=[index], -m\n"
             "       Print Metal Shading Language for the nth shader (0 is the first Metal shader)\n\n"
             "   --print-vkglsl=[index], -v\n"
@@ -171,7 +171,7 @@ static int handleArguments(int argc, char* argv[], Config* config) {
                 config->shaderIndex = static_cast<uint64_t>(std::stoi(arg));
                 break;
             case 'w':
-                config->serverPort = 8080;
+                config->serverPort = std::stoi(arg);
                 break;
             case 'x':
                 config->printDictionaryGLSL = true;
@@ -386,6 +386,9 @@ static bool parseChunks(Config config, void* data, size_t size) {
     if (config.serverPort) {
         // Spin up a web server on a secondary thread.
         DebugServer server(Backend::DEFAULT, config.serverPort);
+        if (!server.isReady()) {
+            return false;
+        }
 
         // Notify the server that we have a filamat file.
         utils::CString name;

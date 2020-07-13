@@ -64,6 +64,10 @@ io::sstream& CodeGenerator::generateProlog(io::sstream& out, ShaderType type,
             break;
     }
 
+    // This allows our includer system to use the #line directive to denote the source file for
+    // #included code. This way, glslang reports errors more accurately.
+    out << "#extension GL_GOOGLE_cpp_style_line_directive : enable\n\n";
+
     if (mTargetApi == TargetApi::VULKAN) {
         out << "#define TARGET_VULKAN_ENVIRONMENT\n";
     }
@@ -575,6 +579,14 @@ char const* CodeGenerator::getSamplerTypeName(SamplerType type, SamplerFormat fo
                 case SamplerFormat::UINT:   return "usampler2D";
                 case SamplerFormat::FLOAT:  return "sampler2D";
                 case SamplerFormat::SHADOW: return "sampler2DShadow";
+            }
+        case SamplerType::SAMPLER_3D:
+            assert(format != SamplerFormat::SHADOW);
+            switch (format) {
+                case SamplerFormat::INT:    return "isampler3D";
+                case SamplerFormat::UINT:   return "usampler3D";
+                case SamplerFormat::FLOAT:  return "sampler3D";
+                case SamplerFormat::SHADOW: return nullptr;
             }
         case SamplerType::SAMPLER_2D_ARRAY:
             switch (format) {
