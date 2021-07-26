@@ -19,7 +19,6 @@
 
 #include <array>
 #include <stddef.h>
-#include <assert.h>
 
 #include <utils/compiler.h>
 #include <utils/bitset.h>
@@ -75,10 +74,14 @@ public:
     void clean() const noexcept { mDirty.reset(); }
 
     // set sampler at given index
-    void setSampler(size_t index, Sampler const& sampler) noexcept;
+    void setSampler(size_t index, Sampler sampler) noexcept;
 
     inline void setSampler(size_t index, Handle<HwTexture> t, SamplerParams s)  {
         setSampler(index, { t, s });
+    }
+
+    inline void clearSampler(size_t index)  {
+        setSampler(index, {});
     }
 
 private:
@@ -101,7 +104,7 @@ private:
         }
 
         explicit static_vector(size_t count) noexcept : mSize(count) {
-            assert(count < N);
+            assert_invariant(count < N);
             std::uninitialized_fill_n(begin(), count, T{});
         }
 
@@ -129,12 +132,12 @@ private:
         }
 
         const T& operator[](size_t pos) const noexcept {
-            assert(pos < mSize);
+            assert_invariant(pos < mSize);
             return data()[pos];
         }
 
         T& operator[](size_t pos) noexcept {
-            assert(pos < mSize);
+            assert_invariant(pos < mSize);
             return data()[pos];
         }
 

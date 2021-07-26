@@ -16,23 +16,27 @@
 
 #include <filamentapp/IBL.h>
 
-#include <fstream>
-#include <iostream>
-#include <string>
-
 #include <filament/Engine.h>
+#include <filament/IndirectLight.h>
 #include <filament/Material.h>
 #include <filament/MaterialInstance.h>
-#include <filament/Texture.h>
 #include <filament/Skybox.h>
+#include <filament/Texture.h>
 
 #include <image/KtxBundle.h>
 #include <image/KtxUtility.h>
 
+#include <filament-iblprefilter/IBLPrefilterContext.h>
+
 #include <stb_image.h>
 
 #include <utils/Path.h>
-#include <filament/IndirectLight.h>
+
+#include <fstream>
+#include <iostream>
+#include <string>
+
+#include <string.h>
 
 using namespace filament;
 using namespace image;
@@ -49,6 +53,65 @@ IBL::~IBL() {
     mEngine.destroy(mTexture);
     mEngine.destroy(mSkybox);
     mEngine.destroy(mSkyboxTexture);
+}
+
+bool IBL::loadFromEquirect(Path const& path) {
+    if (!path.exists()) {
+        return false;
+    }
+
+    int w, h;
+    stbi_info(path.getAbsolutePath().c_str(), &w, &h, nullptr);
+    if (w != h * 2) {
+        std::cerr << "not an equirectangular image!" << std::endl;
+        return false;
+    }
+
+    // load image as float
+    int n;
+    const size_t size = w * h * sizeof(float3);
+    float3* const data = (float3*)stbi_loadf(path.getAbsolutePath().c_str(), &w, &h, &n, 3);
+    if (data == nullptr || n != 3) {
+        std::cerr << "Could not decode image " << std::endl;
+        return false;
+    }
+
+    // now load texture
+    Texture::PixelBufferDescriptor buffer(
+            data, size,Texture::Format::RGB, Texture::Type::FLOAT,
+            [](void* buffer, size_t size, void* user) { stbi_image_free(buffer); });
+
+    Texture* const equirect = Texture::Builder()
+            .width((uint32_t)w)
+            .height((uint32_t)h)
+            .levels(0xff)
+            .format(Texture::InternalFormat::R11F_G11F_B10F)
+            .sampler(Texture::Sampler::SAMPLER_2D)
+            .build(mEngine);
+
+    equirect->setImage(mEngine, 0, std::move(buffer));
+
+    IBLPrefilterContext context(mEngine);
+    IBLPrefilterContext::EquirectangularToCubemap equirectangularToCubemap(context);
+    IBLPrefilterContext::SpecularFilter specularFilter(context);
+
+    mSkyboxTexture = equirectangularToCubemap(equirect);
+
+    mEngine.destroy(equirect);
+
+    mTexture = specularFilter(mSkyboxTexture);
+
+    mIndirectLight = IndirectLight::Builder()
+            .reflections(mTexture)
+            .intensity(IBL_INTENSITY)
+            .build(mEngine);
+
+    mSkybox = Skybox::Builder()
+            .environment(mSkyboxTexture)
+            .showSun(true)
+            .build(mEngine);
+
+    return true;
 }
 
 bool IBL::loadFromKtx(const std::string& prefix) {
@@ -136,9 +199,11 @@ bool IBL::loadCubemapLevel(filament::Texture** texture, const utils::Path& path,
         std::string const& levelPrefix) const {
     Texture::FaceOffsets offsets;
     Texture::PixelBufferDescriptor buffer;
-    loadCubemapLevel(texture, &buffer, &offsets, path, level, levelPrefix);
-    (*texture)->setImage(mEngine, level, std::move(buffer), offsets);
-    return true;
+    if (loadCubemapLevel(texture, &buffer, &offsets, path, level, levelPrefix)) {
+        (*texture)->setImage(mEngine, level, std::move(buffer), offsets);
+        return true;
+    }
+    return false;
 }
 
 bool IBL::loadCubemapLevel(

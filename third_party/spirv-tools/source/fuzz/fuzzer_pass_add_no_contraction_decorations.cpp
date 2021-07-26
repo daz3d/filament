@@ -20,13 +20,11 @@ namespace spvtools {
 namespace fuzz {
 
 FuzzerPassAddNoContractionDecorations::FuzzerPassAddNoContractionDecorations(
-    opt::IRContext* ir_context, FactManager* fact_manager,
+    opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
     protobufs::TransformationSequence* transformations)
-    : FuzzerPass(ir_context, fact_manager, fuzzer_context, transformations) {}
-
-FuzzerPassAddNoContractionDecorations::
-    ~FuzzerPassAddNoContractionDecorations() = default;
+    : FuzzerPass(ir_context, transformation_context, fuzzer_context,
+                 transformations) {}
 
 void FuzzerPassAddNoContractionDecorations::Apply() {
   // Consider every instruction in every block in every function.
@@ -44,12 +42,7 @@ void FuzzerPassAddNoContractionDecorations::Apply() {
                       ->GetChanceOfAddingNoContractionDecoration())) {
             TransformationAddNoContractionDecoration transformation(
                 inst.result_id());
-            assert(transformation.IsApplicable(GetIRContext(),
-                                               *GetFactManager()) &&
-                   "Transformation should be applicable by construction.");
-            transformation.Apply(GetIRContext(), GetFactManager());
-            *GetTransformations()->add_transformation() =
-                transformation.ToMessage();
+            ApplyTransformation(transformation);
           }
         }
       }

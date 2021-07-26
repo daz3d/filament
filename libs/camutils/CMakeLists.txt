@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(camutils)
 
 set(TARGET camutils)
@@ -9,6 +9,7 @@ set(PUBLIC_HDR_DIR include)
 # ==================================================================================================
 set(PUBLIC_HDRS
         include/camutils/Bookmark.h
+        include/camutils/compiler.h
         include/camutils/Manipulator.h
 )
 

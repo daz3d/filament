@@ -189,7 +189,7 @@ public:
      * Control the quality / performance of the shadow map associated to this light
      */
     struct ShadowOptions {
-        /** Size of the shadow map in texels. Must be a power-of-two. */
+        /** Size of the shadow map in texels. Must be a power-of-two and larger or equal to 8. */
         uint32_t mapSize = 1024;
 
         /**
@@ -197,21 +197,50 @@ public:
          * A value greater than 1 turns on cascaded shadow mapping (CSM).
          * Only applicable to Type.SUN or Type.DIRECTIONAL lights.
          *
-         * @warning This API is still experimental and subject to change.
+         * When using shadow cascades, cascadeSplitPositions must also be set.
+         *
+         * @see ShadowOptions::cascadeSplitPositions
          */
         uint8_t shadowCascades = 1;
 
+        /**
+         * The split positions for shadow cascades.
+         *
+         * Cascaded shadow mapping (CSM) partitions the camera frustum into cascades. These values
+         * determine the planes along the camera's Z axis to split the frustum. The camera near
+         * plane is represented by 0.0f and the far plane represented by 1.0f.
+         *
+         * For example, if using 4 cascades, these values would set a uniform split scheme:
+         * { 0.25f, 0.50f, 0.75f }
+         *
+         * For N cascades, N - 1 split positions will be read from this array.
+         *
+         * Filament provides utility methods inside LightManager::ShadowCascades to help set these
+         * values. For example, to use a uniform split scheme:
+         *
+         * ~~~~~~~~~~~{.cpp}
+         *   LightManager::ShadowCascades::computeUniformSplits(options.splitPositions, 4);
+         * ~~~~~~~~~~~
+         *
+         * @see ShadowCascades::computeUniformSplits
+         * @see ShadowCascades::computeLogSplits
+         * @see ShadowCascades::computePracticalSplits
+         */
+        float cascadeSplitPositions[3] = { 0.25f, 0.50f, 0.75f };
+
         /** Constant bias in world units (e.g. meters) by which shadows are moved away from the
          * light. 1mm by default.
+         * This is ignored when the View's ShadowType is set to VSM.
          */
         float constantBias = 0.001f;
 
         /** Amount by which the maximum sampling error is scaled. The resulting value is used
          * to move the shadow away from the fragment normal. Should be 1.0.
+         * This is ignored when the View's ShadowType is set to VSM.
          */
         float normalBias = 1.0f;
 
-        /** Distance from the camera after which shadows are clipped. this is used to clip
+        /** Distance from the camera after which shadows are clipped. This is used to clip
          * shadows that are too far and wouldn't contribute to the scene much, improving
          * performance and quality. This value is always positive.
          * Use 0.0f to use the camera far distance.
@@ -281,6 +310,73 @@ public:
          *
          */
         float maxShadowDistance = 0.3;
+
+        /**
+         * Options available when the View's ShadowType is set to VSM.
+         *
+         * @warning This API is still experimental and subject to change.
+         * @see View::setShadowType
+         */
+        struct Vsm {
+            /**
+             * The number of MSAA samples to use when rendering VSM shadow maps.
+             * Must be a power-of-two and greater than or equal to 1. A value of 1 effectively turns
+             * off MSAA.
+             * Higher values may not be available depending on the underlying hardware.
+             */
+            uint8_t msaaSamples = 1;
+
+            /**
+             * Blur width for the VSM blur. Zero do disable.
+             * The maximum value is 125.
+             */
+            float blurWidth = 0.0f;
+        } vsm;
+    };
+
+    struct ShadowCascades {
+        /**
+         * Utility method to compute ShadowOptions::cascadeSplitPositions according to a uniform
+         * split scheme.
+         *
+         * @param splitPositions    a float array of at least size (cascades - 1) to write the split
+         *                          positions into
+         * @param cascades          the number of shadow cascades, at most 4
+         */
+        static void computeUniformSplits(float* splitPositions, uint8_t cascades);
+
+        /**
+         * Utility method to compute ShadowOptions::cascadeSplitPositions according to a logarithmic
+         * split scheme.
+         *
+         * @param splitPositions    a float array of at least size (cascades - 1) to write the split
+         *                          positions into
+         * @param cascades          the number of shadow cascades, at most 4
+         * @param near              the camera near plane
+         * @param far               the camera far plane
+         */
+        static void computeLogSplits(float* splitPositions, uint8_t cascades,
+                float near, float far);
+
+        /**
+         * Utility method to compute ShadowOptions::cascadeSplitPositions according to a practical
+         * split scheme.
+         *
+         * The practical split scheme uses uses a lambda value to interpolate between the logarithmic
+         * and uniform split schemes. Start with a lambda value of 0.5f and adjust for your scene.
+         *
+         * See: Zhang et al 2006, "Parallel-split shadow maps for large-scale virtual environments"
+         *
+         * @param splitPositions    a float array of at least size (cascades - 1) to write the split
+         *                          positions into
+         * @param cascades          the number of shadow cascades, at most 4
+         * @param near              the camera near plane
+         * @param far               the camera far plane
+         * @param lambda            a float in the range [0, 1] that interpolates between log and
+         *                          uniform split schemes
+         */
+        static void computePracticalSplits(float* splitPositions, uint8_t cascades,
+                float near, float far, float lambda);
     };
 
     //! Use Builder to construct a Light object instance
@@ -661,13 +757,13 @@ public:
     void setIntensityCandela(Instance i, float intensity) noexcept;
 
     /**
-     * returns the light's luminous intensity in lumen.
+     * returns the light's luminous intensity in candela.
      *
      * @param i     Instance of the component obtained from getInstance().
      *
      * @note for Type.FOCUSED_SPOT lights, the returned value depends on the \p outer cone angle.
      *
-     * @return luminous intensity in lumen.
+     * @return luminous intensity in candela.
      */
     float getIntensity(Instance i) const noexcept;
 
@@ -699,7 +795,23 @@ public:
      */
     void setSpotLightCone(Instance i, float inner, float outer) noexcept;
 
+    /**
+     * returns the outer cone angle in *radians* between inner and pi/2.
+     * @param i     Instance of the component obtained from getInstance().
+     * @return the outer cone angle of this light.
+     */
     float getSpotLightOuterCone(Instance i) const noexcept;
+
+    /**
+     * returns the inner cone angle in *radians* between 0 and pi/2.
+     * 
+     * The value is recomputed from the initial values, thus is not precisely
+     * the same as the one passed to setSpotLightCone() or Builder.spotLightCone().
+     * 
+     * @param i     Instance of the component obtained from getInstance().
+     * @return the inner cone angle of this light.
+     */
+    float getSpotLightInnerCone(Instance i) const noexcept;
 
     /**
      * Dynamically updates the angular radius of a Type.SUN light

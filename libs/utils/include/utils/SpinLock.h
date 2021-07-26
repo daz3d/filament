@@ -19,6 +19,8 @@
 
 #include <utils/compiler.h>
 
+#include <utils/Mutex.h>
+
 #include <atomic>
 #include <type_traits>
 
@@ -26,6 +28,7 @@
 #include <stddef.h>
 
 namespace utils {
+namespace details {
 
 class SpinLock {
     std::atomic_flag mLock = ATOMIC_FLAG_INIT;
@@ -58,7 +61,7 @@ start: ;
         // as well as a memory barrier is needed
         __dsb(0xA);     // ISHST = 0xA (b1010)
 #else
-        // on ARMv8 we could avoid the call to SE, but we'de need to write the
+        // on ARMv8 we could avoid the call to SE, but we'd need to write the
         // test_and_set() above by hand, so the WFE only happens without a STRX first.
         UTILS_BROADCAST_EVENT();
 #endif
@@ -70,6 +73,17 @@ private:
         UTILS_WAIT_FOR_EVENT();
     }
 };
+} // namespace details
+
+#if defined(__SANITIZE_THREAD__)
+// Unfortunately TSAN doesn't support homegrown synchronization primitives
+using SpinLock = Mutex;
+#elif defined(__ARM_ARCH_7A__)
+// We've had problems with  "wfe" on some ARM-V7 devices, causing spurious SIGILL
+using SpinLock = Mutex;
+#else
+using SpinLock = details::SpinLock;
+#endif
 
 } // namespace utils
 

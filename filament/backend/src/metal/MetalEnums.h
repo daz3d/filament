@@ -229,6 +229,8 @@ inline MTLPixelFormat getMetalFormat(TextureFormat format) noexcept {
         case TextureFormat::DEPTH32F: return MTLPixelFormatDepth32Float;
 #if !defined(IOS)
         case TextureFormat::DEPTH24_STENCIL8: return MTLPixelFormatDepth24Unorm_Stencil8;
+#else
+        case TextureFormat::DEPTH24_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
 #endif
         case TextureFormat::DEPTH32F_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
 
@@ -288,6 +290,111 @@ inline MTLPixelFormat getMetalFormat(TextureFormat format) noexcept {
         default:
         case TextureFormat::UNUSED:
             return MTLPixelFormatInvalid;
+    }
+}
+
+// Converts PixelBufferDescriptor format + type pair into a MTLPixelFormat.
+inline MTLPixelFormat getMetalFormat(PixelDataFormat format, PixelDataType type) {
+    if (type == PixelDataType::UINT_2_10_10_10_REV) return MTLPixelFormatRGB10A2Unorm;
+    if (type == PixelDataType::UINT_10F_11F_11F_REV) return MTLPixelFormatRG11B10Float;
+    if (@available(macOS 11, *)) {
+        if (type == PixelDataType::USHORT_565) return MTLPixelFormatB5G6R5Unorm;
+    }
+
+    #define CONVERT(FORMAT, TYPE, MTL) \
+    if (PixelDataFormat::FORMAT == format && PixelDataType::TYPE == type)  return MTLPixelFormat ## MTL;
+
+    CONVERT(R, UBYTE, R8Unorm);
+    CONVERT(R, BYTE, R8Snorm);
+    CONVERT(R_INTEGER, UBYTE, R8Uint);
+    CONVERT(R_INTEGER, BYTE, R8Sint);
+    CONVERT(RG, UBYTE, RG8Unorm);
+    CONVERT(RG, BYTE, RG8Snorm);
+    CONVERT(RG_INTEGER, UBYTE, RG8Uint);
+    CONVERT(RG_INTEGER, BYTE, RG8Sint);
+    CONVERT(RGBA, UBYTE, RGBA8Unorm);
+    CONVERT(RGBA, BYTE, RGBA8Snorm);
+    CONVERT(RGBA_INTEGER, UBYTE, RGBA8Uint);
+    CONVERT(RGBA_INTEGER, BYTE, RGBA8Sint);
+    CONVERT(R_INTEGER, USHORT, R16Uint);
+    CONVERT(R_INTEGER, SHORT, R16Sint);
+    CONVERT(R, HALF, R16Float);
+    CONVERT(RG_INTEGER, USHORT, RG16Uint);
+    CONVERT(RG_INTEGER, SHORT, RG16Sint);
+    CONVERT(RG, HALF, RG16Float);
+    CONVERT(RGBA_INTEGER, USHORT, RGBA16Uint);
+    CONVERT(RGBA_INTEGER, SHORT, RGBA16Sint);
+    CONVERT(RGBA, HALF, RGBA16Float);
+    CONVERT(R_INTEGER, UINT, R32Uint);
+    CONVERT(R_INTEGER, INT, R32Sint);
+    CONVERT(R, FLOAT, R32Float);
+    CONVERT(RG_INTEGER, UINT, RG32Uint);
+    CONVERT(RG_INTEGER, INT, RG32Sint);
+    CONVERT(RG, FLOAT, RG32Float);
+    CONVERT(RGBA_INTEGER, UINT, RGBA32Uint);
+    CONVERT(RGBA_INTEGER, INT, RGBA32Sint);
+    CONVERT(RGBA, FLOAT, RGBA32Float);
+    #undef CONVERT
+
+    return MTLPixelFormatInvalid;
+}
+
+inline MTLPixelFormat getMetalFormatLinear(MTLPixelFormat format) {
+    switch (format) {
+        case MTLPixelFormatR8Unorm_sRGB: return MTLPixelFormatR8Unorm;
+        case MTLPixelFormatRG8Unorm_sRGB: return MTLPixelFormatRG8Unorm;
+        case MTLPixelFormatRGBA8Unorm_sRGB: return MTLPixelFormatRGBA8Unorm;
+        case MTLPixelFormatBGRA8Unorm_sRGB: return MTLPixelFormatBGRA8Unorm;
+#if !defined(IOS)
+        case MTLPixelFormatBC1_RGBA_sRGB: return MTLPixelFormatBC1_RGBA;
+        case MTLPixelFormatBC2_RGBA_sRGB: return MTLPixelFormatBC2_RGBA;
+        case MTLPixelFormatBC3_RGBA_sRGB: return MTLPixelFormatBC3_RGBA;
+        case MTLPixelFormatBC7_RGBAUnorm_sRGB: return MTLPixelFormatBC7_RGBAUnorm;
+#endif
+        default: break;
+    }
+    if (@available(macOS 11, *)) {
+        switch (format) {
+            case MTLPixelFormatASTC_4x4_sRGB: return MTLPixelFormatASTC_4x4_LDR;
+            case MTLPixelFormatASTC_5x4_sRGB: return MTLPixelFormatASTC_5x4_LDR;
+            case MTLPixelFormatASTC_5x5_sRGB: return MTLPixelFormatASTC_5x5_LDR;
+            case MTLPixelFormatASTC_6x5_sRGB: return MTLPixelFormatASTC_6x5_LDR;
+            case MTLPixelFormatASTC_6x6_sRGB: return MTLPixelFormatASTC_6x6_LDR;
+            case MTLPixelFormatASTC_8x5_sRGB: return MTLPixelFormatASTC_8x5_LDR;
+            case MTLPixelFormatASTC_8x6_sRGB: return MTLPixelFormatASTC_8x6_LDR;
+            case MTLPixelFormatASTC_8x8_sRGB: return MTLPixelFormatASTC_8x8_LDR;
+            case MTLPixelFormatASTC_10x5_sRGB: return MTLPixelFormatASTC_10x5_LDR;
+            case MTLPixelFormatASTC_10x6_sRGB: return MTLPixelFormatASTC_10x6_LDR;
+            case MTLPixelFormatASTC_10x8_sRGB: return MTLPixelFormatASTC_10x8_LDR;
+            case MTLPixelFormatASTC_10x10_sRGB: return MTLPixelFormatASTC_10x10_LDR;
+            case MTLPixelFormatASTC_12x10_sRGB: return MTLPixelFormatASTC_12x10_LDR;
+            case MTLPixelFormatASTC_12x12_sRGB: return MTLPixelFormatASTC_12x12_LDR;
+            case MTLPixelFormatPVRTC_RGB_2BPP_sRGB: return MTLPixelFormatPVRTC_RGB_2BPP;
+            case MTLPixelFormatPVRTC_RGB_4BPP_sRGB: return MTLPixelFormatPVRTC_RGB_4BPP;
+            case MTLPixelFormatPVRTC_RGBA_2BPP_sRGB: return MTLPixelFormatPVRTC_RGBA_2BPP;
+            case MTLPixelFormatPVRTC_RGBA_4BPP_sRGB: return MTLPixelFormatPVRTC_RGBA_4BPP;
+            case MTLPixelFormatEAC_RGBA8_sRGB: return MTLPixelFormatEAC_RGBA8;
+            case MTLPixelFormatETC2_RGB8_sRGB: return MTLPixelFormatETC2_RGB8;
+            case MTLPixelFormatETC2_RGB8A1_sRGB: return MTLPixelFormatETC2_RGB8A1;
+            case MTLPixelFormatBGR10_XR_sRGB: return MTLPixelFormatBGR10_XR;
+            case MTLPixelFormatBGRA10_XR_sRGB: return MTLPixelFormatBGRA10_XR;
+            default: break;
+        }
+    }
+    return format;
+}
+
+constexpr inline MTLTextureType getMetalType(SamplerType target) {
+    switch (target) {
+        case SamplerType::SAMPLER_2D:
+        case SamplerType::SAMPLER_EXTERNAL:
+            return MTLTextureType2D;
+        case SamplerType::SAMPLER_2D_ARRAY:
+            return MTLTextureType2DArray;
+        case SamplerType::SAMPLER_CUBEMAP:
+            return MTLTextureTypeCube;
+        case SamplerType::SAMPLER_3D:
+            return MTLTextureType3D;
     }
 }
 
@@ -403,6 +510,31 @@ constexpr inline MTLCompareFunction getCompareFunction(SamplerCompareFunc compar
         case SamplerCompareFunc::N:
             return MTLCompareFunctionNever;
     }
+}
+
+API_AVAILABLE(macos(10.15), ios(13.0))
+constexpr inline MTLTextureSwizzle getSwizzle(TextureSwizzle swizzle) {
+    switch (swizzle) {
+        case TextureSwizzle::SUBSTITUTE_ZERO:
+            return MTLTextureSwizzleZero;
+        case TextureSwizzle::SUBSTITUTE_ONE:
+            return MTLTextureSwizzleOne;
+        case TextureSwizzle::CHANNEL_0:
+            return MTLTextureSwizzleRed;
+        case TextureSwizzle::CHANNEL_1:
+            return MTLTextureSwizzleGreen;
+        case TextureSwizzle::CHANNEL_2:
+            return MTLTextureSwizzleBlue;
+        case TextureSwizzle::CHANNEL_3:
+            return MTLTextureSwizzleAlpha;
+    }
+}
+
+API_AVAILABLE(macos(10.15), ios(13.0))
+inline MTLTextureSwizzleChannels getSwizzleChannels(TextureSwizzle r, TextureSwizzle g, TextureSwizzle b,
+        TextureSwizzle a) {
+    return MTLTextureSwizzleChannelsMake(getSwizzle(r), getSwizzle(g), getSwizzle(b),
+            getSwizzle(a));
 }
 
 } // namespace backend

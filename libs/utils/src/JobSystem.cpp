@@ -21,15 +21,19 @@
 // when SYSTRACE_TAG_JOBSYSTEM is used, enables even heavier systraces
 #define HEAVY_SYSTRACE  0
 
-#include <utils/JobSystem.h>
+// enable for catching hangs waiting on a job to finish
+static constexpr bool DEBUG_FINISH_HANGS = false;
 
-#include <cmath>
-#include <random>
+#include <utils/JobSystem.h>
 
 #include <utils/compiler.h>
 #include <utils/memalign.h>
 #include <utils/Panic.h>
 #include <utils/Systrace.h>
+
+#include <random>
+
+#include <math.h>
 
 #if !defined(WIN32)
 #    include <pthread.h>
@@ -119,20 +123,20 @@ JobSystem::JobSystem(const size_t userThreadCount, const size_t adoptableThreads
             // since we assumed HT, always round-up to an even number of cores (to play it safe)
             hwThreads = (hwThreads + 1) / 2;
         }
-        // make sure we have at least one h/w thread (could be an assert instead)
-        hwThreads = std::max(0, hwThreads);
         // one of the thread will be the user thread
         threadPoolCount = hwThreads - 1;
     }
+    // make sure we have at least one thread in the thread pool
+    threadPoolCount = std::max(1, threadPoolCount);
+    // and also limit the pool to 32 threads
     threadPoolCount = std::min(UTILS_HAS_THREADING ? 32 : 0, threadPoolCount);
 
     mThreadStates = aligned_vector<ThreadState>(threadPoolCount + adoptableThreadsCount);
     mThreadCount = uint16_t(threadPoolCount);
     mParallelSplitCount = (uint8_t)std::ceil((std::log2f(threadPoolCount + adoptableThreadsCount)));
 
-    // this is a pity these are not compile-time checks (C++17 supports it apparently)
-    assert(mExitRequested.is_lock_free());
-    assert(Job().runningJobCount.is_lock_free());
+    static_assert(std::atomic<bool>::is_always_lock_free);
+    static_assert(std::atomic<uint16_t>::is_always_lock_free);
 
     std::random_device rd;
     const size_t hardwareThreadCount = mThreadCount;
@@ -190,9 +194,8 @@ void JobSystem::decRef(Job const* job) noexcept {
 
 void JobSystem::requestExit() noexcept {
     mExitRequested.store(true);
-    { std::lock_guard<Mutex> lock(mWaiterLock); }
+    std::lock_guard<Mutex> lock(mWaiterLock);
     mWaiterCondition.notify_all();
-
 }
 
 inline bool JobSystem::exitRequested() const noexcept {
@@ -208,18 +211,57 @@ inline bool JobSystem::hasJobCompleted(JobSystem::Job const* job) noexcept {
     return job->runningJobCount.load(std::memory_order_relaxed) <= 0;
 }
 
-void JobSystem::wait(std::unique_lock<Mutex>& lock) noexcept {
-    ++mWaiterCount;
-    mWaiterCondition.wait(lock);
-    --mWaiterCount;
+void JobSystem::wait(std::unique_lock<Mutex>& lock, Job* job) noexcept {
+    if constexpr (!DEBUG_FINISH_HANGS) {
+        mWaiterCondition.wait(lock);
+    } else {
+        do {
+            // we use a pretty long timeout (4s) so we're very confident that the system is hung
+            // and nothing else is happening.
+            std::cv_status status = mWaiterCondition.wait_for(lock,
+                    std::chrono::milliseconds(4000));
+            if (status == std::cv_status::no_timeout) {
+                break;
+            }
+
+            // hang debugging...
+
+            // we check of we had active jobs or if the job we're waiting on had completed already.
+            // there is the possibility of a race condition, but our long timeout gives us some
+            // confidence that we're in an incorrect state.
+
+            auto id = getState().id;
+            auto activeJobs = mActiveJobs.load();
+
+            if (job) {
+                auto runningJobCount = job->runningJobCount.load();
+                ASSERT_POSTCONDITION(runningJobCount > 0,
+                        "JobSystem(%p, %d): waiting while job %p has completed and %d jobs are active!",
+                        this, id, job, activeJobs);
+            }
+
+            ASSERT_POSTCONDITION(activeJobs <= 0,
+                    "JobSystem(%p, %d): waiting while %d jobs are active!",
+                    this, id, activeJobs);
+
+        } while (true);
+    }
 }
 
-void JobSystem::wake() noexcept {
-    Mutex& lock = mWaiterLock;
-    lock.lock();
-    const uint32_t waiterCount = mWaiterCount;
-    lock.unlock();
-    mWaiterCondition.notify_n(waiterCount);
+void JobSystem::wakeAll() noexcept {
+    HEAVY_SYSTRACE_CALL();
+    std::lock_guard<Mutex> lock(mWaiterLock);
+    // this empty critical section is needed -- it guarantees that notify_all() happens
+    // after the condition's variables are set.
+    mWaiterCondition.notify_all();
+}
+
+void JobSystem::wakeOne() noexcept {
+    HEAVY_SYSTRACE_CALL();
+    std::lock_guard<Mutex> lock(mWaiterLock);
+    // this empty critical section is needed -- it guarantees that notify_one() happens
+    // after the condition's variables are set.
+    mWaiterCondition.notify_one();
 }
 
 inline JobSystem::ThreadState& JobSystem::getState() noexcept {
@@ -279,6 +321,8 @@ bool JobSystem::execute(JobSystem::ThreadState& state) noexcept {
     }
 
     if (job) {
+        assert(job->runningJobCount.load(std::memory_order_relaxed) >= 1);
+
         UTILS_UNUSED_IN_RELEASE
         uint32_t activeJobs = mActiveJobs.fetch_sub(1, std::memory_order_relaxed);
         assert(activeJobs); // whoops, we were already at 0
@@ -346,7 +390,7 @@ void JobSystem::finish(Job* job) noexcept {
 
     // wake-up all threads that could potentially be waiting on this job finishing
     if (notify) {
-        wake();
+        wakeAll();
     }
 }
 
@@ -355,7 +399,7 @@ void JobSystem::finish(Job* job) noexcept {
 
 
 JobSystem::Job* JobSystem::create(JobSystem::Job* parent, JobFunc func) noexcept {
-    parent = (parent == nullptr) ? mMasterJob : parent;
+    parent = (parent == nullptr) ? mRootJob : parent;
     Job* const job = allocateJob();
     if (UTILS_LIKELY(job)) {
         size_t index = 0x7FFF;
@@ -394,10 +438,10 @@ void JobSystem::release(JobSystem::Job*& job) noexcept {
 }
 
 void JobSystem::signal() noexcept {
-    wake();
+    wakeAll();
 }
 
-void JobSystem::run(JobSystem::Job*& job, uint32_t flags) noexcept {
+void JobSystem::run(Job*& job) noexcept {
     HEAVY_SYSTRACE_CALL();
 
     ThreadState& state(getState());
@@ -412,19 +456,15 @@ void JobSystem::run(JobSystem::Job*& job, uint32_t flags) noexcept {
     HEAVY_SYSTRACE_VALUE32("JobSystem::activeJobs", activeJobs + 1);
 
     // wake-up a thread if needed...
-    if (!(flags & DONT_SIGNAL)) {
-        // wake-up multiple queues because there could be multiple jobs queued
-        // especially if DONT_SIGNAL was used
-        wake();
-    }
+    wakeOne();
 
     // after run() returns, the job is virtually invalid (it'll die on its own)
     job = nullptr;
 }
 
-JobSystem::Job* JobSystem::runAndRetain(JobSystem::Job* job, uint32_t flags) noexcept {
+JobSystem::Job* JobSystem::runAndRetain(Job* job) noexcept {
     JobSystem::Job* retained = retain(job);
-    run(job, flags);
+    run(job);
     return retained;
 }
 
@@ -453,13 +493,13 @@ void JobSystem::waitAndRelease(Job*& job) noexcept {
 
             std::unique_lock<Mutex> lock(mWaiterLock);
             if (!hasJobCompleted(job) && !hasActiveJobs() && !exitRequested()) {
-                wait(lock);
+                wait(lock, job);
             }
         }
     } while (!hasJobCompleted(job) && !exitRequested());
 
-    if (job == mMasterJob) {
-        mMasterJob = nullptr;
+    if (job == mRootJob) {
+        mRootJob = nullptr;
     }
 
     release(job);

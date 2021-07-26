@@ -38,56 +38,70 @@ class RenderPass;
 class ShadowMap {
 public:
     explicit ShadowMap(FEngine& engine) noexcept;
+
+    // ShadowMap is not copyable for now
+    ShadowMap(ShadowMap const& rhs) = delete;
+    ShadowMap& operator=(ShadowMap const& rhs) = delete;
+
     ~ShadowMap();
 
-    struct ShadowMapLayout {
+    struct ShadowMapInfo {
         // the smallest increment in depth precision
         // e.g., for 16 bit depth textures, is this 1 / (2^16)
         float zResolution = 0.0f;
 
         // the dimension of the encompassing texture atlas
-        size_t atlasDimension = 0;
+        uint16_t atlasDimension = 0;
 
         // the dimension of a single shadow map texture within the atlas
         // e.g., for at atlas size of 1024 split into 4 quadrants, textureDimension would be 512
-        size_t textureDimension = 0;
+        uint16_t textureDimension = 0;
 
         // the dimension of the actual shadow map, taking into account the 1 texel border
         // e.g., for a texture dimension of 512, shadowDimension would be 510
-        size_t shadowDimension = 0;
+        uint16_t shadowDimension = 0;
+
+        // whether we're using vsm
+        bool vsm = false;
     };
 
-    struct CascadeParameters {
+    struct SceneInfo {
         // The near and far planes, in clip space, to use for this shadow map
         math::float2 csNearFar = { -1.0f, 1.0f };
 
         // The following fields are set by computeSceneCascadeParams.
 
-        // Light-space near/far planes for the scene.
+        // light's near/far expressed in light-space, calculated from the scene's content
+        // assuming the light is at the origin.
         math::float2 lsNearFar;
 
-        // View-space near/far planes for the scene.
+        // Viewing camera's near/far expressed in view-space, calculated from the scene's content
         math::float2 vsNearFar;
 
+        // World-space shadow-casters volume
         Aabb wsShadowCastersVolume;
+
+        // World-space shadow-receivers volume
         Aabb wsShadowReceiversVolume;
     };
 
+    static math::mat4f getLightViewMatrix(
+            math::float3 position, math::float3 direction) noexcept;
+
     // Call once per frame to populate the CascadeParameters struct, then pass to update().
     // This computes values constant across all cascades.
-    static void computeSceneCascadeParams(const FScene::LightSoa& lightData, size_t index,
-            FScene const* scene, filament::CameraInfo const& camera, uint8_t visibleLayers,
-            CascadeParameters& cascadeParams);
+    static void computeSceneInfo(math::float3 dir,
+            FScene const& scene, filament::CameraInfo const& camera, uint8_t visibleLayers,
+            SceneInfo& sceneInfo);
 
     // Call once per frame if the light, scene (or visible layers) or camera changes.
     // This computes the light's camera.
-    void update(const FScene::LightSoa& lightData, size_t index, FScene const* scene,
-            filament::CameraInfo const& camera, uint8_t visibleLayers,
-            ShadowMapLayout layout, const CascadeParameters& cascadeParams) noexcept;
+    void update(const FScene::LightSoa& lightData, size_t index,
+            filament::CameraInfo const& camera,
+            const ShadowMapInfo& shadowMapInfo, const SceneInfo& cascadeParams) noexcept;
 
-    void render(backend::DriverApi& driver, backend::Handle<backend::HwRenderTarget> rt,
-            filament::Viewport const& viewport, utils::Range<uint32_t> const& range,
-            RenderPass& pass, FView& view) noexcept;
+    void render(backend::DriverApi& driver, utils::Range<uint32_t> const& range,
+            RenderPass* pass, FView& view) noexcept;
 
     // Do we have visible shadows. Valid after calling update().
     bool hasVisibleShadows() const noexcept { return mHasVisibleShadows; }
@@ -104,6 +118,8 @@ public:
 
     // use only for debugging
     FCamera const& getDebugCamera() const noexcept { return *mDebugCamera; }
+
+    backend::PolygonOffset getPolygonOffset() const noexcept { return mPolygonOffset; }
 
 private:
     struct CameraInfo {
@@ -134,9 +150,9 @@ private:
     using FrustumBoxIntersection = std::array<math::float3, 64>;
 
     void computeShadowCameraDirectional(
-            math::float3 const& direction, FScene const* scene,
+            math::float3 const& direction,
             CameraInfo const& camera, FLightManager::ShadowParams const& params,
-            uint8_t visibleLayers, CascadeParameters cascadeParams) noexcept;
+            SceneInfo cascadeParams) noexcept;
     void computeShadowCameraSpot(math::float3 const& position, math::float3 const& dir,
             float outerConeAngle, float radius, CameraInfo const& camera,
             FLightManager::ShadowParams const& params) noexcept;
@@ -201,6 +217,9 @@ private:
 
     math::mat4f getTextureCoordsMapping() const noexcept;
 
+    static math::mat4f computeVsmLightSpaceMatrix(const math::mat4f& lightSpace,
+            const math::mat4f& Mv, float zfar) noexcept;
+
     float texelSizeWorldSpace(const math::mat3f& worldToShadowTexture) const noexcept;
     float texelSizeWorldSpace(const math::mat4f& W, const math::mat4f& MbMtF) const noexcept;
 
@@ -218,23 +237,19 @@ private:
             { 2, 6, 7, 3 },  // top
     };
 
-    FCamera* mCamera = nullptr;
-    FCamera* mDebugCamera = nullptr;
-    math::mat4f mLightSpace;
-    float mTexelSizeWs = 0.0f;
+    FCamera* mCamera = nullptr;                 //  8
+    FCamera* mDebugCamera = nullptr;            //  8
+    math::mat4f mLightSpace;                    // 64
+    float mTexelSizeWs = 0.0f;                  //  4
 
     // set-up in update()
-    ShadowMapLayout mShadowMapLayout;
-    bool mHasVisibleShadows = false;
-    backend::PolygonOffset mPolygonOffset{};
+    ShadowMapInfo mShadowMapInfo;               // 12
+    bool mHasVisibleShadows = false;            //  1
+    backend::PolygonOffset mPolygonOffset{};    //  8
 
-    // use a member here (instead of stack) because we don't want to pay the
-    // initialization of the float3 each time
-    FrustumBoxIntersection mWsClippedShadowReceiverVolume;
-
-    FEngine& mEngine;
-    const bool mClipSpaceFlipped;
-    const bool mTextureSpaceFlipped;
+    FEngine& mEngine;                           //  8
+    const bool mClipSpaceFlipped;               //  1
+    const bool mTextureSpaceFlipped;            //  1
 };
 
 } // namespace filament

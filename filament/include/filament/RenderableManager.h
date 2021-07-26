@@ -36,11 +36,13 @@ namespace utils {
 
 namespace filament {
 
+class BufferObject;
 class Engine;
 class IndexBuffer;
 class Material;
 class MaterialInstance;
 class Renderer;
+class SkinningBuffer;
 class VertexBuffer;
 
 class FEngine;
@@ -145,7 +147,7 @@ public:
          * @param type specifies the topology of the primitive (e.g., \c RenderableManager::PrimitiveType::TRIANGLES)
          * @param vertices specifies the vertex buffer, which in turn specifies a set of attributes
          * @param indices specifies the index buffer (either u16 or u32)
-         * @param offset specifies where in the index buffer to start reading (expressed as a number of bytes)
+         * @param offset specifies where in the index buffer to start reading (expressed as a number of indices)
          * @param minIndex specifies the minimum index contained in the index buffer
          * @param maxIndex specifies the maximum index contained in the index buffer
          * @param count number of indices to read (for triangles, this should be a multiple of 3)
@@ -218,6 +220,12 @@ public:
 
         /**
          * Controls if this renderable casts shadows, false by default.
+         *
+         * If the View's shadow type is set to ShadowType::VSM, castShadows should only be disabled
+         * if either is true:
+         *   - receiveShadows is also disabled
+         *   - the object is guaranteed to not cast shadows on itself or other objects (for example,
+         *     a ground plane)
          */
         Builder& castShadows(bool enable) noexcept;
 
@@ -234,7 +242,38 @@ public:
         Builder& screenSpaceContactShadows(bool enable) noexcept;
 
         /**
+         * Allows bones to be swapped out and shared using SkinningBuffer.
+         *
+         * If skinning buffer mode is enabled, clients must call setSkinningBuffer() rather than
+         * setBones(). This allows sharing of data between renderables.
+         *
+         * @param enabled If true, enables buffer object mode.  False by default.
+         */
+        Builder& enableSkinningBuffers(bool enabled = true) noexcept;
+
+        /**
          * Enables GPU vertex skinning for up to 255 bones, 0 by default.
+         *
+         * Skinning Buffer mode must be enabled.
+         *
+         * Each vertex can be affected by up to 4 bones simultaneously. The attached
+         * VertexBuffer must provide data in the \c BONE_INDICES slot (uvec4) and the
+         * \c BONE_WEIGHTS slot (float4).
+         *
+         * See also RenderableManager::setSkinningBuffer() or SkinningBuffer::setBones(),
+         * which can be called on a per-frame basis to advance the animation.
+         *
+         * @param skinningBuffer nullptr to disable, otherwise the SkinningBuffer to use
+         * @param count 0 to disable, otherwise the number of bone transforms (up to 255)
+         * @param offset offset in the SkinningBuffer
+         */
+        Builder& skinning(SkinningBuffer* skinningBuffer, size_t count, size_t offset) noexcept;
+
+
+        /**
+         * Enables GPU vertex skinning for up to 255 bones, 0 by default.
+         *
+         * Skinning Buffer mode must be disabled.
          *
          * Each vertex can be affected by up to 4 bones simultaneously. The attached
          * VertexBuffer must provide data in the \c BONE_INDICES slot (uvec4) and the
@@ -383,6 +422,12 @@ public:
      */
     void setBones(Instance instance, Bone const* transforms, size_t boneCount = 1, size_t offset = 0) noexcept;
     void setBones(Instance instance, math::mat4f const* transforms, size_t boneCount = 1, size_t offset = 0) noexcept; //!< \overload
+
+    /**
+     * Associates a SkinningBuffer to a renderable instance
+     */
+    void setSkinningBuffer(Instance instance, SkinningBuffer* skinningBuffer,
+            size_t count, size_t offset) noexcept;
 
     /**
      * Updates the vertex morphing weights on a renderable, all zeroes by default.

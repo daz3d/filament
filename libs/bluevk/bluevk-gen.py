@@ -17,7 +17,11 @@
 """
 Generates C++ code that binds Vulkan entry points at run time and provides enum-to-string
 conversion operators. By default this fetches the latest vk.xml from github; note that
-the XML needs to be consistent with the Vulkan headers that live in bluevk/include/vulkan.
+the XML needs to be consistent with the Vulkan headers that live in bluevk/include/vulkan,
+which are obtained from:
+
+https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/master/include/vulkan/vulkan_core.h
+
 If the XML file is inconsistent with the checked-in header files, compile errors can result
 such as missing enumeration values, or "type not found" errors.
 
@@ -37,7 +41,7 @@ from datetime import datetime
 
 VkFunction = namedtuple('VkFunction', ['name', 'type', 'group'])
 
-VK_XML_URL = "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Docs/master/xml/vk.xml"
+VK_XML_URL = "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/master/registry/vk.xml"
 
 COPYRIGHT_HEADER = '''/*
  * Copyright (C) %(year)d The Android Open Source Project
@@ -68,6 +72,8 @@ HEADER_FILE_TEMPLATE = COPYRIGHT_HEADER + '''
 #ifndef TNT_FILAMENT_BLUEVK_H
 #define TNT_FILAMENT_BLUEVK_H
 
+#define VK_ENABLE_BETA_EXTENSIONS
+
 // BlueVK dynamically loads all function pointers, so it cannot allow function prototypes, which
 // would assume static linking for Vulkan entry points.
 #if defined(VULKAN_H_) && !defined(VK_NO_PROTOTYPES)
@@ -83,6 +89,8 @@ HEADER_FILE_TEMPLATE = COPYRIGHT_HEADER + '''
     #include <vulkan/vulkan.h>
 #endif
 
+#include <utils/unwindows.h>
+
 namespace bluevk {
 
     // Returns false if BlueGL could not find the Vulkan shared library.
@@ -90,9 +98,9 @@ namespace bluevk {
 
     void bindInstance(VkInstance instance);
 
-}; // namespace bluevk
-
 %(FUNCTION_POINTERS)s
+
+} // namespace bluevk
 
 #if !defined(NDEBUG)
 #include <utils/Log.h>
@@ -105,33 +113,29 @@ namespace bluevk {
 CPP_FILE_TEMPLATE = COPYRIGHT_HEADER + '''
 #include <bluevk/BlueVK.h>
 
+namespace bluevk {
+
 static void loadLoaderFunctions(void* context, PFN_vkVoidFunction (*loadcb)(void*, const char*));
 static void loadInstanceFunctions(void* context, PFN_vkVoidFunction (*loadcb)(void*, const char*));
 static void loadDeviceFunctions(void* context, PFN_vkVoidFunction (*loadcb)(void*, const char*));
 static PFN_vkVoidFunction vkGetInstanceProcAddrWrapper(void* context, const char* name);
 static PFN_vkVoidFunction vkGetDeviceProcAddrWrapper(void* context, const char* name);
 
-using std::string;
-
-namespace bluevk{
-
 // OS Dependent.
 extern bool loadLibrary();
 extern void* getInstanceProcAddr();
 
-}
-
-bool bluevk::initialize() {
-    if (!bluevk::loadLibrary()) {
+bool initialize() {
+    if (!loadLibrary()) {
         return false;
     }
 
-    vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) bluevk::getInstanceProcAddr();
+    vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) getInstanceProcAddr();
     loadLoaderFunctions(nullptr, vkGetInstanceProcAddrWrapper);
     return true;
 }
 
-void bluevk::bindInstance(VkInstance instance) {
+void bindInstance(VkInstance instance) {
     loadInstanceFunctions(instance, vkGetInstanceProcAddrWrapper);
     loadDeviceFunctions(instance, vkGetInstanceProcAddrWrapper);
 }
@@ -157,6 +161,8 @@ static void loadDeviceFunctions(void* context, PFN_vkVoidFunction (*loadcb)(void
 }
 
 %(FUNCTION_POINTERS)s
+
+} // namespace bluevk
 
 #if !defined(NDEBUG)
 #include <utils/Log.h>
@@ -204,6 +210,22 @@ def consumeXML(spec):
             cmdrefs = req.findall('command')
             command_groups.setdefault(key, []).extend([cmdref.get('name') for cmdref in cmdrefs])
 
+    # Build a list of provisional types that are not fully defined in the core Vulkan headers.
+    provisional_types = set([
+        'VkFullScreenExclusiveEXT',
+        'VkStencilFaceFlagBits',
+        'VkAccessFlagBits2KHR',
+        'VkExternalSemaphoreHandleTypeFlagBits',
+        'VkSwapchainImageUsageFlagBitsANDROID',
+        'VkSurfaceCounterFlagBitsEXT',
+        'VkPipelineStageFlagBits2KHR',
+    ])
+    for ext in spec.findall('extensions/extension'):
+        if ext.get('platform') == 'provisional':
+            for req in ext.findall('require'):
+                for enum in req.findall('type'):
+                    provisional_types.add(enum.get('name'))
+
     # If the same function exists in more than one function group, consolidate them.
     commands_to_groups = OrderedDict()
     for (group, cmdnames) in command_groups.items():
@@ -248,6 +270,7 @@ def consumeXML(spec):
         if not enums.get('type'): continue
         name = enums.get('name')
         if name not in enum_types: continue
+        if name in provisional_types: continue
 
         # Special handling for single-bit flags
         if enums.get('type') == 'bitmask':
@@ -256,7 +279,7 @@ def consumeXML(spec):
             for val in enums:
                 # Skip over comments
                 if val.tag != 'enum': continue
-                value = '0x0'
+                value = 0
                 if val.get('value'):
                     value = int(val.get('value'), 16)
                 elif val.get('bitpos'):
@@ -349,8 +372,9 @@ def produceCpp(function_groups, enum_vals, flag_vals, output_dir):
         enum_defs.append('utils::io::ostream& operator<<(utils::io::ostream& out, ' +
             'const {}& value) {{'.format(flag_name))
         enum_defs.append('    switch (value) {')
-        for val in vals:
-            enum_defs.append('        case {1}: out << "{0}"; break;'.format(*val))
+        for key, val in vals:
+            if val == '0x00000000': continue
+            enum_defs.append('        case {1}: out << "{0}"; break;'.format(key, val))
         enum_defs.append('        default: out << "UNKNOWN_FLAGS"; break;')
         enum_defs.append('    }')
         enum_defs.append('    return out;')

@@ -60,7 +60,7 @@ public:
 
     /**
      * Return the program-counter of each stack frame captured
-     * @param index of the frame between 0 and getFramceCount()-1
+     * @param index of the frame between 0 and getFrameCount()-1
      * @return the program-counter of the stack-frame recorded at index \p index
      * @throw std::out_of_range if the index is out of range
      */
@@ -109,6 +109,8 @@ public:
 
 private:
     void update_gcc(size_t ignore) noexcept;
+
+    static utils::CString demangle(const char* mangled);
 
     static constexpr size_t NUM_FRAMES = 20;
 

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(bluevk)
 
 set(TARGET              bluevk)
@@ -17,12 +17,6 @@ elseif (LINUX OR ANDROID)
     set(SRCS ${SRCS} src/BlueVKLinuxAndroid.cpp)
 else()
     message(FATAL_ERROR "Platform not supported. BlueVK supports Linux, Android, MacOS X, and Windows.")
-endif()
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
-
-if (LINUX)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 endif()
 
 include_directories(${PUBLIC_HDR_DIR})

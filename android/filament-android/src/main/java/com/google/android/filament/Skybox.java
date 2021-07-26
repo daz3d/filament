@@ -18,11 +18,10 @@ package com.google.android.filament;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.Size;
 
 import static com.google.android.filament.Colors.LinearColor;
-
-import com.google.android.filament.proguard.UsedByReflection;
 
 /**
  * Skybox
@@ -52,11 +51,7 @@ import com.google.android.filament.proguard.UsedByReflection;
 public class Skybox {
     private long mNativeObject;
 
-    public Skybox(Engine engine, long nativeSkybox) {
-        mNativeObject = nativeSkybox;
-    }
-
-    Skybox(long nativeSkybox) {
+    public Skybox(long nativeSkybox) {
         mNativeObject = nativeSkybox;
     }
 
@@ -114,13 +109,14 @@ public class Skybox {
         }
 
         /**
-         * Sets the <code>Skybox</code> intensity when no {@link IndirectLight} is set
+         * Sets the <code>Skybox</code> intensity when no {@link IndirectLight} is set on the
+         * {@link Scene}.
          *
-         * <p>This call is ignored when an  {@link IndirectLight} is set, otherwise it is used in
-         * its place.</p>
+         * <p>This call is ignored when an {@link IndirectLight} is set on the {@link Scene}, and
+         * the intensity of the {@link IndirectLight} is used instead.</p>
          *
          * @param envIntensity  Scale factor applied to the skybox texel values such that
-         *                      the result is in cd/m<sup>2</sup> (lux) units (default = 30000)
+         *                      the result is in <i>lux</i>, or <i>lumen/m^2</i> (default = 30000)
          *
          * @return This Builder, for chaining calls.
          *
@@ -236,9 +232,18 @@ public class Skybox {
     }
 
     /**
-     * Returns the <code>Skybox</code>'s intensity in cd/m<sup>2</sup>.
+     * Returns the <code>Skybox</code>'s intensity in <i>lux</i>, or <i>lumen/m^2</i>.
      */
     public float getIntensity() { return nGetIntensity(getNativeObject()); }
+
+    /**
+     * @return the associated texture, or null if it does not exist
+     */
+    @Nullable
+    public Texture getTexture() {
+        long nativeTexture = nGetTexture(getNativeObject());
+        return nativeTexture == 0 ? null : new Texture(nativeTexture);
+    }
 
     public long getNativeObject() {
         if (mNativeObject == 0) {
@@ -262,4 +267,5 @@ public class Skybox {
     private static native int  nGetLayerMask(long nativeSkybox);
     private static native float nGetIntensity(long nativeSkybox);
     private static native void nSetColor(long nativeSkybox, float r, float g, float b, float a);
+    private static native long nGetTexture(long nativeSkybox);
 }

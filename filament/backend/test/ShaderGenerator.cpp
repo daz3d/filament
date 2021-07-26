@@ -61,9 +61,6 @@ void SpvToGlsl(const SpirvBlob* spirv, std::string* outGlsl) {
 
 void SpvToMsl(const SpirvBlob* spirv, std::string* outMsl) {
     CompilerMSL mslCompiler(*spirv);
-    mslCompiler.set_common_options(CompilerGLSL::Options {
-        .vertex.fixup_clipspace = true
-    });
     mslCompiler.set_msl_options(CompilerMSL::Options {
         .msl_version = CompilerMSL::Options::make_msl_version(1, 1)
     });
@@ -116,6 +113,21 @@ ShaderGenerator::Blob ShaderGenerator::transpileShader(Backend backend, bool isM
     const EShLanguage language = stage == ShaderStage::VERTEX ? EShLangVertex : EShLangFragment;
     TShader tShader(language);
 
+    // Add a target environment define after the #version declaration.
+    size_t pos = shader.find("#version");
+    pos += 8;
+    while (shader[pos] != '\n') {
+        pos++;
+    }
+    pos++;
+    if (backend == Backend::OPENGL) {
+        shader.insert(pos, "#define TARGET_OPENGL_ENVIRONMENT\n");
+    } else if (backend == Backend::METAL) {
+        shader.insert(pos, "#define TARGET_METAL_ENVIRONMENT\n");
+    } else if (backend == Backend::VULKAN) {
+        shader.insert(pos, "#define TARGET_VULKAN_ENVIRONMENT\n");
+    }
+
     const char* shaderCString = shader.c_str();
     tShader.setStrings(&shaderCString, 1);
 
@@ -131,14 +143,14 @@ ShaderGenerator::Blob ShaderGenerator::transpileShader(Backend backend, bool isM
         std::cerr << "ERROR: Unable to parse " <<
             (stage == ShaderStage::VERTEX ? "vertex" : "fragment") << " shader:" << std::endl;
         std::cerr << tShader.getInfoLog() << std::endl;
-        assert(false);
+        assert_invariant(false);
     }
 
     program.addShader(&tShader);
     bool linkOk = program.link(msg);
     if (!linkOk) {
         std::cerr << tShader.getInfoLog() << std::endl;
-        assert(false);
+        assert_invariant(false);
     }
 
     SpirvBlob spirv;
@@ -147,7 +159,7 @@ ShaderGenerator::Blob ShaderGenerator::transpileShader(Backend backend, bool isM
 
     std::string result;
 
-    assert(backend == Backend::OPENGL ||
+    assert_invariant(backend == Backend::OPENGL ||
            backend == Backend::METAL  ||
            backend == Backend::VULKAN);
 

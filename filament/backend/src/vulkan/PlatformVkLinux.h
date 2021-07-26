@@ -22,7 +22,13 @@
 #include <backend/DriverEnums.h>
 #include "VulkanPlatform.h"
 
+#ifdef FILAMENT_SUPPORTS_XCB
+#include <xcb/xcb.h>
+#endif
+
+#ifdef FILAMENT_SUPPORTS_XLIB
 #include <X11/Xlib.h>
+#endif
 
 namespace filament {
 
@@ -31,13 +37,17 @@ public:
 
     backend::Driver* createDriver(void* const sharedContext) noexcept override;
 
-    void* createVkSurfaceKHR(void* nativeWindow, void* instance) noexcept override;
-    void getClientExtent(void* nativeWindow,  uint32_t* width, uint32_t* height) noexcept override;
+    void* createVkSurfaceKHR(void* nativeWindow, void* instance, uint64_t flags) noexcept override;
 
     int getOSVersion() const noexcept override { return 0; }
 
 private:
+#ifdef FILAMENT_SUPPORTS_XCB
+    xcb_connection_t* mConnection;
+#endif
+#ifdef FILAMENT_SUPPORTS_XLIB
     Display* mDisplay;
+#endif
 };
 
 } // namespace filament

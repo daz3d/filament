@@ -16,11 +16,14 @@
 
 #include "vulkan/PlatformVkWindows.h"
 
+#include "VulkanConstants.h"
 #include "VulkanDriverFactory.h"
 
 #include <utils/Panic.h>
 
 #include <bluevk/BlueVK.h>
+
+using namespace bluevk;
 
 namespace filament {
 
@@ -28,18 +31,11 @@ using namespace backend;
 
 Driver* PlatformVkWindows::createDriver(void* const sharedContext) noexcept {
     ASSERT_PRECONDITION(sharedContext == nullptr, "Vulkan does not support shared contexts.");
-    const char* requestedExtensions[] = {
-        "VK_KHR_surface",
-        "VK_KHR_win32_surface",
-#if VK_ENABLE_VALIDATION
-        "VK_EXT_debug_report",
-#endif
-    };
-    return VulkanDriverFactory::create(this, requestedExtensions,
-        sizeof(requestedExtensions) / sizeof(requestedExtensions[0]));
+    const char* requiredInstanceExtensions[] = { "VK_KHR_win32_surface" };
+    return VulkanDriverFactory::create(this, requiredInstanceExtensions, 1);
 }
 
-void* PlatformVkWindows::createVkSurfaceKHR(void* nativeWindow, void* instance) noexcept {
+void* PlatformVkWindows::createVkSurfaceKHR(void* nativeWindow, void* instance, uint64_t flags) noexcept {
     VkSurfaceKHR surface = nullptr;
 
     HWND window = (HWND) nativeWindow;
@@ -53,15 +49,6 @@ void* PlatformVkWindows::createVkSurfaceKHR(void* nativeWindow, void* instance) 
     ASSERT_POSTCONDITION(result == VK_SUCCESS, "vkCreateWin32SurfaceKHR error.");
 
     return surface;
-}
-
-void PlatformVkWindows::getClientExtent(void* win, uint32_t* width, uint32_t* height) noexcept {
-	HWND window = (HWND)win;
-	RECT rect;
-	BOOL success = GetClientRect(window, &rect);
-	ASSERT_POSTCONDITION(success, "GetWindowRect error.");
-	*width = rect.right - rect.left;
-	*height = rect.bottom - rect.top;
 }
 
 } // namespace filament

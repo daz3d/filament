@@ -15,13 +15,35 @@
  */
 
 #include "FFilamentInstance.h"
+#include "FFilamentAsset.h"
 
 #include <gltfio/Animator.h>
+
+#include <utils/Log.h>
 
 using namespace filament;
 using namespace utils;
 
 namespace gltfio {
+
+Animator* FFilamentInstance::getAnimator() noexcept {
+    if (!animator) {
+        if (!owner->mResourcesLoaded) {
+            slog.e << "Cannot create animator before resource loading." << io::endl;
+            return nullptr;
+        }
+        if (!owner->mSourceAsset) {
+            slog.e << "Cannot create animator from frozen asset." << io::endl;
+            return nullptr;
+        }
+        animator = new Animator(owner, this);
+    }
+    return animator;
+}
+
+FilamentAsset* FilamentInstance::getAsset() const noexcept {
+    return upcast(this)->owner;
+}
 
 size_t FilamentInstance::getEntityCount() const noexcept {
     return upcast(this)->entities.size();

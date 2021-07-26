@@ -19,11 +19,14 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <utils/compiler.h>
 #include <utils/Entity.h>
 #include <utils/EntityInstance.h>
 #include <utils/SingleInstanceComponentManager.h>
+
+#include <functional>
 
 namespace utils {
 
@@ -36,8 +39,7 @@ public:
     explicit SafeString(const char* str) noexcept : mCStr(strdup(str)) { }
     SafeString(SafeString&& rhs) noexcept : mCStr(rhs.mCStr) { rhs.mCStr = nullptr; }
     SafeString& operator=(SafeString&& rhs) noexcept {
-        mCStr = rhs.mCStr;
-        rhs.mCStr = nullptr;
+        std::swap(mCStr, rhs.mCStr);
         return *this;
     }
     ~SafeString() { free((void*)mCStr); }

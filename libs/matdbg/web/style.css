@@ -20,6 +20,20 @@ a:hover, a.current {
     color: #07f;
 }
 
+a.status_button {
+    color: #e4e682;
+}
+
+a.status_button.active {
+    color: #fff;
+}
+
+span.warning {
+    color: black;
+    background: orange;
+    font-size: small;
+}
+
 a.inactive {
     color: #aaa;
 }

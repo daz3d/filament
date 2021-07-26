@@ -17,12 +17,16 @@ function print_help {
     echo "        Generate .tgz build archives, implies -i."
     echo "    -c"
     echo "        Clean build directories."
+    echo "    -C"
+    echo "        Clean build directories and revert android/ to a freshly sync'ed state."
+    echo "        All (and only) git-ignored files under android/ are deleted."
+    echo "        This is sometimes needed instead of -c (which still misses some clean steps)."
+    echo "    -d"
+    echo "        Enable matdbg and disable material optimization."
     echo "    -f"
     echo "        Always invoke CMake before incremental builds."
     echo "    -i"
     echo "        Install build output"
-    echo "    -j"
-    echo "        Do not compile desktop Java projects"
     echo "    -m"
     echo "        Compile with make instead of ninja."
     echo "    -p platform1,platform2,..."
@@ -38,10 +42,18 @@ function print_help {
     echo "        Exclude Vulkan support from the Android build."
     echo "    -s"
     echo "        Add iOS simulator support to the iOS build."
+    echo "    -t"
+    echo "        Enable SwiftShader support for Vulkan in desktop builds."
     echo "    -l"
-    echo "        Combine iOS arm64 and x86_64 into universal libraries (implies -s)."
+    echo "        Build arm64/x86_64 universal libraries."
+    echo "        For iOS, this builds universal binaries for devices and the simulator (implies -s)."
+    echo "        For macOS, this builds universal binaries for both Apple silicon and Intel-based Macs."
     echo "    -w"
     echo "        Build Web documents (compiles .md.html files to .html)."
+    echo "    -k sample1,sample2,..."
+    echo "        When building for Android, also build select sample APKs."
+    echo "        sampleN is an Android sample, e.g., sample-gltf-viewer."
+    echo "        This automatically performs a partial desktop build and install."
     echo ""
     echo "Build types:"
     echo "    release"
@@ -76,13 +88,37 @@ function print_help {
     echo ""
  }
 
+function print_matdbg_help {
+    echo "matdbg is enabled in the build, but some extra steps are needed."
+    echo ""
+    echo "FOR DESKTOP BUILDS:"
+    echo ""
+    echo "Please set the port environment variable before launching. e.g., on macOS do:"
+    echo "   export FILAMENT_MATDBG_PORT=8080"
+    echo ""
+    echo "FOR ANDROID BUILDS:"
+    echo ""
+    echo "1) The most reliable way to enable matdbg is to bypass Gradle and"
+    echo "   directly modify the appropriate two lines in the following file:"
+    echo "       ./android/filament-android/CMakeLists.txt"
+    echo ""
+    echo "2) The port number is hardcoded to 8081 so you will need to do:"
+    echo "       adb forward tcp:8081 tcp:8081"
+    echo ""
+    echo "3) Be sure to enable INTERNET permission in your app's manifest file."
+    echo ""
+}
+
+# Unless explicitly specified, NDK version will be selected as highest available version within same major release chain
+FILAMENT_NDK_VERSION=${FILAMENT_NDK_VERSION:-$(cat `dirname $0`/build/android/ndk.version | cut -f 1 -d ".")}
+
 # Requirements
 CMAKE_MAJOR=3
-CMAKE_MINOR=10
-ANDROID_NDK_VERSION=21
+CMAKE_MINOR=19
 
 # Internal variables
 ISSUE_CLEAN=false
+ISSUE_CLEAN_AGGRESSIVE=false
 
 ISSUE_DEBUG_BUILD=false
 ISSUE_RELEASE_BUILD=false
@@ -107,19 +143,22 @@ ISSUE_CMAKE_ALWAYS=false
 
 ISSUE_WEB_DOCS=false
 
+ANDROID_SAMPLES=()
+BUILD_ANDROID_SAMPLES=false
+
 RUN_TESTS=false
-
-JS_DOCS_OPTION="-DGENERATE_JS_DOCS=OFF"
-
-FILAMENT_ENABLE_JAVA=ON
 
 INSTALL_COMMAND=
 
 VULKAN_ANDROID_OPTION="-DFILAMENT_SUPPORTS_VULKAN=ON"
 VULKAN_ANDROID_GRADLE_OPTION=""
 
+SWIFTSHADER_OPTION="-DFILAMENT_USE_SWIFTSHADER=OFF"
+
+MATDBG_OPTION="-DFILAMENT_ENABLE_MATDBG=OFF"
+
 IOS_BUILD_SIMULATOR=false
-IOS_CREATE_UNIVERSAL_LIBRARIES=false
+BUILD_UNIVERSAL_LIBRARIES=false
 
 BUILD_GENERATOR=Ninja
 BUILD_COMMAND=ninja
@@ -139,6 +178,12 @@ function build_clean {
     rm -Rf android/filament-utils-android/build android/filament-utils-android/.externalNativeBuild android/filament-utils-android/.cxx
 }
 
+function build_clean_aggressive {
+    echo "Cleaning build directories..."
+    rm -Rf out
+    git clean -qfX android
+}
+
 function build_desktop_target {
     local lc_target=$(echo "$1" | tr '[:upper:]' '[:lower:]')
     local build_targets=$2
@@ -156,6 +201,10 @@ function build_desktop_target {
     local lc_name=$(echo "${UNAME}" | tr '[:upper:]' '[:lower:]')
     if [[ "${lc_name}" == "darwin" ]]; then
         local deployment_target="-DCMAKE_OSX_DEPLOYMENT_TARGET=10.14"
+
+        if [[ "${BUILD_UNIVERSAL_LIBRARIES}" == "true" ]]; then
+            local architectures="-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+        fi
     fi
 
     if [[ ! -d "CMakeFiles" ]] || [[ "${ISSUE_CMAKE_ALWAYS}" == "true" ]]; then
@@ -164,8 +213,10 @@ function build_desktop_target {
             -DIMPORT_EXECUTABLES_DIR=out \
             -DCMAKE_BUILD_TYPE="$1" \
             -DCMAKE_INSTALL_PREFIX="../${lc_target}/filament" \
-            -DFILAMENT_ENABLE_JAVA="${FILAMENT_ENABLE_JAVA}" \
+            ${SWIFTSHADER_OPTION} \
+            ${MATDBG_OPTION} \
             ${deployment_target} \
+            ${architectures} \
             ../..
     fi
     ${BUILD_COMMAND} ${build_targets}
@@ -220,7 +271,6 @@ function build_webgl_with_target {
             -DCMAKE_BUILD_TYPE="$1" \
             -DCMAKE_INSTALL_PREFIX="../webgl-${lc_target}/filament" \
             -DWEBGL=1 \
-            ${JS_DOCS_OPTION} \
             ../..
         ${BUILD_COMMAND} ${BUILD_TARGETS}
         )
@@ -239,14 +289,10 @@ function build_webgl_with_target {
 
         if [[ "${ISSUE_ARCHIVES}" == "true" ]]; then
             echo "Generating out/filament-${lc_target}-web.tgz..."
-            # The web archive has the following subfolders:
-            # dist...core WASM module and accompanying JS file.
-            # docs...HTML tutorials for the JS API, accompanying demos, and a reference page.
-            cd web
-            tar -cvf "../../filament-${lc_target}-web.tar" -s /^filament-js/dist/ \
-                    filament-js/filament.js
-            tar -rvf "../../filament-${lc_target}-web.tar" -s /^filament-js/dist/ \
-                    filament-js/filament.wasm
+            cd web/filament-js
+            tar -cvf "../../../filament-${lc_target}-web.tar" filament.js
+            tar -rvf "../../../filament-${lc_target}-web.tar" filament.wasm
+            tar -rvf "../../../filament-${lc_target}-web.tar" filament.d.ts
             cd -
             gzip -c "../filament-${lc_target}-web.tar" > "../filament-${lc_target}-web.tgz"
             rm "../filament-${lc_target}-web.tar"
@@ -291,8 +337,10 @@ function build_android_target {
             -G "${BUILD_GENERATOR}" \
             -DIMPORT_EXECUTABLES_DIR=out \
             -DCMAKE_BUILD_TYPE="$1" \
+            -DFILAMENT_NDK_VERSION="${FILAMENT_NDK_VERSION}" \
             -DCMAKE_INSTALL_PREFIX="../android-${lc_target}/filament" \
             -DCMAKE_TOOLCHAIN_FILE="../../build/toolchain-${arch}-linux-android.cmake" \
+            ${MATDBG_OPTION} \
             ${VULKAN_ANDROID_OPTION} \
             ../..
     fi
@@ -334,16 +382,9 @@ function ensure_android_build {
         exit 1
     fi
 
-    local ndk_side_by_side="${ANDROID_HOME}/ndk/"
-    if [[ -d ${ndk_side_by_side} ]]; then
-        # shellcheck disable=SC2012
-        local ndk_version=$(ls "${ndk_side_by_side}" | sort -V | tail -n 1 | cut -f 1 -d ".")
-        if [[ ${ndk_version} -lt ${ANDROID_NDK_VERSION} ]]; then
-            echo "Error: Android NDK side-by-side version ${ANDROID_NDK_VERSION} or higher must be installed, exiting"
-            exit 1
-        fi
-    else
-        echo "Error: Android NDK side-by-side version ${ANDROID_NDK_VERSION} or higher must be installed, exiting"
+    # shellcheck disable=SC2012
+    if [[ -z $(ls "${ANDROID_HOME}/ndk/" | sort -V | grep "^${FILAMENT_NDK_VERSION}") ]]; then
+        echo "Error: Android NDK side-by-side version ${FILAMENT_NDK_VERSION} or compatible must be installed, exiting"
         exit 1
     fi
 
@@ -366,6 +407,24 @@ function build_android {
     INSTALL_COMMAND=
 
     build_desktop "${MOBILE_HOST_TOOLS}"
+
+    # When building the samples, we need to partially "install" the host tools so Gradle can see
+    # them.
+    if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
+        if [[ "${ISSUE_DEBUG_BUILD}" == "true" ]]; then
+            mkdir -p out/debug/filament/bin
+            for tool in ${MOBILE_HOST_TOOLS}; do
+                cp out/cmake-debug/tools/${tool}/${tool} out/debug/filament/bin/
+            done
+        fi
+
+        if [[ "${ISSUE_RELEASE_BUILD}" == "true" ]]; then
+            mkdir -p out/release/filament/bin
+            for tool in ${MOBILE_HOST_TOOLS}; do
+                cp out/cmake-release/tools/${tool}/${tool} out/release/filament/bin/
+            done
+        fi
+    fi
 
     INSTALL_COMMAND=${old_install_command}
 
@@ -406,6 +465,15 @@ function build_android {
             -Pfilament_abis=${ABI_GRADLE_OPTION} \
             :filamat-android:assembleDebug
 
+        if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
+            for sample in ${ANDROID_SAMPLES}; do
+                ./gradlew \
+                    -Pfilament_dist_dir=../out/android-debug/filament \
+                    -Pfilament_abis=${ABI_GRADLE_OPTION} \
+                    :samples:${sample}:assembleDebug
+            done
+        fi
+
         if [[ "${INSTALL_COMMAND}" ]]; then
             echo "Installing out/filamat-android-debug.aar..."
             cp filamat-android/build/outputs/aar/filamat-android-lite-debug.aar ../out/
@@ -421,6 +489,14 @@ function build_android {
             echo "Installing out/filament-utils-android-debug.aar..."
             cp filament-utils-android/build/outputs/aar/filament-utils-android-lite-debug.aar ../out/
             cp filament-utils-android/build/outputs/aar/filament-utils-android-full-debug.aar ../out/filament-utils-android-debug.aar
+
+            if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
+                for sample in ${ANDROID_SAMPLES}; do
+                    echo "Installing out/${sample}-debug.apk"
+                    cp samples/${sample}/build/outputs/apk/debug/${sample}-debug-unsigned.apk \
+                        ../out/${sample}-debug.apk
+                done
+            fi
         fi
     fi
 
@@ -438,6 +514,15 @@ function build_android {
             -Pfilament_abis=${ABI_GRADLE_OPTION} \
             :filamat-android:assembleRelease
 
+        if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
+            for sample in ${ANDROID_SAMPLES}; do
+                ./gradlew \
+                    -Pfilament_dist_dir=../out/android-release/filament \
+                    -Pfilament_abis=${ABI_GRADLE_OPTION} \
+                    :samples:${sample}:assembleRelease
+            done
+        fi
+
         if [[ "${INSTALL_COMMAND}" ]]; then
             echo "Installing out/filamat-android-release.aar..."
             cp filamat-android/build/outputs/aar/filamat-android-lite-release.aar ../out/
@@ -453,6 +538,14 @@ function build_android {
             echo "Installing out/filament-utils-android-release.aar..."
             cp filament-utils-android/build/outputs/aar/filament-utils-android-lite-release.aar ../out/
             cp filament-utils-android/build/outputs/aar/filament-utils-android-full-release.aar ../out/filament-utils-android-release.aar
+
+            if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
+                for sample in ${ANDROID_SAMPLES}; do
+                    echo "Installing out/${sample}-release.apk"
+                    cp samples/${sample}/build/outputs/apk/release/${sample}-release-unsigned.apk \
+                        ../out/${sample}-release.apk
+                done
+            fi
         fi
     fi
 
@@ -477,9 +570,9 @@ function build_ios_target {
             -DCMAKE_INSTALL_PREFIX="../ios-${lc_target}/filament" \
             -DIOS_ARCH="${arch}" \
             -DPLATFORM_NAME="${platform}" \
-            -DIOS_MIN_TARGET=12.0 \
             -DIOS=1 \
             -DCMAKE_TOOLCHAIN_FILE=../../third_party/clang/iOS.cmake \
+            ${MATDBG_OPTION} \
             ../..
     fi
 
@@ -524,7 +617,7 @@ function build_ios {
             build_ios_target "Debug" "x86_64" "iphonesimulator"
         fi
 
-        if [[ "${IOS_CREATE_UNIVERSAL_LIBRARIES}" == "true" ]]; then
+        if [[ "${BUILD_UNIVERSAL_LIBRARIES}" == "true" ]]; then
             build/ios/create-universal-libs.sh \
                 -o out/ios-debug/filament/lib/universal \
                 out/ios-debug/filament/lib/arm64 \
@@ -542,7 +635,7 @@ function build_ios {
             build_ios_target "Release" "x86_64" "iphonesimulator"
         fi
 
-        if [[ "${IOS_CREATE_UNIVERSAL_LIBRARIES}" == "true" ]]; then
+        if [[ "${BUILD_UNIVERSAL_LIBRARIES}" == "true" ]]; then
             build/ios/create-universal-libs.sh \
                 -o out/ios-release/filament/lib/universal \
                 out/ios-release/filament/lib/arm64 \
@@ -559,11 +652,10 @@ function build_web_docs {
     echo "Building Web documents..."
 
     mkdir -p out/web-docs
+    cp -f docs/web-docs-package.json out/web-docs/package.json
     cd out/web-docs
 
-    # Create an empty npm package to link markdeep-rasterizer into
-    npm list | grep web-docs@1.0.0 > /dev/null || npm init --yes > /dev/null
-    npm list | grep markdeep-rasterizer > /dev/null || npm install ../../third_party/markdeep-rasterizer > /dev/null
+    npm install > /dev/null
 
     # Generate documents
     npx markdeep-rasterizer ../../docs/Filament.md.html ../../docs/Materials.md.html  ../../docs/
@@ -596,12 +688,6 @@ function validate_build_command {
             echo "Error: could not find make, exiting"
             exit 1
         fi
-    fi
-    # Make sure we have Java
-    local javac_binary=$(command -v javac)
-    if [[ "${JAVA_HOME}" == "" ]] || [[ ! "${javac_binary}" ]]; then
-        echo "Warning: JAVA_HOME is not set, skipping Java projects"
-        FILAMENT_ENABLE_JAVA=OFF
     fi
     # If building a WebAssembly module, ensure we know where Emscripten lives.
     if [[ "${EMSDK}" == "" ]] && [[ "${ISSUE_WEBGL_BUILD}" == "true" ]]; then
@@ -651,7 +737,7 @@ function run_tests {
 
 pushd "$(dirname "$0")" > /dev/null
 
-while getopts ":hacfijmp:q:uvslw" opt; do
+while getopts ":hacCfijmp:q:uvslwtdk:" opt; do
     case ${opt} in
         h)
             print_help
@@ -664,14 +750,18 @@ while getopts ":hacfijmp:q:uvslw" opt; do
         c)
             ISSUE_CLEAN=true
             ;;
+        C)
+            ISSUE_CLEAN_AGGRESSIVE=true
+            ;;
+        d)
+            PRINT_MATDBG_HELP=true
+            MATDBG_OPTION="-DFILAMENT_ENABLE_MATDBG=ON, -DFILAMENT_DISABLE_MATOPT=ON, -DFILAMENT_BUILD_FILAMAT=ON"
+            ;;
         f)
             ISSUE_CMAKE_ALWAYS=true
             ;;
         i)
             INSTALL_COMMAND=install
-            ;;
-        j)
-            FILAMENT_ENABLE_JAVA=OFF
             ;;
         m)
             BUILD_GENERATOR="Unix Makefiles"
@@ -749,14 +839,21 @@ while getopts ":hacfijmp:q:uvslw" opt; do
             IOS_BUILD_SIMULATOR=true
             echo "iOS simulator support enabled."
             ;;
+        t)
+            SWIFTSHADER_OPTION="-DFILAMENT_USE_SWIFTSHADER=ON"
+            echo "SwiftShader support enabled."
+            ;;
         l)
             IOS_BUILD_SIMULATOR=true
-            IOS_CREATE_UNIVERSAL_LIBRARIES=true
-            echo "iOS simulator support enabled."
-            echo "Creating iOS universal libraries."
+            BUILD_UNIVERSAL_LIBRARIES=true
+            echo "Building universal libraries."
             ;;
         w)
             ISSUE_WEB_DOCS=true
+            ;;
+        k)
+            BUILD_ANDROID_SAMPLES=true
+            ANDROID_SAMPLES=$(echo "${OPTARG}" | tr ',' '\n')
             ;;
         \?)
             echo "Invalid option: -${OPTARG}" >&2
@@ -796,6 +893,10 @@ if [[ "${ISSUE_CLEAN}" == "true" ]]; then
     build_clean
 fi
 
+if [[ "${ISSUE_CLEAN_AGGRESSIVE}" == "true" ]]; then
+    build_clean_aggressive
+fi
+
 if [[ "${ISSUE_DESKTOP_BUILD}" == "true" ]]; then
     build_desktop
 fi
@@ -818,4 +919,8 @@ fi
 
 if [[ "${RUN_TESTS}" == "true" ]]; then
     run_tests
+fi
+
+if [[ "${PRINT_MATDBG_HELP}" == "true" ]]; then
+    print_matdbg_help
 fi

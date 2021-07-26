@@ -36,7 +36,7 @@ struct AnimatorImpl;
  *
  * For a usage example, see the documentation for AssetLoader.
  */
-class Animator {
+class UTILS_PUBLIC Animator {
 public:
     /**
      * Applies rotation, translation, and scale to entities that have been targeted by the given
@@ -67,6 +67,9 @@ public:
      * empty string if none was specified.
      */
     const char* getAnimationName(size_t animationIndex) const;
+
+    // For internal use only.
+    void addInstance(FFilamentInstance* instance);
 
 private:
 

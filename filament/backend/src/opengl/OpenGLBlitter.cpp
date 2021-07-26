@@ -24,8 +24,6 @@
 
 #include <math/vec2.h>
 
-#include <assert.h>
-
 using namespace filament::math;
 using namespace utils;
 
@@ -81,20 +79,20 @@ void OpenGLBlitter::init() noexcept {
     glShaderSource(mVertexShader, 1, vsource + index, nullptr);
     glCompileShader(mVertexShader);
     glGetShaderiv(mVertexShader, GL_COMPILE_STATUS, &status);
-    assert(status == GL_TRUE);
+    assert_invariant(status == GL_TRUE);
 
     mFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(mFragmentShader, 1, fsource + index, nullptr);
     glCompileShader(mFragmentShader);
     glGetShaderiv(mFragmentShader, GL_COMPILE_STATUS, &status);
-    assert(status == GL_TRUE);
+    assert_invariant(status == GL_TRUE);
 
     mProgram = glCreateProgram();
     glAttachShader(mProgram, mVertexShader);
     glAttachShader(mProgram, mFragmentShader);
     glLinkProgram(mProgram);
     glGetProgramiv(mProgram, GL_LINK_STATUS, &status);
-    assert(status == GL_TRUE);
+    assert_invariant(status == GL_TRUE);
 
     glUseProgram(mProgram);
     GLint loc = glGetUniformLocation(mProgram, "sampler");
@@ -133,7 +131,7 @@ void OpenGLBlitter::blit(GLuint srcTextureExternal, GLuint dstTexture2d, GLuint 
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dstTexture2d, 0);
     CHECK_GL_ERROR(utils::slog.e)
-    CHECK_GL_FRAMEBUFFER_STATUS(utils::slog.e)
+    CHECK_GL_FRAMEBUFFER_STATUS(utils::slog.e, GL_FRAMEBUFFER)
 
     // geometry
     glBindBuffer(GL_ARRAY_BUFFER, 0);

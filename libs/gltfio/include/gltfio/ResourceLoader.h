@@ -21,6 +21,8 @@
 
 #include <backend/BufferDescriptor.h>
 
+#include <utils/compiler.h>
+
 namespace filament {
     class Engine;
 }
@@ -66,7 +68,7 @@ struct ResourceConfiguration {
  * subsequent re-loads of the same asset. To fix this, we would need to enable shared ownership
  * of Texture objects between ResourceLoader and FilamentAsset.
  */
-class ResourceLoader {
+class UTILS_PUBLIC ResourceLoader {
 public:
     using BufferDescriptor = filament::backend::BufferDescriptor;
 
@@ -92,6 +94,13 @@ public:
      * Checks if the given resource has already been added to the URI cache.
      */
     bool hasResourceData(const char* uri) const;
+
+    /**
+     * Frees memory by evicting the URI cache that was populated via addResourceData.
+     *
+     * This can be called only after a model is fully loaded or after loading has been cancelled.
+     */
+    void evictResourceData();
 
     /**
      * Loads resources for the given asset from the filesystem or data cache and "finalizes" the
@@ -129,6 +138,14 @@ public:
      * After progress reaches 100%, calling this is harmless; it just does nothing.
      */
     void asyncUpdateLoad();
+
+    /**
+     * Cancels pending decoder jobs, frees all CPU-side texel data, and flushes the Engine.
+     *
+     * Calling this is only necessary if the asyncBeginLoad API was used
+     * and cancellation is required before progress reaches 100%.
+     */
+    void asyncCancelLoad();
 
 private:
     bool loadResources(FFilamentAsset* asset, bool async);

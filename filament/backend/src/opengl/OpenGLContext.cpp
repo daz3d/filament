@@ -40,46 +40,13 @@ OpenGLContext::OpenGLContext() noexcept {
 #endif
 
     // OpenGL (ES) version
-    GLint major = 0, minor = 0;
+    GLint major = 0;
+    GLint minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &major);
     glGetIntegerv(GL_MINOR_VERSION, &minor);
-    glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &gets.max_renderbuffer_size);
-    glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &gets.max_uniform_block_size);
-    glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &gets.uniform_buffer_offset_alignment);
-
-#if 0
-    // this is useful for development, but too verbose even for debug builds
-    slog.i
-        << "GL_MAX_RENDERBUFFER_SIZE = " << gets.max_renderbuffer_size << io::endl
-        << "GL_MAX_UNIFORM_BLOCK_SIZE = " << gets.max_uniform_block_size << io::endl
-        << "GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT = " << gets.uniform_buffer_offset_alignment << io::endl;
-#endif
-
-    if (strstr(renderer, "Adreno")) {
-        bugs.dont_use_timer_query = true;   // verified
-    } else if (strstr(renderer, "Mali")) {
-        bugs.dont_use_timer_query = true;   // not verified
-        bugs.vao_doesnt_store_element_array_buffer_binding = true;
-        if (strstr(renderer, "Mali-T")) {
-            bugs.disable_glFlush = true;
-            bugs.disable_shared_context_draws = true;
-            bugs.texture_external_needs_rebind = true;
-        }
-        if (strstr(renderer, "Mali-G")) {
-            bugs.disable_texture_filter_anisotropic = true;
-        }
-    } else if (strstr(renderer, "Intel")) {
-        bugs.vao_doesnt_store_element_array_buffer_binding = true;
-    } else if (strstr(renderer, "PowerVR") || strstr(renderer, "Apple")) {
-    } else if (strstr(renderer, "Tegra") || strstr(renderer, "GeForce") || strstr(renderer, "NV")) {
-    } else if (strstr(renderer, "Vivante")) {
-    } else if (strstr(renderer, "AMD") || strstr(renderer, "ATI")) {
-    } else if (strstr(renderer, "Mozilla")) {
-        bugs.disable_invalidate_framebuffer = true;
-    }
 
     // Figure out if we have the extension we need
-    GLint n;
+    GLint n = 0;
     glGetIntegerv(GL_NUM_EXTENSIONS, &n);
     ExtentionSet exts;
     for (GLint i = 0; i < n; i++) {
@@ -89,7 +56,6 @@ OpenGLContext::OpenGLContext() noexcept {
             slog.d << extension << io::endl;
         }
     }
-
     ShaderModel shaderModel = ShaderModel::UNKNOWN;
     if (GLES30_HEADERS) {
         if (major == 3 && minor >= 0) {
@@ -106,35 +72,103 @@ OpenGLContext::OpenGLContext() noexcept {
         initExtensionsGL(major, minor, exts);
         features.multisample_texture = true;
     };
-    assert(shaderModel != ShaderModel::UNKNOWN);
+    assert_invariant(shaderModel != ShaderModel::UNKNOWN);
     mShaderModel = shaderModel;
+
+    // Figure out which driver bugs we need to workaround
+    if (strstr(renderer, "Adreno")) {
+        // On Adreno (As of 3/20) timer query seem to return the CPU time, not the
+        // GPU time.
+        bugs.dont_use_timer_query = true;
+        bugs.disable_sidecar_blit_into_texture_array = true;
+    } else if (strstr(renderer, "Mali")) {
+        bugs.vao_doesnt_store_element_array_buffer_binding = true;
+        if (strstr(renderer, "Mali-T")) {
+            bugs.disable_glFlush = true;
+            bugs.disable_shared_context_draws = true;
+            bugs.texture_external_needs_rebind = true;
+            // We have not verified that timer queries work on Mali-T, so we disable to be safe.
+            bugs.dont_use_timer_query = true;
+        }
+        if (strstr(renderer, "Mali-G")) {
+            // note: We have verified that timer queries work well at least on some Mali-G.
+        }
+    } else if (strstr(renderer, "Intel")) {
+        bugs.vao_doesnt_store_element_array_buffer_binding = true;
+    } else if (strstr(renderer, "PowerVR") || strstr(renderer, "Apple")) {
+    } else if (strstr(renderer, "Tegra") || strstr(renderer, "GeForce") || strstr(renderer, "NV")) {
+    } else if (strstr(renderer, "Vivante")) {
+    } else if (strstr(renderer, "AMD") || strstr(renderer, "ATI")) {
+    } else if (strstr(renderer, "Mozilla")) {
+        bugs.disable_invalidate_framebuffer = true;
+    }
+
+    // now we can query getter and features
+    glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &gets.max_renderbuffer_size);
+    glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &gets.max_uniform_block_size);
+    glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &gets.uniform_buffer_offset_alignment);
+    glGetIntegerv(GL_MAX_SAMPLES, &gets.max_samples);
+    glGetIntegerv(GL_MAX_DRAW_BUFFERS, &gets.max_draw_buffers);
+#ifdef GL_EXT_texture_filter_anisotropic
+    if (ext.EXT_texture_filter_anisotropic) {
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &gets.max_anisotropy);
+    }
+#endif
+
+    assert_invariant(gets.max_draw_buffers >= 4); // minspec
+
+#if 0
+    // this is useful for development, but too verbose even for debug builds
+    slog.i
+            << "GL_MAX_DRAW_BUFFERS = " << gets.max_draw_buffers << '\n'
+            << "GL_MAX_RENDERBUFFER_SIZE = " << gets.max_renderbuffer_size << '\n'
+            << "GL_MAX_SAMPLES = " << gets.max_samples << '\n'
+            << "GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT = " << gets.max_anisotropy << '\n'
+            << "GL_MAX_UNIFORM_BLOCK_SIZE = " << gets.max_uniform_block_size << '\n'
+            << "GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT = " << gets.uniform_buffer_offset_alignment << '\n'
+            << io::endl;
+#endif
 
     /*
      * Set our default state
      */
 
-    disable(GL_DITHER);
-    enable(GL_DEPTH_TEST);
+    // We need to make sure our internal state matches the GL state when we start.
+    // (some of these calls may be unneeded as they might be the gl defaults)
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_DITHER);
+    glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
+    glDisable(GL_SAMPLE_COVERAGE);
+    glDisable(GL_POLYGON_OFFSET_FILL);
 
     // Point sprite size and seamless cubemap filtering are disabled by default in desktop GL.
     // In OpenGL ES, these flags do not exist because they are always on.
 #if GL41_HEADERS
     enable(GL_PROGRAM_POINT_SIZE);
-    enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 #endif
-
-    // TODO: Don't enable scissor when it is not necessary. This optimization could be done here in
-    //       the driver by simply deferring the enable until the scissor rect is smaller than the
-    //       window.
-    enable(GL_SCISSOR_TEST);
 
 #ifdef GL_ARB_seamless_cube_map
     enable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 #endif
 
 #ifdef GL_EXT_texture_filter_anisotropic
-    if (ext.texture_filter_anisotropic && !bugs.disable_texture_filter_anisotropic) {
-        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &gets.maxAnisotropy);
+    if (ext.EXT_texture_filter_anisotropic) {
+        // make sure we don't have any error flag
+        while (glGetError() != GL_NO_ERROR) { }
+
+        // check that we can actually set the anisotropy on the sampler
+        GLuint s;
+        glGenSamplers(1, &s);
+        glSamplerParameterf(s, GL_TEXTURE_MAX_ANISOTROPY_EXT, gets.max_anisotropy);
+        if (glGetError() != GL_NO_ERROR) {
+            // some drivers only allow to set the anisotropy on the texture itself
+            bugs.texture_filter_anisotropic_broken_on_sampler = true;
+        }
+        glDeleteSamplers(1, &s);
     }
 #endif
 
@@ -146,7 +180,7 @@ OpenGLContext::OpenGLContext() noexcept {
     if (ext.KHR_debug) {
         auto cb = [](GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
                 const GLchar* message, const void *userParam) {
-            io::LogStream* stream;
+            io::ostream* stream = nullptr;
             switch (severity) {
                 case GL_DEBUG_SEVERITY_HIGH:
                     stream = &slog.e;
@@ -162,7 +196,7 @@ OpenGLContext::OpenGLContext() noexcept {
                     stream = &slog.i;
                     break;
             }
-            io::LogStream& out = *stream;
+            io::ostream& out = *stream;
             out << "KHR_debug ";
             switch (type) {
                 case GL_DEBUG_TYPE_ERROR:
@@ -196,6 +230,12 @@ OpenGLContext::OpenGLContext() noexcept {
         glDebugMessageCallback(cb, nullptr);
     }
 #endif
+
+#if defined(GL_EXT_clip_control) || defined(GL_ARB_clip_control) || defined(GL_VERSION_4_5)
+    if (ext.EXT_clip_control) {
+        glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+    }
+#endif
 }
 
 UTILS_NOINLINE
@@ -205,20 +245,26 @@ bool OpenGLContext::hasExtension(ExtentionSet const& map, utils::StaticString ex
 
 void OpenGLContext::initExtensionsGLES(GLint major, GLint minor, ExtentionSet const& exts) {
     // figure out and initialize the extensions we need
-    ext.texture_filter_anisotropic = hasExtension(exts, "GL_EXT_texture_filter_anisotropic");
-    ext.texture_compression_etc2 = true;
-    ext.QCOM_tiled_rendering = hasExtension(exts, "GL_QCOM_tiled_rendering");
-    ext.OES_EGL_image_external_essl3 = hasExtension(exts, "GL_OES_EGL_image_external_essl3");
-    ext.EXT_debug_marker = hasExtension(exts, "GL_EXT_debug_marker");
-    ext.EXT_color_buffer_half_float = hasExtension(exts, "GL_EXT_color_buffer_half_float");
-    ext.EXT_color_buffer_float = hasExtension(exts, "GL_EXT_color_buffer_float");
     ext.APPLE_color_buffer_packed_float = hasExtension(exts, "GL_APPLE_color_buffer_packed_float");
-    ext.texture_compression_s3tc = hasExtension(exts, "WEBGL_compressed_texture_s3tc");
-    ext.EXT_multisampled_render_to_texture = hasExtension(exts, "GL_EXT_multisampled_render_to_texture");
+    ext.EXT_clip_control = hasExtension(exts, "GL_EXT_clip_control");
+    ext.EXT_color_buffer_float = hasExtension(exts, "GL_EXT_color_buffer_float");
+    ext.EXT_color_buffer_half_float = hasExtension(exts, "GL_EXT_color_buffer_half_float");
+    ext.EXT_debug_marker = hasExtension(exts, "GL_EXT_debug_marker");
     ext.EXT_disjoint_timer_query = hasExtension(exts, "GL_EXT_disjoint_timer_query");
-    ext.KHR_debug = hasExtension(exts, "GL_KHR_debug");
-    ext.EXT_texture_compression_s3tc_srgb = hasExtension(exts, "GL_EXT_texture_compression_s3tc_srgb");
+    ext.EXT_multisampled_render_to_texture = hasExtension(exts, "GL_EXT_multisampled_render_to_texture");
+    ext.EXT_multisampled_render_to_texture2 = hasExtension(exts, "GL_EXT_multisampled_render_to_texture2");
     ext.EXT_shader_framebuffer_fetch = hasExtension(exts, "GL_EXT_shader_framebuffer_fetch");
+    ext.EXT_texture_compression_etc2 = true;
+    ext.EXT_texture_filter_anisotropic = hasExtension(exts, "GL_EXT_texture_filter_anisotropic");
+    ext.GOOGLE_cpp_style_line_directive = hasExtension(exts, "GL_GOOGLE_cpp_style_line_directive");
+    ext.KHR_debug = hasExtension(exts, "GL_KHR_debug");
+    ext.OES_EGL_image_external_essl3 = hasExtension(exts, "GL_OES_EGL_image_external_essl3");
+    ext.QCOM_tiled_rendering = hasExtension(exts, "GL_QCOM_tiled_rendering");
+    ext.EXT_texture_compression_s3tc = hasExtension(exts, "GL_EXT_texture_compression_s3tc");
+    ext.EXT_texture_compression_s3tc_srgb = hasExtension(exts, "GL_EXT_texture_compression_s3tc_srgb");
+    ext.WEBGL_compressed_texture_s3tc = hasExtension(exts, "WEBGL_compressed_texture_s3tc");
+    ext.WEBGL_compressed_texture_s3tc_srgb = hasExtension(exts, "WEBGL_compressed_texture_s3tc_srgb");
+    ext.WEBGL_compressed_texture_etc = hasExtension(exts, "WEBGL_compressed_texture_etc");
     // ES 3.2 implies EXT_color_buffer_float
     if (major >= 3 && minor >= 2) {
         ext.EXT_color_buffer_float = true;
@@ -226,17 +272,20 @@ void OpenGLContext::initExtensionsGLES(GLint major, GLint minor, ExtentionSet co
 }
 
 void OpenGLContext::initExtensionsGL(GLint major, GLint minor, ExtentionSet const& exts) {
-    ext.texture_filter_anisotropic = hasExtension(exts, "GL_EXT_texture_filter_anisotropic");
-    ext.texture_compression_etc2 = hasExtension(exts, "GL_ARB_ES3_compatibility");
-    ext.texture_compression_s3tc = hasExtension(exts, "GL_EXT_texture_compression_s3tc");
-    ext.OES_EGL_image_external_essl3 = hasExtension(exts, "GL_OES_EGL_image_external_essl3");
-    ext.EXT_debug_marker = hasExtension(exts, "GL_EXT_debug_marker");
-    ext.EXT_color_buffer_half_float = true;  // Assumes core profile.
-    ext.EXT_color_buffer_float = true;  // Assumes core profile.
     ext.APPLE_color_buffer_packed_float = true;  // Assumes core profile.
-    ext.KHR_debug = major >= 4 && minor >= 3;
-    ext.EXT_texture_sRGB = hasExtension(exts, "GL_EXT_texture_sRGB");
+    ext.EXT_clip_control = hasExtension(exts, "GL_ARB_clip_control") || (major == 4 && minor >= 5);
+    ext.EXT_color_buffer_float = true;  // Assumes core profile.
+    ext.EXT_color_buffer_half_float = true;  // Assumes core profile.
+    ext.EXT_debug_marker = hasExtension(exts, "GL_EXT_debug_marker");
     ext.EXT_shader_framebuffer_fetch = hasExtension(exts, "GL_EXT_shader_framebuffer_fetch");
+    ext.EXT_texture_compression_etc2 = hasExtension(exts, "GL_ARB_ES3_compatibility");
+    ext.EXT_texture_filter_anisotropic = hasExtension(exts, "GL_EXT_texture_filter_anisotropic");
+    ext.EXT_texture_sRGB = hasExtension(exts, "GL_EXT_texture_sRGB");
+    ext.GOOGLE_cpp_style_line_directive = hasExtension(exts, "GL_GOOGLE_cpp_style_line_directive");
+    ext.KHR_debug = major >= 4 && minor >= 3;
+    ext.OES_EGL_image_external_essl3 = hasExtension(exts, "GL_OES_EGL_image_external_essl3");
+    ext.EXT_texture_compression_s3tc = hasExtension(exts, "GL_EXT_texture_compression_s3tc");
+    ext.EXT_texture_compression_s3tc_srgb = hasExtension(exts, "GL_EXT_texture_compression_s3tc_srgb");
 }
 
 void OpenGLContext::bindBuffer(GLenum target, GLuint buffer) noexcept {
@@ -244,7 +293,7 @@ void OpenGLContext::bindBuffer(GLenum target, GLuint buffer) noexcept {
     if (target == GL_ELEMENT_ARRAY_BUFFER) {
         // GL_ELEMENT_ARRAY_BUFFER is a special case, where the currently bound VAO remembers
         // the index buffer, unless there are no VAO bound (see: bindVertexArray)
-        assert(state.vao.p);
+        assert_invariant(state.vao.p);
         if (state.buffers.genericBinding[targetIndex] != buffer
             || ((state.vao.p != &mDefaultVAO) && (state.vao.p->elementArray != buffer))) {
             state.buffers.genericBinding[targetIndex] = buffer;

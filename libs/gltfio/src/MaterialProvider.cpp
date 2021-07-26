@@ -26,23 +26,37 @@ bool operator==(const MaterialKey& k1, const MaterialKey& k2) {
         (k1.unlit == k2.unlit) &&
         (k1.hasVertexColors == k2.hasVertexColors) &&
         (k1.hasBaseColorTexture == k2.hasBaseColorTexture) &&
-        (k1.hasMetallicRoughnessTexture == k2.hasMetallicRoughnessTexture) &&
         (k1.hasNormalTexture == k2.hasNormalTexture) &&
         (k1.hasOcclusionTexture == k2.hasOcclusionTexture) &&
         (k1.hasEmissiveTexture == k2.hasEmissiveTexture) &&
+        (k1.useSpecularGlossiness == k2.useSpecularGlossiness) &&
         (k1.alphaMode == k2.alphaMode) &&
-        (k1.baseColorUV == k2.baseColorUV) &&
+        (k1.hasMetallicRoughnessTexture == k2.hasMetallicRoughnessTexture) &&
         (k1.metallicRoughnessUV == k2.metallicRoughnessUV) &&
+        (k1.baseColorUV == k2.baseColorUV) &&
+        (k1.hasClearCoatTexture == k2.hasClearCoatTexture) &&
+        (k1.clearCoatUV == k2.clearCoatUV) &&
+        (k1.hasClearCoatRoughnessTexture == k2.hasClearCoatRoughnessTexture) &&
+        (k1.clearCoatRoughnessUV == k2.clearCoatRoughnessUV) &&
+        (k1.hasClearCoatNormalTexture == k2.hasClearCoatNormalTexture) &&
+        (k1.clearCoatNormalUV == k2.clearCoatNormalUV) &&
+        (k1.hasClearCoat == k2.hasClearCoat) &&
+        (k1.hasTransmission == k2.hasTransmission) &&
+        (k1.hasTextureTransforms == k2.hasTextureTransforms) &&
         (k1.emissiveUV == k2.emissiveUV) &&
         (k1.aoUV == k2.aoUV) &&
         (k1.normalUV == k2.normalUV) &&
-        (k1.hasClearCoat == k2.hasClearCoat) &&
-        (k1.hasClearCoatTexture == k2.hasClearCoatTexture) &&
-        (k1.hasClearCoatRoughnessTexture == k2.hasClearCoatRoughnessTexture) &&
-        (k1.hasClearCoatNormalTexture == k2.hasClearCoatNormalTexture) &&
-        (k1.clearCoatUV == k2.clearCoatUV) &&
-        (k1.clearCoatRoughnessUV == k2.clearCoatRoughnessUV) &&
-        (k1.clearCoatNormalUV == k2.clearCoatNormalUV);
+        (k1.hasTransmissionTexture == k2.hasTransmissionTexture) &&
+        (k1.transmissionUV == k2.transmissionUV) &&
+        (k1.hasSheenColorTexture == k2.hasSheenColorTexture) &&
+        (k1.sheenColorUV == k2.sheenColorUV) &&
+        (k1.hasSheenRoughnessTexture == k2.hasSheenRoughnessTexture) &&
+        (k1.sheenRoughnessUV == k2.sheenRoughnessUV) &&
+        (k1.hasVolumeThicknessTexture == k2.hasVolumeThicknessTexture) &&
+        (k1.volumeThicknessUV == k2.volumeThicknessUV) &&
+        (k1.hasSheen == k2.hasSheen) &&
+        (k1.hasIOR == k2.hasIOR) &&
+        (k1.hasVolume == k2.hasVolume);
 }
 
 // Filament supports up to 2 UV sets. glTF has arbitrary texcoord set indices, but it allows
@@ -80,6 +94,13 @@ void constrainMaterial(MaterialKey* key, UvMap* uvmap) {
             retval[key->emissiveUV] = (UvSet) index++;
         }
     }
+    if (key->hasTransmissionTexture && retval[key->transmissionUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasTransmissionTexture = false;
+        } else {
+            retval[key->transmissionUV] = (UvSet) index++;
+        }
+    }
     if (key->hasClearCoatTexture && retval[key->clearCoatUV] == UNUSED) {
         if (index > MAX_INDEX) {
             key->hasClearCoatTexture = false;
@@ -101,6 +122,27 @@ void constrainMaterial(MaterialKey* key, UvMap* uvmap) {
             retval[key->clearCoatNormalUV] = (UvSet) index++;
         }
     }
+    if (key->hasSheenColorTexture && retval[key->sheenColorUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasSheenColorTexture = false;
+        } else {
+            retval[key->sheenColorUV] = (UvSet) index++;
+        }
+    }
+    if (key->hasSheenRoughnessTexture && retval[key->sheenRoughnessUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasSheenRoughnessTexture = false;
+        } else {
+            retval[key->sheenRoughnessUV] = (UvSet) index++;
+        }
+    }
+    if (key->hasVolumeThicknessTexture && retval[key->volumeThicknessUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasVolumeThicknessTexture = false;
+        } else {
+            retval[key->volumeThicknessUV] = (UvSet) index++;
+        }
+    }
     // NOTE: KHR_materials_clearcoat does not provide separate UVs, we'll assume UV0
     *uvmap = retval;
 }
@@ -117,18 +159,27 @@ void processShaderString(std::string* shader, const UvMap& uvmap, const Material
     const auto& baseColorUV = uvstrings[uvmap[config.baseColorUV]];
     const auto& metallicRoughnessUV = uvstrings[uvmap[config.metallicRoughnessUV]];
     const auto& emissiveUV = uvstrings[uvmap[config.emissiveUV]];
+    const auto& transmissionUV = uvstrings[uvmap[config.transmissionUV]];
     const auto& aoUV = uvstrings[uvmap[config.aoUV]];
     const auto& clearCoatUV = uvstrings[uvmap[config.clearCoatUV]];
     const auto& clearCoatRoughnessUV = uvstrings[uvmap[config.clearCoatRoughnessUV]];
     const auto& clearCoatNormalUV = uvstrings[uvmap[config.clearCoatNormalUV]];
+    const auto& sheenColorUV = uvstrings[uvmap[config.sheenColorUV]];
+    const auto& sheenRoughnessUV = uvstrings[uvmap[config.sheenRoughnessUV]];
+    const auto& volumeThicknessUV = uvstrings[uvmap[config.volumeThicknessUV]];
+
     replaceAll("${normal}", normalUV);
     replaceAll("${color}", baseColorUV);
     replaceAll("${metallic}", metallicRoughnessUV);
     replaceAll("${ao}", aoUV);
     replaceAll("${emissive}", emissiveUV);
+    replaceAll("${transmission}", transmissionUV);
     replaceAll("${clearCoat}", clearCoatUV);
     replaceAll("${clearCoatRoughness}", clearCoatRoughnessUV);
     replaceAll("${clearCoatNormal}", clearCoatNormalUV);
+    replaceAll("${sheenColor}", sheenColorUV);
+    replaceAll("${sheenRoughness}", sheenRoughnessUV);
+    replaceAll("${volumeThickness}", volumeThicknessUV);
 }
 
 } // namespace gltfio

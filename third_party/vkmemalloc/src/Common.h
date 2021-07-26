@@ -1,3 +1,25 @@
+//
+// Copyright (c) 2017-2021 Advanced Micro Devices, Inc. All rights reserved.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+
 #ifndef COMMON_H_
 #define COMMON_H_
 
@@ -16,6 +38,7 @@
 #include <utility>
 #include <chrono>
 #include <string>
+#include <exception>
 
 #include <cassert>
 #include <cstdlib>
@@ -25,12 +48,30 @@
 typedef std::chrono::high_resolution_clock::time_point time_point;
 typedef std::chrono::high_resolution_clock::duration duration;
 
-#define ERR_GUARD_VULKAN(Expr) do { VkResult res__ = (Expr); if (res__ < 0) assert(0); } while(0)
+#define STRINGIZE(x) STRINGIZE2(x)
+#define STRINGIZE2(x) #x
+#define LINE_STRING STRINGIZE(__LINE__)
+#define TEST(expr)  do { if(!(expr)) { \
+        assert(0 && #expr); \
+        throw std::runtime_error(__FILE__ "(" LINE_STRING "): ( " #expr " ) == false"); \
+    } } while(false)
+#define ERR_GUARD_VULKAN(expr)  do { if((expr) < 0) { \
+        assert(0 && #expr); \
+        throw std::runtime_error(__FILE__ "(" LINE_STRING "): VkResult( " #expr " ) < 0"); \
+    } } while(false)
 
+static const uint32_t VENDOR_ID_AMD = 0x1002;
+static const uint32_t VENDOR_ID_NVIDIA = 0x10DE;
+static const uint32_t VENDOR_ID_INTEL = 0x8086;
+
+extern VkInstance g_hVulkanInstance;
 extern VkPhysicalDevice g_hPhysicalDevice;
 extern VkDevice g_hDevice;
+extern VkInstance g_hVulkanInstance;
 extern VmaAllocator g_hAllocator;
-extern bool g_MemoryAliasingWarningEnabled;
+extern bool VK_AMD_device_coherent_memory_enabled;
+
+void SetAllocatorCreateInfo(VmaAllocatorCreateInfo& outInfo);
 
 inline float ToFloatSeconds(duration d)
 {
@@ -42,6 +83,11 @@ inline T ceil_div(T x, T y)
 {
     return (x+y-1) / y;
 }
+template <typename T>
+inline T round_div(T x, T y)
+{
+    return (x+y/(T)2) / y;
+}
 
 template <typename T>
 static inline T align_up(T val, T align)
@@ -50,6 +96,29 @@ static inline T align_up(T val, T align)
 }
 
 static const float PI = 3.14159265358979323846264338327950288419716939937510582f;
+
+template<typename MainT, typename NewT>
+inline void PnextChainPushFront(MainT* mainStruct, NewT* newStruct)
+{
+    newStruct->pNext = mainStruct->pNext;
+    mainStruct->pNext = newStruct;
+}
+template<typename MainT, typename NewT>
+inline void PnextChainPushBack(MainT* mainStruct, NewT* newStruct)
+{
+    struct VkAnyStruct
+    {
+        VkStructureType sType;
+        void* pNext;
+    };
+    VkAnyStruct* lastStruct = (VkAnyStruct*)mainStruct;
+    while(lastStruct->pNext != nullptr)
+    {
+        lastStruct = (VkAnyStruct*)lastStruct->pNext;
+    }
+    newStruct->pNext = nullptr;
+    lastStruct->pNext = newStruct;
+}
 
 struct vec3
 {
@@ -206,6 +275,19 @@ private:
     uint32_t GenerateFast() { return m_Value = (m_Value * 196314165 + 907633515); }
 };
 
+// Wrapper for RandomNumberGenerator compatible with STL "UniformRandomNumberGenerator" idea.
+struct MyUniformRandomNumberGenerator
+{
+    typedef uint32_t result_type;
+    MyUniformRandomNumberGenerator(RandomNumberGenerator& gen) : m_Gen(gen) { }
+    static uint32_t min() { return 0; }
+    static uint32_t max() { return UINT32_MAX; }
+    uint32_t operator()() { return m_Gen.Generate(); }
+
+private:
+    RandomNumberGenerator& m_Gen;
+};
+
 void ReadFile(std::vector<char>& out, const char* fileName);
 
 enum class CONSOLE_COLOR
@@ -239,6 +321,18 @@ void PrintErrorF(const char* format, ...);
 void PrintErrorF(const wchar_t* format, ...);
 
 void SaveFile(const wchar_t* filePath, const void* data, size_t dataSize);
+
+std::wstring SizeToStr(size_t size);
+// As codePage use e.g. CP_ACP for native Windows 1-byte codepage or CP_UTF8.
+bool ConvertCharsToUnicode(std::wstring *outStr, const std::string &s, unsigned codePage);
+bool ConvertCharsToUnicode(std::wstring *outStr, const char *s, size_t sCharCount, unsigned codePage);
+
+const wchar_t* PhysicalDeviceTypeToStr(VkPhysicalDeviceType type);
+const wchar_t* VendorIDToStr(uint32_t vendorID);
+
+#if VMA_VULKAN_VERSION >= 1002000
+const wchar_t* DriverIDToStr(VkDriverId driverID);
+#endif
 
 #endif // #ifdef _WIN32
 

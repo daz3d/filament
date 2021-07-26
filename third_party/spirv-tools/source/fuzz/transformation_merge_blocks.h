@@ -15,9 +15,9 @@
 #ifndef SOURCE_FUZZ_TRANSFORMATION_MERGE_BLOCKS_H_
 #define SOURCE_FUZZ_TRANSFORMATION_MERGE_BLOCKS_H_
 
-#include "source/fuzz/fact_manager.h"
 #include "source/fuzz/protobufs/spirvfuzz_protobufs.h"
 #include "source/fuzz/transformation.h"
+#include "source/fuzz/transformation_context.h"
 #include "source/opt/ir_context.h"
 
 namespace spvtools {
@@ -26,21 +26,26 @@ namespace fuzz {
 class TransformationMergeBlocks : public Transformation {
  public:
   explicit TransformationMergeBlocks(
-      const protobufs::TransformationMergeBlocks& message);
+      protobufs::TransformationMergeBlocks message);
 
   TransformationMergeBlocks(uint32_t block_id);
 
   // - |message_.block_id| must be the id of a block, b
+  // - b must be statically reachable in the control flow graph of its function
   // - b must have a single predecessor, a
   // - b must be the sole successor of a
   // - Replacing a with the merge of a and b (and removing b) must lead to a
   //   valid module
-  bool IsApplicable(opt::IRContext* context,
-                    const FactManager& fact_manager) const override;
+  bool IsApplicable(
+      opt::IRContext* ir_context,
+      const TransformationContext& transformation_context) const override;
 
   // The contents of b are merged into a, and a's terminator is replaced with
   // the terminator of b.  Block b is removed from the module.
-  void Apply(opt::IRContext* context, FactManager* fact_manager) const override;
+  void Apply(opt::IRContext* ir_context,
+             TransformationContext* transformation_context) const override;
+
+  std::unordered_set<uint32_t> GetFreshIds() const override;
 
   protobufs::Transformation ToMessage() const override;
 

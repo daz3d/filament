@@ -16,8 +16,56 @@
 
 #include "private/backend/BackendUtils.h"
 
+#include "DataReshaper.h"
+
+#include <utils/CString.h>
+
+#include <string_view>
+
 namespace filament {
 namespace backend {
+
+bool requestsGoogleLineDirectivesExtension(const char* shader, size_t length) noexcept {
+    std::string_view s(shader, length);
+    return s.find("GL_GOOGLE_cpp_style_line_directive") != std::string_view::npos;
+}
+
+void removeGoogleLineDirectives(char* shader, size_t length) noexcept {
+    std::string_view s(shader, length);
+
+    size_t pos = 0;
+    while (true) {
+        pos = s.find("#line", pos);
+        if (pos == std::string_view::npos) {
+            break;
+        }
+
+        pos += 5;
+
+        bool googleStyleDirective = false;
+        size_t len = 0;
+        size_t start = 0;
+        while (pos < length) {
+            if (shader[pos] == '"' && !googleStyleDirective) {
+                googleStyleDirective = true;
+                start = pos;
+            }
+            if (shader[pos] == '\n') {
+                break;
+            }
+            if (googleStyleDirective) {
+                len++;
+            }
+            pos++;
+        }
+
+        // There's no point in trying to splice the shader to remove the quoted filename, just
+        // replace the filename with spaces.
+        for (size_t i = start; i < start + len; i++) {
+            shader[i] = ' ';
+        }
+    }
+}
 
 size_t getFormatSize(TextureFormat format) noexcept {
     switch (format) {
@@ -280,6 +328,112 @@ size_t getBlockHeight(TextureFormat format) noexcept {
     }
 }
 
+bool reshape(const PixelBufferDescriptor& data, PixelBufferDescriptor& reshaped) {
+    // We only reshape 3 component pixel buffers: either RGB or RGB_INTEGER.
+    if (!(data.format == PixelDataFormat::RGB || data.format == PixelDataFormat::RGB_INTEGER)) {
+        return false;
+    }
+
+    const auto freeFunc = [](void* buffer, size_t size, void* user) { free(buffer); };
+    const size_t reshapedSize = 4 * data.size / 3;
+    const PixelDataFormat reshapedFormat =
+        data.format == PixelDataFormat::RGB ? PixelDataFormat::RGBA : PixelDataFormat::RGBA_INTEGER;
+    switch (data.type) {
+        case PixelDataType::BYTE:
+        case PixelDataType::UBYTE: {
+            uint8_t* bytes = (uint8_t*) malloc(reshapedSize);
+            DataReshaper::reshape<uint8_t, 3, 4>(bytes, data.buffer, data.size);
+            PixelBufferDescriptor pbd(bytes, reshapedSize, reshapedFormat, data.type,
+                    data.alignment, data.left, data.top, data.stride, freeFunc);
+            reshaped = std::move(pbd);
+            return true;
+        }
+        case PixelDataType::SHORT:
+        case PixelDataType::USHORT:
+        case PixelDataType::HALF: {
+            uint8_t* bytes = (uint8_t*) malloc(reshapedSize);
+            DataReshaper::reshape<uint16_t, 3, 4>(bytes, data.buffer, data.size);
+            PixelBufferDescriptor pbd(bytes, reshapedSize, reshapedFormat, data.type,
+                    data.alignment, data.left, data.top, data.stride, freeFunc);
+            reshaped = std::move(pbd);
+            return true;
+        }
+        case PixelDataType::INT:
+        case PixelDataType::UINT: {
+            uint8_t* bytes = (uint8_t*) malloc(reshapedSize);
+            DataReshaper::reshape<uint32_t, 3, 4>(bytes, data.buffer, data.size);
+            PixelBufferDescriptor pbd(bytes, reshapedSize, reshapedFormat, data.type,
+                    data.alignment, data.left, data.top, data.stride, freeFunc);
+            reshaped = std::move(pbd);
+            return true;
+        }
+        case PixelDataType::FLOAT: {
+            uint8_t* bytes = (uint8_t*) malloc(reshapedSize);
+            DataReshaper::reshape<float, 3, 4>(bytes, data.buffer, data.size);
+            PixelBufferDescriptor pbd(bytes, reshapedSize, reshapedFormat, data.type,
+                    data.alignment, data.left, data.top, data.stride, freeFunc);
+            reshaped = std::move(pbd);
+            return true;
+        }
+        default:
+           return false;
+    }
+}
 
 } // namespace backend
 } // namespace filament
+
+
+namespace utils {
+
+template<>
+CString to_string<filament::backend::TextureUsage>(filament::backend::TextureUsage usage) noexcept {
+    using namespace filament::backend;
+    char string[7] = {'-', '-', '-', '-', '-', '-', 0};
+    if (any(usage & TextureUsage::UPLOADABLE)) {
+        string[0]='U';
+    }
+    if (any(usage & TextureUsage::SAMPLEABLE)) {
+        string[1]='S';
+    }
+    if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
+        string[2]='c';
+    }
+    if (any(usage & TextureUsage::DEPTH_ATTACHMENT)) {
+        string[3]='d';
+    }
+    if (any(usage & TextureUsage::STENCIL_ATTACHMENT)) {
+        string[4] = 's';
+    }
+    if (any(usage & TextureUsage::SUBPASS_INPUT)) {
+        string[5]='f';
+    }
+    return CString(string, 6);
+}
+
+template<>
+CString to_string<filament::backend::TargetBufferFlags>(filament::backend::TargetBufferFlags flags) noexcept {
+    using namespace filament::backend;
+    char string[7] = {'-', '-', '-', '-', '-', '-', 0};
+    if (any(flags & TargetBufferFlags::COLOR0)) {
+        string[0]='0';
+    }
+    if (any(flags & TargetBufferFlags::COLOR1)) {
+        string[1]='1';
+    }
+    if (any(flags & TargetBufferFlags::COLOR2)) {
+        string[2]='2';
+    }
+    if (any(flags & TargetBufferFlags::COLOR3)) {
+        string[3]='3';
+    }
+    if (any(flags & TargetBufferFlags::DEPTH)) {
+        string[4]='D';
+    }
+    if (any(flags & TargetBufferFlags::STENCIL)) {
+        string[5]='S';
+    }
+    return CString(string, 6);
+}
+
+} // namespace utils

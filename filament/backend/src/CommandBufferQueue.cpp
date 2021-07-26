@@ -16,12 +16,12 @@
 
 #include "private/backend/CommandBufferQueue.h"
 
-#include <assert.h>
-
 #include <utils/Log.h>
 #include <utils/Systrace.h>
 #include <utils/Panic.h>
+#include <utils/debug.h>
 
+#include "private/backend/BackendUtils.h"
 #include "private/backend/CommandStream.h"
 
 using namespace utils;
@@ -33,21 +33,21 @@ CommandBufferQueue::CommandBufferQueue(size_t requiredSize, size_t bufferSize)
         : mRequiredSize((requiredSize + CircularBuffer::BLOCK_MASK) & ~CircularBuffer::BLOCK_MASK),
           mCircularBuffer(bufferSize),
           mFreeSpace(mCircularBuffer.size()) {
-    assert(mCircularBuffer.size() > requiredSize);
+    assert_invariant(mCircularBuffer.size() > requiredSize);
 }
 
 CommandBufferQueue::~CommandBufferQueue() {
-    assert(mCommandBuffersToExecute.empty());
+    assert_invariant(mCommandBuffersToExecute.empty());
 }
 
 void CommandBufferQueue::requestExit() {
-    std::unique_lock<utils::Mutex> lock(mLock);
+    std::lock_guard<utils::Mutex> lock(mLock);
     mExitRequested = EXIT_REQUESTED;
     mCondition.notify_one();
 }
 
 bool CommandBufferQueue::isExitRequested() const {
-    std::unique_lock<utils::Mutex> lock(mLock);
+    std::lock_guard<utils::Mutex> lock(mLock);
     ASSERT_PRECONDITION( mExitRequested == 0 || mExitRequested == EXIT_REQUESTED,
             "mExitRequested is corrupted (value = 0x%08x)!", mExitRequested);
     return (bool)mExitRequested;
@@ -81,7 +81,11 @@ void CommandBufferQueue::flush() noexcept {
     mCommandBuffersToExecute.push_back({ tail, head });
 
     // circular buffer is too small, we corrupted the stream
-    assert(used <= mFreeSpace);
+    ASSERT_POSTCONDITION(used <= mFreeSpace,
+            "Backend CommandStream overflow. Commands are corrupted and unrecoverable.\n"
+            "Please increase FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB (currently %u MiB).\n"
+            "Space used at this time: %u bytes",
+            (unsigned)FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB, (unsigned)used);
 
     // wait until there is enough space in the buffer
     mFreeSpace -= used;
@@ -96,14 +100,8 @@ void CommandBufferQueue::flush() noexcept {
     }
 #endif
 
-    if (UTILS_LIKELY(mFreeSpace >= requiredSize)) {
-        // ideally (and usually) we don't have to wait, this is the common case, so special case
-        // the unlock-before-notify, optimization.
-        lock.unlock();
-        mCondition.notify_one();
-    } else {
-        // unfortunately, there is not enough space left, we'll have to wait.
-        mCondition.notify_one(); // too bad there isn't a notify-and-wait
+    mCondition.notify_one();
+    if (UTILS_LIKELY(mFreeSpace < requiredSize)) {
         SYSTRACE_NAME("waiting: CircularBuffer::flush()");
         mCondition.wait(lock, [this, requiredSize]() -> bool {
             return mFreeSpace >= requiredSize;
@@ -127,9 +125,8 @@ std::vector<CommandBufferQueue::Slice> CommandBufferQueue::waitForCommands() con
 }
 
 void CommandBufferQueue::releaseBuffer(CommandBufferQueue::Slice const& buffer) {
-    std::unique_lock<utils::Mutex> lock(mLock);
+    std::lock_guard<utils::Mutex> lock(mLock);
     mFreeSpace += uintptr_t(buffer.end) - uintptr_t(buffer.begin);
-    lock.unlock();
     mCondition.notify_one();
 }
 

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(bluegl ASM)
 
 set(TARGET              bluegl)
@@ -22,23 +22,12 @@ if (WIN32)
     set(SRCS ${SRCS} src/BlueGLCoreWindowsImpl.S)
 elseif (APPLE AND NOT IOS)
     set(SRCS ${SRCS} src/BlueGLDarwin.cpp)
-    set(SRCS ${SRCS} src/BlueGLCoreDarwinImpl.S)
+    set(SRCS ${SRCS} src/BlueGLCoreDarwinUniversalImpl.S)
 elseif(LINUX)
     set(SRCS ${SRCS} src/BlueGLLinux.cpp)
-    set(SRCS ${SRCS} src/BlueGLCoreLinuxImpl.S)
+    set(SRCS ${SRCS} src/BlueGLCoreLinuxUniversalImpl.S)
 else()
     message(FATAL_ERROR "Platform not supported. BlueGL supports Windows, Linux, and MacOS X.")
-endif()
-
-if (NOT WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
-endif()
-
-# Only linux, clang doesn't want to use a shared library that is not PIC.
-# /usr/bin/ld: ../bluegl/libbluegl.a(BlueGL.cpp.o): relocation R_X86_64_32S
-# against `.bss' can not be used when making a shared object; recompile with -fPIC
-if (LINUX)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 endif()
 
 # specify where our headers are

@@ -25,23 +25,30 @@
 #include <string>
 #include <unordered_set>
 
+#include <string.h>
+
 #include "gl_headers.h"
 
 namespace filament {
 namespace GLUtils {
 
-void checkGLError(utils::io::ostream& out, const char* function, size_t line) noexcept;
-void checkFramebufferStatus(utils::io::ostream& out, const char* function, size_t line) noexcept;
+const char* getGLError(GLenum error) noexcept;
+GLenum checkGLError(utils::io::ostream& out, const char* function, size_t line) noexcept;
+void assertGLError(utils::io::ostream& out, const char* function, size_t line) noexcept;
+
+const char* getFramebufferStatus(GLenum err) noexcept;
+GLenum checkFramebufferStatus(utils::io::ostream& out, GLenum target, const char* function, size_t line) noexcept;
+void assertFramebufferStatus(utils::io::ostream& out, GLenum target, const char* function, size_t line) noexcept;
 
 #ifdef NDEBUG
-#define CHECK_GL_ERROR(out)
-#define CHECK_GL_FRAMEBUFFER_STATUS(out)
+#   define CHECK_GL_ERROR(out)
+#   define CHECK_GL_FRAMEBUFFER_STATUS(out, target)
 #else
-#ifdef _MSC_VER
-    #define __PRETTY_FUNCTION__ __FUNCSIG__
-#endif
-#define CHECK_GL_ERROR(out) { GLUtils::checkGLError(out, __PRETTY_FUNCTION__, __LINE__); }
-#define CHECK_GL_FRAMEBUFFER_STATUS(out) { GLUtils::checkFramebufferStatus(out, __PRETTY_FUNCTION__, __LINE__); }
+#   ifdef _MSC_VER
+#       define __PRETTY_FUNCTION__ __FUNCSIG__
+#   endif
+#   define CHECK_GL_ERROR(out) { GLUtils::assertGLError(out, __PRETTY_FUNCTION__, __LINE__); }
+#   define CHECK_GL_FRAMEBUFFER_STATUS(out, target) { GLUtils::checkFramebufferStatus(out, target, __PRETTY_FUNCTION__, __LINE__); }
 #endif
 
 constexpr inline GLuint getComponentCount(backend::ElementType type) noexcept {
@@ -86,7 +93,7 @@ constexpr inline GLuint getComponentCount(backend::ElementType type) noexcept {
 
 constexpr inline GLbitfield getAttachmentBitfield(backend::TargetBufferFlags flags) noexcept {
     GLbitfield mask = 0;
-    if (any(flags & backend::TargetBufferFlags::COLOR)) {
+    if (any(flags & backend::TargetBufferFlags::COLOR_ALL)) {
         mask |= (GLbitfield)GL_COLOR_BUFFER_BIT;
     }
     if (any(flags & backend::TargetBufferFlags::DEPTH)) {
@@ -105,6 +112,15 @@ constexpr inline GLenum getBufferUsage(backend::BufferUsage usage) noexcept {
         case backend::BufferUsage::DYNAMIC:
         case backend::BufferUsage::STREAM:
             return GL_DYNAMIC_DRAW;
+    }
+}
+
+constexpr inline GLenum getBufferBindingType(backend::BufferObjectBinding bindingType) noexcept {
+    switch (bindingType) {
+        case backend::BufferObjectBinding::VERTEX:
+            return GL_ARRAY_BUFFER;
+        case backend::BufferObjectBinding::UNIFORM:
+            return GL_UNIFORM_BUFFER;
     }
 }
 
@@ -270,6 +286,7 @@ constexpr inline GLenum getType(backend::PixelDataType type) noexcept {
         case PixelDataType::FLOAT:                return GL_FLOAT;
         case PixelDataType::UINT_10F_11F_11F_REV: return GL_UNSIGNED_INT_10F_11F_11F_REV;
         case PixelDataType::USHORT_565:           return GL_UNSIGNED_SHORT_5_6_5;
+        case PixelDataType::UINT_2_10_10_10_REV:  return GL_UNSIGNED_INT_2_10_10_10_REV;
         case PixelDataType::COMPRESSED:           return 0; // should never happen
     }
 }

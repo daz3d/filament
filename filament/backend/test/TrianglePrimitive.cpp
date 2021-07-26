@@ -44,13 +44,21 @@ TrianglePrimitive::TrianglePrimitive(filament::backend::DriverApi& driverApi,
                     .flags = 0
             }
     };
+
+   // Backends do not (and should not) know the semantics of each vertex attribute, but they
+   // need to know whether the vertex shader consumes them as integers or as floats.
+   // NOTE: This flag needs to be set regardless of whether the attribute is actually declared.
+   attributes[BONE_INDICES].flags |= Attribute::FLAG_INTEGER_TARGET;
+
     AttributeBitset enabledAttributes;
     enabledAttributes.set(VertexAttribute::POSITION);
 
-    mVertexBuffer = mDriverApi.createVertexBuffer(1, 1, mVertexCount, attributes,
-            BufferUsage::STATIC);
-    BufferDescriptor vertexBufferDesc(gVertices, sizeof(filament::math::float2) * 3, nullptr);
-    mDriverApi.updateVertexBuffer(mVertexBuffer, 0, std::move(vertexBufferDesc), 0);
+    const size_t size = sizeof(math::float2) * 3;
+    mBufferObject = mDriverApi.createBufferObject(size, BufferObjectBinding::VERTEX, BufferUsage::STATIC);
+    mVertexBuffer = mDriverApi.createVertexBuffer(1, 1, mVertexCount, attributes);
+    mDriverApi.setVertexBufferObject(mVertexBuffer, 0, mBufferObject);
+    BufferDescriptor vertexBufferDesc(gVertices, size, nullptr);
+    mDriverApi.updateBufferObject(mBufferObject, std::move(vertexBufferDesc), 0);
 
     mIndexBuffer = mDriverApi.createIndexBuffer(ElementType::SHORT, mIndexCount,
             BufferUsage::STATIC);
@@ -59,8 +67,7 @@ TrianglePrimitive::TrianglePrimitive(filament::backend::DriverApi& driverApi,
 
     mRenderPrimitive = mDriverApi.createRenderPrimitive(0);
 
-    mDriverApi.setRenderPrimitiveBuffer(mRenderPrimitive, mVertexBuffer, mIndexBuffer,
-            enabledAttributes.getValue());
+    mDriverApi.setRenderPrimitiveBuffer(mRenderPrimitive, mVertexBuffer, mIndexBuffer);
     mDriverApi.setRenderPrimitiveRange(mRenderPrimitive, PrimitiveType::TRIANGLES, 0, 0, 2, 3);
 }
 
@@ -73,7 +80,7 @@ void TrianglePrimitive::updateVertices(const filament::math::float2 vertices[3])
             [] (void* buffer, size_t size, void* user) {
         free(buffer);
     });
-    mDriverApi.updateVertexBuffer(mVertexBuffer, 0, std::move(vBuffer), 0);
+    mDriverApi.updateBufferObject(mBufferObject, std::move(vBuffer), 0);
 }
 
 void TrianglePrimitive::updateIndices(const short indices[3]) noexcept {
@@ -88,7 +95,20 @@ void TrianglePrimitive::updateIndices(const short indices[3]) noexcept {
     mDriverApi.updateIndexBuffer(mIndexBuffer, std::move(bufferDesc), 0);
 }
 
+void TrianglePrimitive::updateIndices(const short* indices, int count, int offset) noexcept {
+    void* buffer = malloc(sizeof(short) * count);
+    short* indexBuffer = (short*) buffer;
+    std::copy(indices, indices + count, indexBuffer);
+
+    BufferDescriptor bufferDesc(indexBuffer, sizeof(short) * count,
+            [] (void* buffer, size_t size, void* user) {
+        free(buffer);
+    });
+    mDriverApi.updateIndexBuffer(mIndexBuffer, std::move(bufferDesc), offset * sizeof(short));
+}
+
 TrianglePrimitive::~TrianglePrimitive() {
+    mDriverApi.destroyBufferObject(mBufferObject);
     mDriverApi.destroyVertexBuffer(mVertexBuffer);
     mDriverApi.destroyIndexBuffer(mIndexBuffer);
     mDriverApi.destroyRenderPrimitive(mRenderPrimitive);

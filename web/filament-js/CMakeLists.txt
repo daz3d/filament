@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 
 project(filament-js)
 
@@ -17,7 +17,7 @@ set(CPP_SRC
 # The following setting is required because we disable RTTI.
 set(COPTS "${COPTS} -DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
 
-# Uncomment the following line to check for leaks with leaks.html
+# Uncomment the following line to check for leaks
 # set(LOPTS "${LOPTS} --memoryprofiler")
 
 set(LOPTS "${LOPTS} --bind")
@@ -38,16 +38,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COPTS}")
 add_executable(filament-js ${CPP_SRC})
 
 set_target_properties(filament-js PROPERTIES
-    LINK_DEPENDS "${EXTERN_POSTJS_SRC};${POSTJS_SRC}"
+    LINK_DEPENDS "${EXTERN_POSTJS_SRC}"
     OUTPUT_NAME filament)
 
-target_link_libraries(filament-js PRIVATE filament math utils image filameshio gltfio_core stb)
+target_link_libraries(filament-js PRIVATE filament math utils image filameshio gltfio_core viewer)
 
 # Copy package.json (et al) into the output folder to allow "npm publish" to gather the
 # artifacts that it needs.
 
 set(RESOURCES )
-foreach (RESOURCE package.json README.md filament.d.ts)
+foreach (RESOURCE package.json README.md filament.d.ts filament-viewer.js)
     add_custom_command(
         OUTPUT ${PROJECT_BINARY_DIR}/${RESOURCE}
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${RESOURCE}

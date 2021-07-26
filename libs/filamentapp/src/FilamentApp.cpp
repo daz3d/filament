@@ -124,9 +124,9 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         window->mOrthoView->getView()->setVisibleLayers(0x6, 0x6);
 
         // only preserve the color buffer for additional views; depth and stencil can be discarded.
-        window->mDepthView->getView()->setShadowsEnabled(false);
-        window->mGodView->getView()->setShadowsEnabled(false);
-        window->mOrthoView->getView()->setShadowsEnabled(false);
+        window->mDepthView->getView()->setShadowingEnabled(false);
+        window->mGodView->getView()->setShadowingEnabled(false);
+        window->mOrthoView->getView()->setShadowingEnabled(false);
     }
 
     loadDirt(config);
@@ -323,13 +323,17 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
         if (mImGuiHelper) {
 
             // Inform ImGui of the current window size in case it was resized.
-            int windowWidth, windowHeight;
-            int displayWidth, displayHeight;
-            SDL_GetWindowSize(window->mWindow, &windowWidth, &windowHeight);
-            SDL_GL_GetDrawableSize(window->mWindow, &displayWidth, &displayHeight);
-            mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
-                    windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
-                    displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
+            if (config.headless) {
+                mImGuiHelper->setDisplaySize(window->mWidth, window->mHeight);
+            } else {
+                int windowWidth, windowHeight;
+                int displayWidth, displayHeight;
+                SDL_GetWindowSize(window->mWindow, &windowWidth, &windowHeight);
+                SDL_GL_GetDrawableSize(window->mWindow, &displayWidth, &displayHeight);
+                mImGuiHelper->setDisplaySize(windowWidth, windowHeight,
+                        windowWidth > 0 ? ((float)displayWidth / windowWidth) : 0,
+                        displayHeight > 0 ? ((float)displayHeight / windowHeight) : 0);
+            }
 
             // Setup mouse inputs (we already got mouse wheel, keyboard keys & characters
             // from our event handler)
@@ -393,16 +397,19 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
                 renderer->render(view->getView());
             }
             renderer->endFrame();
-        } else {
-            ++mSkippedFrames;
-        }
 
-        if (postRender) {
-            for (auto const& view : window->mViews) {
-                if (view.get() != window->mUiView) {
-                    postRender(mEngine, view->getView(), mScene, renderer);
+            // We call PostRender only when the frame has not been skipped. It might be used
+            // for taking screenshots under the assumption that a state change has taken effect.
+            if (postRender) {
+                for (auto const& view : window->mViews) {
+                    if (view.get() != window->mUiView) {
+                        postRender(mEngine, view->getView(), mScene, renderer);
+                    }
                 }
             }
+
+        } else {
+            ++mSkippedFrames;
         }
     }
 
@@ -446,16 +453,20 @@ void FilamentApp::loadIBL(const Config& config) {
             return;
         }
 
-        if (!iblPath.isDirectory()) {
-            std::cerr << "The specified IBL path is not a directory: " << iblPath << std::endl;
-            return;
-        }
-
         mIBL = std::make_unique<IBL>(*mEngine);
-        if (!mIBL->loadFromDirectory(iblPath)) {
-            std::cerr << "Could not load the specified IBL: " << iblPath << std::endl;
-            mIBL.reset(nullptr);
-            return;
+
+        if (!iblPath.isDirectory()) {
+            if (!mIBL->loadFromEquirect(iblPath)) {
+                std::cerr << "Could not load the specified IBL: " << iblPath << std::endl;
+                mIBL.reset(nullptr);
+                return;
+            }
+        } else {
+            if (!mIBL->loadFromDirectory(iblPath)) {
+                std::cerr << "Could not load the specified IBL: " << iblPath << std::endl;
+                mIBL.reset(nullptr);
+                return;
+            }
         }
     }
 }
@@ -507,21 +518,27 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
         windowFlags |= SDL_WINDOW_RESIZABLE;
     }
 
-    mBackend = config.backend;
+    if (config.headless) {
+        windowFlags |= SDL_WINDOW_HIDDEN;
+    }
+
+    // Even if we're in headless mode, we still need to create a window, otherwise SDL will not poll
+    // events.
+    mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, windowFlags);
 
     if (config.headless) {
-        mWindow = nullptr;
         mFilamentApp->mEngine = Engine::create(config.backend);
         mSwapChain = mFilamentApp->mEngine->createSwapChain((uint32_t) w, (uint32_t) h);
         mWidth = w;
         mHeight = h;
     } else {
-        mWindow = SDL_CreateWindow(title.c_str(), x, y, (int) w, (int) h, windowFlags);
-
         // Create the Engine after the window in case this happens to be a single-threaded platform.
         // For single-threaded platforms, we need to ensure that Filament's OpenGL context is
         // current, rather than the one created by SDL.
         mFilamentApp->mEngine = Engine::create(config.backend);
+
+        // get the resolved backend
+        mBackend = config.backend = mFilamentApp->mEngine->getBackend();
 
         void* nativeWindow = ::getNativeWindow(mWindow);
         void* nativeSwapChain = nativeWindow;
@@ -550,11 +567,10 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
     // create cameras
     utils::EntityManager& em = utils::EntityManager::get();
-    em.create(4, mCameraEntities);
+    em.create(3, mCameraEntities);
     mCameras[0] = mMainCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[0]);
     mCameras[1] = mDebugCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[1]);
     mCameras[2] = mOrthoCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[2]);
-    mCameras[3] = mUiCamera = mFilamentApp->mEngine->createCamera(mCameraEntities[3]);
 
     // set exposure
     for (auto camera : mCameras) {
@@ -581,7 +597,6 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
     mMainView->setCamera(mMainCamera);
     mMainView->setCameraManipulator(mMainCameraMan);
-    mUiView->setCamera(mUiCamera);
     if (config.splitView) {
         // Depth view always uses the main camera
         mDepthView->setCamera(mMainCamera);
@@ -758,9 +773,11 @@ void FilamentApp::Window::configureCamerasForWindow() {
     const double ratio = double(height) / double(width);
     const int sidebar = mFilamentApp->mSidebarWidth * dpiScaleX;
 
+    const bool splitview = mViews.size() > 2;
+
     // To trigger a floating-point exception, users could shrink the window to be smaller than
     // the sidebar. To prevent this we simply clamp the width of the main viewport.
-    const uint32_t mainWidth = std::max(1, (int) width - sidebar);
+    const uint32_t mainWidth = splitview ? width : std::max(1, (int) width - sidebar);
 
     double near = 0.1;
     double far = 100;
@@ -768,13 +785,9 @@ void FilamentApp::Window::configureCamerasForWindow() {
     mDebugCamera->setProjection(45.0, double(width) / height, 0.0625, 4096, Camera::Fov::VERTICAL);
     mOrthoCamera->setProjection(Camera::Projection::ORTHO, -3, 3, -3 * ratio, 3 * ratio, near, far);
     mOrthoCamera->lookAt({ 0, 0, 0 }, {0, 0, -4});
-    mUiCamera->setProjection(Camera::Projection::ORTHO,
-            0.0, width / dpiScaleX,
-            height / dpiScaleY, 0.0,
-            0.0, 1.0);
 
     // We're in split view when there are more views than just the Main and UI views.
-    if (mViews.size() > 2) {
+    if (splitview) {
         uint32_t vpw = width / 2;
         uint32_t vph = height / 2;
         mMainView->setViewport ({            0,            0, vpw,         vph          });

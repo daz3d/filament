@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(imageio)
 
 set(TARGET imageio)
@@ -9,6 +9,7 @@ set(PUBLIC_HDR_DIR include)
 # ==================================================================================================
 set(PUBLIC_HDRS
         include/imageio/BlockCompression.h
+        include/imageio/HDRDecoder.h
         include/imageio/ImageDecoder.h
         include/imageio/ImageDiffer.h
         include/imageio/ImageEncoder.h
@@ -16,6 +17,7 @@ set(PUBLIC_HDRS
 
 set(SRCS
         src/BlockCompression.cpp
+        src/HDRDecoder.cpp
         src/ImageDecoder.cpp
         src/ImageDiffer.cpp
         src/ImageEncoder.cpp
@@ -34,6 +36,11 @@ target_link_libraries(${TARGET} PUBLIC image math png tinyexr utils z astcenc st
 if (WIN32)
     target_link_libraries(${TARGET} PRIVATE wsock32)
 endif()
+
+# ==================================================================================================
+# Transitive macro definitions
+# ==================================================================================================
+target_compile_definitions(${TARGET} PUBLIC IMAGEIO_SUPPORTS_BLOCK_COMPRESSION)
 
 # ==================================================================================================
 # Compiler flags

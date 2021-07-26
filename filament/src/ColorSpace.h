@@ -120,6 +120,10 @@ constexpr mat3f sRGB_to_LMS = XYZ_to_CIECAT02 * sRGB_to_XYZ;
 
 constexpr mat3f LMS_to_sRGB = XYZ_to_sRGB * CIECAT02_to_XYZ;
 
+constexpr mat3f REC2020_to_AP0 = AP1_to_AP0 * XYZ_to_AP1 * REC2020_to_XYZ;
+
+constexpr mat3f AP1_to_REC2020 = XYZ_to_REC2020 * AP1_to_XYZ;
+
 //------------------------------------------------------------------------------
 // Constants
 //------------------------------------------------------------------------------
@@ -131,11 +135,17 @@ constexpr float3 ILLUMINANT_D65_xyY{0.31271f, 0.32902f, 1.0f};
 // Result of: XYZ_to_CIECAT02 * xyY_to_XYZ(ILLUMINANT_D65_xyY);
 constexpr float3 ILLUMINANT_D65_LMS{0.949237f, 1.03542f, 1.08728f};
 
-// RGB to luma coefficients for ACEScg (AP1), from AP1_to_XYZ
+// RGB to luminance coefficients for Rec.2020, from REC2020_to_XYZ
+constexpr float3 LUMA_REC2020{0.2627002f, 0.6779981f, 0.0593017f};
+
+// RGB to luminance coefficients for ACEScg (AP1), from AP1_to_XYZ
 constexpr float3 LUMA_AP1{0.272229f, 0.674082f, 0.0536895f};
 
-// RGB to luma coefficients for Rec.709, from sRGB_to_XYZ
+// RGB to luminance coefficients for Rec.709, from sRGB_to_XYZ
 constexpr float3 LUMA_REC709{0.2126730f, 0.7151520f, 0.0721750f};
+
+// RGB to luminance coefficients for Rec.709 with HK-like weighting
+constexpr float3 LUMA_HK_REC709{0.13913043f, 0.73043478f, 0.13043478f};
 
 constexpr float MIDDLE_GRAY_ACEScg = 0.18f;
 

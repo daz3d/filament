@@ -28,10 +28,10 @@ from datetime import datetime
 
 def printApis(gl_apis):
     for api in gl_apis:
-        print '%s\t%s' % (api['api'], api['name'])
+        print('%s\t%s' % (api['api'], api['name']))
 
 def parseFunctions(include_file, matcher):
-    print 'Parsing header %s...' % include_file
+    print('Parsing header %s...' % include_file)
     regex = re.compile(matcher)
 
     functions = []
@@ -49,7 +49,7 @@ def generateHeader(api, functions, include_dir, output_dir):
     gl_suffix = '_gl_' + suffix.lower() if len(suffix) > 0 else ''
     src_file = os.path.join(include_dir, 'bluegl', 'BlueGL%s.h' % suffix)
 
-    print 'Generating public header %s...' % src_file
+    print('Generating public header %s...' % src_file)
 
     headers = ''
     if len(api['defines']) > 0:
@@ -151,7 +151,7 @@ void unbind%(gl_suffix)s();
 }
 
     footer = '''
-}; // namespace bluegl
+} // namespace bluegl
 
 #endif // TNT_FILAMENT_BLUEGL_%s_H
 ''' % suffix.upper()
@@ -218,13 +218,17 @@ def generateProxies(api, functions, output_dir, platforms):
 
     osSpecificHeader = {
         'Linux': header ,
+        'LinuxAArch64': header ,
         'Darwin': header ,
+        'DarwinAArch64': header ,
         'Windows': headerMasM
     }
 
     osSpecificFooter = {
         'Linux': '',
+        'LinuxAArch64': '' ,
         'Darwin': '',
+        'DarwinAArch64': '',
         'Windows': 'end\n'
     }
 
@@ -236,11 +240,31 @@ def generateProxies(api, functions, output_dir, platforms):
     mov __blue_gl%(suffix)s_%(function)s@GOTPCREL(%%rip), %%r11
     jmp *(%%r11)
 ''',
+        'LinuxAArch64': '''
+	.align	2
+	.global	%(function)s
+	.type	%(function)s, %%function
+%(function)s:
+	adrp	x16, :got:__blue_gl%(suffix)s_%(function)s
+	ldr	x16, [x16, #:got_lo12:__blue_gl%(suffix)s_%(function)s]
+	ldr	x16, [x16]
+	br	x16
+	.size	%(function)s, .-%(function)s
+''',
         'Darwin': '''
 .private_extern _%(function)s
 _%(function)s:
     mov ___blue_gl%(suffix)s_%(function)s@GOTPCREL(%%rip), %%r11
     jmp *(%%r11)
+''',
+        'DarwinAArch64': '''
+.private_extern _%(function)s
+	.align	2
+_%(function)s:
+	adrp	x16, ___blue_gl%(suffix)s_%(function)s@GOTPAGE
+	ldr	x16, [x16, ___blue_gl%(suffix)s_%(function)s@GOTPAGEOFF]
+	ldr	x16, [x16]
+	br	x16
 ''',
         'Windows': '''
 extrn __blue_gl%(suffix)s_%(function)s: qword
@@ -253,7 +277,7 @@ extrn __blue_gl%(suffix)s_%(function)s: qword
 
     for platform in platforms:
         src_file = os.path.join(output_dir, 'BlueGL%s%sImpl.S' % (suffix, platform))
-        print 'Generating proxy %s...' % src_file
+        print('Generating proxy %s...' % src_file)
 
         with open(src_file, 'w') as file:
             file.write(osSpecificHeader[platform])
@@ -267,7 +291,7 @@ def generateSource(api, functions, output_dir):
     gl_suffix = '_gl_' + suffix.lower() if len(suffix) > 0 else ''
     src_file = os.path.join(output_dir, 'private_BlueGL%s.h' % suffix)
 
-    print 'Generating source %s...' % src_file
+    print('Generating source %s...' % src_file)
 
     header = '''/*
  * Copyright (C) %(year)d The Android Open Source Project
@@ -326,7 +350,7 @@ struct {
 
 
 def generateApis(apis, include_dir, output_dir):
-    platforms = ['Linux', 'Darwin', 'Windows']
+    platforms = ['Linux', 'LinuxAArch64', 'Darwin', 'DarwinAArch64', 'Windows']
 
     for api in apis:
         functions = []
@@ -336,7 +360,7 @@ def generateApis(apis, include_dir, output_dir):
 
         # remove duplicates
         functions = list(set(functions))
-        print 'Found %s functions' % len(functions)
+        print('Found %s functions' % len(functions))
 
         generateHeader(api, functions, include_dir, output_dir)
         generateProxies(api, functions, output_dir, platforms)

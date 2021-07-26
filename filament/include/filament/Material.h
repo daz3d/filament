@@ -48,18 +48,19 @@ class UTILS_PUBLIC Material : public FilamentAPI {
     struct BuilderDetails;
 
 public:
-    using BlendingMode = filament::BlendingMode;
-    using Shading = filament::Shading;
-    using Interpolation = filament::Interpolation;
-    using VertexDomain = filament::VertexDomain;
-    using TransparencyMode = filament::TransparencyMode;
+    using BlendingMode = BlendingMode;
+    using Shading = Shading;
+    using Interpolation = Interpolation;
+    using VertexDomain = VertexDomain;
+    using TransparencyMode = TransparencyMode;
 
-    using ParameterType = filament::backend::UniformType;
-    using Precision = filament::backend::Precision;
-    using SamplerType = filament::backend::SamplerType;
-    using SamplerFormat = filament::backend::SamplerFormat;
-    using CullingMode = filament::backend::CullingMode;
-    using ShaderModel = filament::backend::ShaderModel;
+    using ParameterType = backend::UniformType;
+    using Precision = backend::Precision;
+    using SamplerType = backend::SamplerType;
+    using SamplerFormat = backend::SamplerFormat;
+    using CullingMode = backend::CullingMode;
+    using ShaderModel = backend::ShaderModel;
+    using SubpassType = backend::SubpassType;
 
     /**
      * Holds information about a material parameter.
@@ -69,11 +70,15 @@ public:
         const char* name;
         //! Whether the parameter is a sampler (texture).
         bool isSampler;
+        //! Whether the parameter is a subpass type.
+        bool isSubpass;
         union {
             //! Type of the parameter if the parameter is not a sampler.
             ParameterType type;
             //! Type of the parameter if the parameter is a sampler.
             SamplerType samplerType;
+            //! Type of the parameter if the parameter is a subpass.
+            SubpassType subpassType;
         };
         //! Size of the parameter when the parameter is an array.
         uint32_t count;

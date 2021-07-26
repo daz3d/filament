@@ -1,7 +1,9 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.19)
+project(filament-android)
 
 option(FILAMENT_SUPPORTS_VULKAN "Enables Vulkan on Android" OFF)
 option(FILAMENT_ENABLE_MATDBG "Enables Material debugger" OFF)
+option(FILAMENT_DISABLE_MATOPT "Disables material optimizations" OFF)
 
 set(FILAMENT_DIR ${FILAMENT_DIST_DIR})
 
@@ -17,13 +19,17 @@ add_library(utils STATIC IMPORTED)
 set_target_properties(utils PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libutils.a)
 
-add_library(ibl STATIC IMPORTED)
-set_target_properties(ibl PROPERTIES IMPORTED_LOCATION
-        ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libibl.a)
+add_library(ibl-lite STATIC IMPORTED)
+set_target_properties(ibl-lite PROPERTIES IMPORTED_LOCATION
+        ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libibl-lite.a)
 
 add_library(filaflat STATIC IMPORTED)
 set_target_properties(filaflat PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libfilaflat.a)
+
+add_library(filamat STATIC IMPORTED)
+set_target_properties(filamat PROPERTIES IMPORTED_LOCATION
+        ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libfilamat.a)
 
 add_library(geometry STATIC IMPORTED)
 set_target_properties(geometry PROPERTIES IMPORTED_LOCATION
@@ -36,6 +42,10 @@ set_target_properties(filabridge PROPERTIES IMPORTED_LOCATION
 add_library(bluevk STATIC IMPORTED)
 set_target_properties(bluevk PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libbluevk.a)
+
+add_library(vkshaders STATIC IMPORTED)
+set_target_properties(vkshaders PROPERTIES IMPORTED_LOCATION
+        ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libvkshaders.a)
 
 add_library(smol-v STATIC IMPORTED)
 set_target_properties(smol-v PROPERTIES IMPORTED_LOCATION
@@ -51,6 +61,7 @@ set(VERSION_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/libfilament-jni.map")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,--version-script=${VERSION_SCRIPT}")
 
 add_library(filament-jni SHARED
+    src/main/cpp/BufferObject.cpp
     src/main/cpp/Camera.cpp
     src/main/cpp/Colors.cpp
     src/main/cpp/ColorGrading.cpp
@@ -68,10 +79,13 @@ add_library(filament-jni SHARED
     src/main/cpp/RenderTarget.cpp
     src/main/cpp/Scene.cpp
     src/main/cpp/SkyBox.cpp
+    src/main/cpp/SkinningBuffer.cpp
     src/main/cpp/Stream.cpp
     src/main/cpp/SurfaceOrientation.cpp
+    src/main/cpp/SwapChain.cpp
     src/main/cpp/Texture.cpp
     src/main/cpp/TextureSampler.cpp
+    src/main/cpp/ToneMapper.cpp
     src/main/cpp/TransformManager.cpp
     src/main/cpp/VertexBuffer.cpp
     src/main/cpp/View.cpp
@@ -90,16 +104,21 @@ target_link_libraries(filament-jni
     PRIVATE backend
     PRIVATE filaflat
     PRIVATE filabridge
-    PRIVATE geometry
-    PRIVATE ibl
+    PRIVATE ibl-lite
     PRIVATE log
     PRIVATE GLESv3
     PRIVATE EGL
     PRIVATE android
     PRIVATE jnigraphics
     PRIVATE utils
+
+    # libgeometry is PUBLIC because gltfio uses it.
+    PUBLIC geometry
+
     $<$<STREQUAL:${FILAMENT_ENABLE_MATDBG},ON>:matdbg>
+    $<$<STREQUAL:${FILAMENT_ENABLE_MATDBG},ON>:filamat>
     $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:bluevk>
+    $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:vkshaders>
     $<$<STREQUAL:${FILAMENT_SUPPORTS_VULKAN},ON>:smol-v>
 )
 

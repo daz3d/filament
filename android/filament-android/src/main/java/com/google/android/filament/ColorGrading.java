@@ -54,6 +54,7 @@ import static com.google.android.filament.Asserts.assertFloat4In;
  *
  * The various transforms held by ColorGrading are applied in the following order:
  * <ul>
+ * <li>Exposure</li>
  * <li>White balance</li>
  * <li>Channel mixer</li>
  * <li>Shadows/mid-tones/highlights</li>
@@ -63,12 +64,14 @@ import static com.google.android.filament.Asserts.assertFloat4In;
  * <li>Saturation</li>
  * <li>Curves</li>
  * <li>Tone mapping</li>
+ * <li>Luminance scaling</li>
  * </ul>
  *
  * <h1>Defaults</h1>
  *
  * Here are the default color grading options:
  * <ul>
+ * <li>Exposure: 0.0</li>
  * <li>White balance: temperature <code>0.0</code>, and tint <code>0.0</code></li>
  * <li>Channel mixer: red <code>{1,0,0}</code>, green <code>{0,1,0}</code>, blue <code>{0,0,1}</code></li>
  * <li>Shadows/mid-tones/highlights: shadows <code>{1,1,1,0}</code>, mid-tones <code>{1,1,1,0}</code>,
@@ -78,17 +81,30 @@ import static com.google.android.filament.Asserts.assertFloat4In;
  * <li>Vibrance: <code>1.0</code></li>
  * <li>Saturation: <code>1.0</code></li>
  * <li>Curves: gamma <code>{1,1,1}</code>, midPoint <code>{1,1,1}</code>, and scale <code>{1,1,1}</code></li>
- * <li>Tone mapping: {@link ToneMapping#ACES_LEGACY}</li>
+ * <li>Tone mapping: {@link ToneMapper.ACESLegacy}</li>
+ * <li>Luminance scaling: false</li>
  * </ul>
  *
  * @see View
- * @see ToneMapping
+ * @see ToneMapper
  */
 public class ColorGrading {
     long mNativeObject;
 
     /**
+     * Color grading quality level.
+     */
+    public enum QualityLevel {
+        LOW,
+        MEDIUM,
+        HIGH,
+        ULTRA
+    }
+
+    /**
      * List of available tone-mapping operators.
+     *
+     * @deprecated Use {@link ColorGrading.Builder#toneMapper(ToneMapper)}
      */
     public enum ToneMapping {
         /** Linear tone mapping (i.e. no tone mapping). */
@@ -99,15 +115,12 @@ public class ColorGrading {
         ACES,
         /** Filmic tone mapping, modelled after ACES but applied in sRGB space. */
         FILMIC,
-        /** Filmic tone mapping, with more contrast and saturation. */
-        UCHIMURA,
-        /** Reinhard luma-based tone mapping. */
-        REINHARD,
         /** Tone mapping used to validate/debug scene exposure. */
         DISPLAY_RANGE,
     }
 
-    ColorGrading(long colorGrading) {
+    // NOTE: This constructor is public only so that filament-utils can use it.
+    public ColorGrading(long colorGrading) {
         mNativeObject = colorGrading;
     }
 
@@ -128,6 +141,43 @@ public class ColorGrading {
         }
 
         /**
+         * Sets the quality level of the color grading. When color grading is implemented using
+         * a 3D LUT, the quality level may impact the resolution and bit depth of the backing
+         * 3D texture. For instance, a low quality level will use a 16x16x16 10 bit LUT, a medium
+         * quality level will use a 32x32x32 10 bit LUT, a high quality will use a 32x32x32 16 bit
+         * LUT, and a ultra quality will use a 64x64x64 16 bit LUT.
+         *
+         * The default quality is {@link QualityLevel#MEDIUM}.
+         *
+         * @param qualityLevel The desired quality of the color grading process
+         *
+         * @return This Builder, for chaining calls
+         */
+        public Builder quality(QualityLevel qualityLevel) {
+            nBuilderQuality(mNativeBuilder, qualityLevel.ordinal());
+            return this;
+        }
+
+        /**
+         * Selects the tone mapping operator to apply to the HDR color buffer as the last
+         * operation of the color grading post-processing step.
+         *
+         * The default tone mapping operator is {@link ToneMapper.ACESLegacy}.
+         *
+         * The specified tone mapper must have a lifecycle that exceeds the lifetime of
+         * this builder. Since the build(Engine&) method is synchronous, it is safe to
+         * delete the tone mapper object after that finishes executing.
+         *
+         * @param toneMapper The tone mapping operator to apply to the HDR color buffer
+         *
+         * @return This Builder, for chaining calls
+         */
+        public Builder toneMapper(ToneMapper toneMapper) {
+            nBuilderToneMapper(mNativeBuilder, toneMapper.getNativeObject());
+            return this;
+        }
+
+        /**
          * Selects the tone mapping operator to apply to the HDR color buffer as the last
          * operation of the color grading post-processing step.
          *
@@ -136,9 +186,46 @@ public class ColorGrading {
          * @param toneMapping The tone mapping operator to apply to the HDR color buffer
          *
          * @return This Builder, for chaining calls
+         *
+         * @deprecated Use {@link #toneMapper(ToneMapper)}
          */
         public Builder toneMapping(ToneMapping toneMapping) {
             nBuilderToneMapping(mNativeBuilder, toneMapping.ordinal());
+            return this;
+        }
+
+        /**
+         * Enables or disables the luminance scaling component (LICH) from the exposure value
+         * invariant luminance system (EVILS). When this setting is enabled, pixels with high
+         * chromatic values will roll-off to white to offer a more natural rendering. This step
+         * also helps avoid undesirable hue skews caused by out of gamut colors clipped
+         * to the destination color gamut.
+         *
+         * When luminance scaling is enabled, tone mapping is performed on the luminance of each
+         * pixel instead of per-channel.
+         *
+         * @param luminanceScaling Enables or disables EVILS post-tone mapping
+         *
+         * @return This Builder, for chaining calls
+         */
+        public Builder luminanceScaling(boolean luminanceScaling) {
+            nBuilderLuminanceScaling(mNativeBuilder, luminanceScaling);
+            return this;
+        }
+
+        /**
+         * Adjusts the exposure of this image. The exposure is specified in stops:
+         * each stop brightens (positive values) or darkens (negative values) the image by
+         * a factor of 2. This means that an exposure of 3 will brighten the image 8 times
+         * more than an exposure of 0 (2^3 = 8 and 2^0 = 1). Contrary to the camera's exposure,
+         * this setting is applied after all post-processing (bloom, etc.) are applied.
+         *
+         * @param exposure Value in EV stops. Can be negative, 0, or positive.
+         *
+         * @return This Builder, for chaining calls
+         */
+        public Builder exposure(float exposure) {
+            nBuilderExposure(mNativeBuilder, exposure);
             return this;
         }
 
@@ -242,7 +329,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder shadowsMidtonesHighlights(
+        public Builder shadowsMidtonesHighlights(
                 @NonNull @Size(min = 4) float[] shadows,
                 @NonNull @Size(min = 4) float[] midtones,
                 @NonNull @Size(min = 4) float[] highlights,
@@ -281,7 +368,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder slopeOffsetPower(
+        public Builder slopeOffsetPower(
                 @NonNull @Size(min = 3) float[] slope,
                 @NonNull @Size(min = 3) float[] offset,
                 @NonNull @Size(min = 3) float[] power) {
@@ -332,7 +419,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder vibrance(float vibrance) {
+        public Builder vibrance(float vibrance) {
             nBuilderVibrance(mNativeBuilder, vibrance);
             return this;
         }
@@ -433,7 +520,11 @@ public class ColorGrading {
     private static native long nCreateBuilder();
     private static native void nDestroyBuilder(long nativeBuilder);
 
-    private static native void nBuilderToneMapping(long nativeBuilder, int ordinal);
+    private static native void nBuilderQuality(long nativeBuilder, int quality);
+    private static native void nBuilderToneMapper(long nativeBuilder, long toneMapper);
+    private static native void nBuilderToneMapping(long nativeBuilder, int toneMapping);
+    private static native void nBuilderLuminanceScaling(long nativeBuilder, boolean luminanceScaling);
+    private static native void nBuilderExposure(long nativeBuilder, float exposure);
     private static native void nBuilderWhiteBalance(long nativeBuilder, float temperature, float tint);
     private static native void nBuilderChannelMixer(long nativeBuilder, float[] outRed, float[] outGreen, float[] outBlue);
     private static native void nBuilderShadowsMidtonesHighlights(long nativeBuilder, float[] shadows, float[] midtones, float[] highlights, float[] ranges);

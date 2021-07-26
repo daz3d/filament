@@ -13,7 +13,7 @@ This document is part of the [Filament project](https://github.com/google/filame
 ## Authors
 
 - [Romain Guy](https://github.com/romainguy), [@romainguy](https://twitter.com/romainguy)
-- [Mathias Agopian](https://github.com/pixelflinger), [@romainguy](https://twitter.com/darthmoosious)
+- [Mathias Agopian](https://github.com/pixelflinger), [@darthmoosious](https://twitter.com/darthmoosious)
 
 # Overview
 
@@ -68,7 +68,7 @@ The lit model is Filament's standard material model. This physically-based shadi
 designed after to offer good interoperability with other common tools and engines such as _Unity 5_,
 _Unreal Engine 4_, _Substance Designer_ or _Marmoset Toolbag_.
 
-This material model can be used to describe a large number of non-metallic surfaces (_dielectrics_)
+This material model can be used to describe many non-metallic surfaces (_dielectrics_)
 or metallic surfaces (_conductors_).
 
 The appearance of a material using the standard model is controlled using the properties described
@@ -81,6 +81,8 @@ in table [standardProperties].
 **metallic**            | Whether a surface appears to be dielectric (0.0) or conductor (1.0). Often used as a binary value (0 or 1)
 **roughness**           | Perceived smoothness (1.0) or roughness (0.0) of a surface. Smooth surfaces exhibit sharp reflections
 **reflectance**         | Fresnel reflectance at normal incidence for dielectric surfaces. This directly controls the strength of the reflections
+**sheenColor**          | Strength of the sheen layer
+**sheenRoughness**      | Perceived smoothness or roughness of the sheen layer
 **clearCoat**           | Strength of the clear coat layer
 **clearCoatRoughness**  | Perceived smoothness or roughness of the clear coat layer
 **anisotropy**          | Amount of anisotropy in either the tangent or bitangent direction
@@ -91,7 +93,7 @@ in table [standardProperties].
 **clearCoatNormal**     | A detail normal used to perturb the clear coat layer using _bump mapping_ (_normal mapping_)
 **emissive**            | Additional diffuse albedo to simulate emissive surfaces (such as neons, etc.) This property is mostly useful in an HDR pipeline with a bloom pass
 **postLightingColor**   | Additional color that can be blended with the result of the lighting computations. See `postLightingBlending`
-**ior**                 | Index of refraction for refractive objects
+**ior**                 | Index of refraction, either for refractive objects or as an alternative to reflectance
 **transmission**        | Defines how much of the diffuse light of a dielectric is transmitted through the object, in other words this defines how transparent an object is
 **absorption**          | Absorption factor for refractive objects
 **microThickness**      | Thickness of the thin layer of refractive objects
@@ -106,6 +108,8 @@ The type and range of each property is described in table [standardPropertiesTyp
 **metallic**            | float    |  [0..1]                  | Should be 0 or 1
 **roughness**           | float    |  [0..1]                  |
 **reflectance**         | float    |  [0..1]                  | Prefer values > 0.35
+**sheenColor**          | float3   |  [0..1]                  | Linear RGB
+**sheenRoughness**      | float    |  [0..1]                  |
 **clearCoat**           | float    |  [0..1]                  | Should be 0 or 1
 **clearCoatRoughness**  | float    |  [0..1]                  |
 **anisotropy**          | float    |  [-1..1]                 | Anisotropy is in the tangent direction when this value is positive
@@ -142,7 +146,7 @@ The type and range of each property is described in table [standardPropertiesTyp
 
 !!! Note: About `ior` and `reflectance`
     The index of refraction (IOR) and the reflectance represent the same physical attribute,
-    therefore they don't need to be both specified. Typically, only the reflectance is specified
+    therefore they don't need to be both specified. Typically, only the reflectance is specified,
     and the IOR is deduced automatically. When only the IOR is specified, the reflectance is then
     deduced automatically. It is possible to specify both, in which case their values are kept
     as-is, which can lead to physically impossible materials, however, this might be desirable
@@ -293,8 +297,39 @@ impossible materials, however, this might be desirable for artistic reasons.
 The `reflectance` property is designed as a normalized property in the range 0..1 which makes
 it easy to define from a texture.
 
-See the Index of refraction section for more information about the `ior` property and refractive
+See section [Index of refraction] for more information about the `ior` property and refractive
 indices.
+
+### Sheen color
+
+The sheen color controls the color appearance and strength of an optional sheen layer on top of the
+base layer described by the properties above. The sheen layer always sits below the clear coat layer
+if such a layer is present.
+
+The sheen layer can be used to represent cloth and fabric materials. Please refer to 
+section [Cloth model] for more information about cloth and fabric materials.
+
+The effect of `sheenColor` is shown in figure [materialSheenColor]
+(click on the image to see a larger version).
+
+![Figure [materialSheenColor]: Different sheen colors](images/screenshot_sheen_color.png)
+
+!!! Note
+    If you do not need the other properties offered by the standard lit material model but want to
+    create a cloth-like or fabric-like appearance, it is more efficient to use the dedicated cloth
+    model described in section [Cloth model].
+
+### Sheen roughness
+
+The `sheenRoughness` property is similar to the `roughness` property but applies only to the
+sheen layer.
+
+The effect of `sheenRoughness` on a rough metal is shown in figure [sheenRoughnessProperty]
+(click on the image to see a larger version). In this picture, the base layer is a dark blue, with
+`metallic` set to `0.0` and `roughness` set to `1.0`.
+
+![Figure [sheenRoughnessProperty]: `sheenRoughness` varying from 0.0
+(left) to 1.0 (right)](images/materials/sheen_roughness.png)
 
 ### Clear coat
 
@@ -321,6 +356,9 @@ The effect of `clearCoat` on a rough metal is shown in figure [clearCoatProperty
 !!! Warning
     The clear coat layer effectively doubles the cost of specular computations. Do not assign a
     value, even 0.0, to the clear coat property if you don't need this second layer.
+
+!!! Note
+    The clear coat layer is added on top of the sheen layer if present.
 
 ### Clear coat roughness
 
@@ -374,7 +412,7 @@ with a direction map](images/screenshot_anisotropy.png)
 The result shown in figure [anisotropyDirectionProperty] was obtained using the direction map shown
 in figure [anisotropyDirectionProperty].
 
-![Figure [anisotropyDirectionProperty]: Example of a direction map](images/screenshot_anisotropy_map.jpg)
+![Figure [anisotropyDirectionProperty]: Example of Lighting: specularAmbientOcclusiona direction map](images/screenshot_anisotropy_map.jpg)
 
 ### Ambient occlusion
 
@@ -469,7 +507,8 @@ this option for more information.
 The `ior` property only affects non-metallic surfaces. This property can be used to control the
 index of refraction and the specular intensity of materials. The `ior` property is intended to
 be used with refractive (transmissive) materials, which are enabled when the `refractionMode` is
-set to `cubemap` or `screenspace`.
+set to `cubemap` or `screenspace`. It can also be used on non-refractive objects as an alternative
+to setting the reflectance.
 
 The index of refraction (or refractive index) of a material is a dimensionless number that describes
 how fast light travels through that material. The higher the number, the slower light travels
@@ -490,8 +529,9 @@ Other dielectric materials | 1.33 to 1.58
 [Table [commonMatIOR]: Index of refraction of common materials]
 
 The appearance of a refractive material will greatly depend on the `refractionType` and
-`refractionMode` settings of the material. Refer to the Blending and transparency: refractionType
-section and the Blending and transparency: refractionMode section for more information.
+`refractionMode` settings of the material. Refer to section
+[Blending and transparency: refractionType] and section [Blending and transparency: refractionMode]
+for more information.
 
 The effect of `ior` when `refractionMode` is set to `cubemap` and `refractionType` is set to `solid`
 can be seen in figure [iorProperty2] (click on the image to see a larger version).
@@ -795,7 +835,7 @@ fragment {
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A minimum viable material definition must contain a `material` section and a `fragment` block. The
+A minimum viable material definition must contain a `material` preamble and a `fragment` block. The
 `vertex` block is optional.
 
 ### Differences with JSON
@@ -919,7 +959,9 @@ Type
 
 Value
 :     Each entry is an object with the properties `name` and `type`, both of `string` type. The
-      name must be a valid GLSL identifier. The type must be one of the types described in
+      name must be a valid GLSL identifier. Entries also have an optional `precision`, which can be
+      one of `default` (best precision for the platform, typically `high` on desktop, `medium` on
+      mobile), `low`, `medium`, `high`. The type must be one of the types described in
       table [materialParamsTypes].
 
          Type          |            Description
@@ -948,10 +990,8 @@ samplerCubemap         | Cubemap texture
 [Table [materialParamsTypes]: Material parameter types]
 
 Samplers
-:     Sampler types can also specify a `format` (defaults to `float`) and a `precision` (defaults
-      to `default`). The format can be one of `int`, `float`. The precision can be one of `default`
-      (best precision for the platform, typically `high` on desktop, `medium` on mobile),
-      `low`, `medium`, `high`.
+:     Sampler types can also specify a `format` which can be either `int` or `float` (defaults to
+      `float`).
 
 Arrays
 :     A parameter can define an array of values by appending `[size]` after the type name, where
@@ -1025,6 +1065,8 @@ Description of the variants:
 - `dynamicLighting`, used when a non-directional light (point, spot, etc.) is present in the scene
 - `shadowReceiver`, used when an object can receive shadows
 - `skinning`, used when an object is animated using GPU skinning
+- `fog`, used when global fog is applied to the scene
+- `vsm`, used when VSM shadows are enabled and the object is a shadow receiver
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
 material {
@@ -1052,6 +1094,26 @@ Description
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
 material {
     flipUV : false
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### General: quality
+
+Type
+:    `string`
+
+Value
+:     Any of `low`, `normal`, `high`, `default`. Defaults to `default`.
+
+Description
+:    Set some global quality parameters of the material. `low` enables optimizations that can
+     slightly affect correctness and is the default on mobile platforms. `normal` does not affect
+     correctness and is otherwise similar to `low`. `high` enables quality settings that can
+     adversely affect performance and is the default on desktop platforms.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
+material {
+    quality : default
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1261,8 +1323,8 @@ Value
 
 Description
 :     Controls how transparent objects are rendered. It is only valid when the `blending` mode is
-      not `opaque`. None of these methods can accurately render concave geometry, but in practice
-      they are often good enough.
+      not `opaque` and `refractionMode` is `none`. None of these methods can accurately render
+      concave geometry, but in practice they are often good enough.
 
 The three possible transparency modes are:
 - `default`: the transparent object is rendered normally (as seen in figure [transparencyDefault]),
@@ -1460,6 +1522,7 @@ Description
 :     Only available in the `unlit` shading model. If this property is enabled, the final color
       computed by the material is multiplied by the shadowing factor (or visibility). This allows to
       create transparent shadow-receiving objects (for instance an invisible ground plane in AR).
+      This is only supported with shadows from directional lights.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
 material {
@@ -1477,6 +1540,42 @@ fragment {
     }
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### Lighting: transparentShadow
+
+Type
+:    `boolean`
+
+Value
+:     `true` or `false`. Defaults to `false`.
+
+Description
+:     Enables transparent shadows on this material. When this feature is enabled, Filament emulates
+      transparent shadows using a dithering pattern: they work best with variance shadow maps (VSM)
+      and blurring enabled. The opacity of the shadow derives directly from the alpha channel of
+      the material's `baseColor` property. Transparent shadows can be enabled on opaque objects,
+      making them compatible with refractive/transmissive objects that are otherwise considered
+      opaque.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
+material {
+    name : "Clear plastic with stickers",
+    transparentShadow : true,
+    blending : transparent,
+    // ...
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = texture(materialParams_baseColor, getUV0());
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+![Figure [transparentShadow]: Objects rendered with transparent shadows and blurry VSM with a
+radius of 4. Model [Bottle of Water](https://sketchfab.com/3d-models/bottle-of-water-48fd4f6e90d84d89b5740ee78587d0ff)
+by [T-Art](https://sketchfab.com/person-x).](images/screenshot_transparent_shadows.jpg)
 
 ### Lighting: clearCoatIorChange
 
@@ -1616,6 +1715,26 @@ Description
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
 material {
     specularAntiAliasingThreshold : 0.1
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### Shading: customSurfaceShading
+
+Type
+:    `bool`
+
+Value
+:     `true` or `false`. Defaults to `false`.
+
+Description
+:    Enables custom surface shading when set to true. When surface shading is enabled, the fragment
+     shader must provide an extra function that will be invoked for every light in the scene that
+     may influence the current fragment. Please refer to the Custom surface shading section below
+     for more information.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ JSON
+material {
+    customSurfaceShading : true
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1771,6 +1890,8 @@ struct MaterialInputs {
     float  ambientOcclusion;    // default: 0.0
 
     // not available when the shading model is subsurface or cloth
+    float3 sheenColor;          // default: float3(0.0)
+    float  sheenRoughness;      // default: 0.0
     float  clearCoat;           // default: 1.0
     float  clearCoatRoughness;  // default: 0.0
     float3 clearCoatNormal;     // default: float3(0.0, 0.0, 1.0)
@@ -1803,6 +1924,165 @@ struct MaterialInputs {
     float microThickness;       // default: 0.0, not available with refractionType "solid"
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### Custom surface shading
+
+When `customSurfaceShading` is set to `true` in the material block, the fragment block **must**
+declare and implement the `surfaceShading` function:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLSL
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        // prepare material inputs
+    }
+
+    vec3 surfaceShading(
+        const MaterialInputs materialInputs,
+        const ShadingData shadingData,
+        const LightData lightData
+    ) {
+        return vec3(1.0); // output of custom lighting
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This function will be invoked for every light (directional, spot or point) in the scene that may
+influence the current fragment. The `surfaceShading` is invoked with 3 sets of data:
+
+- `MaterialInputs`, as described in the Material fragment inputs section and prepared in the
+  `material` function explained above
+- `ShadingData`, a structure containing values derived from `MaterialInputs` (see below)
+- `LightData`, a structure containing values specific to the light being currently
+   evaluated (see below)
+
+The `surfaceShading` function must return an RGB color in linear sRGB. Alpha blending and alpha
+masking are handled outside of this function and must therefore be ignored.
+
+!!! Note: About shadowed fragments
+    The `surfaceShading` function is invoked even when a fragment is known to be fully in the shadow
+    of the current light (`lightData.NdotL <= 0.0` or `lightData.visibility <= 0.0`). This gives
+    more flexibility to the `surfaceShading` function as it provides a simple way to handle constant
+    ambient lighting for instance.
+
+!!! Warning: Shading models
+    Custom surface shading only works with the `lit` shading model. Attempting to use any other
+    model will result in an error.
+
+#### Shading data structure
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLSL
+struct ShadingData {
+    // The material's diffuse color, as derived from baseColor and metallic.
+    // This color is pre-multiplied by alpha and in the linear sRGB color space.
+    vec3  diffuseColor;
+
+    // The material's specular color, as derived from baseColor and metallic.
+    // This color is pre-multiplied by alpha and in the linear sRGB color space.
+    vec3  f0;
+
+    // The perceptual roughness is the roughness value set in MaterialInputs,
+    // with extra processing:
+    // - Clamped to safe values
+    // - Filtered if specularAntiAliasing is enabled
+    // This value is between 0.0 and 1.0.
+    float perceptualRoughness;
+
+    // The roughness value expected by BRDFs. This value is the square of
+    // perceptualRoughness. This value is between 0.0 and 1.0.
+    float roughness;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#### Light data structure
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ GLSL
+struct LightData {
+    // The color (.rgb) and pre-exposed intensity (.w) of the light.
+    // The color is an RGB value in the linear sRGB color space.
+    // The pre-exposed intensity is the intensity of the light multiplied by
+    // the camera's exposure value.
+    vec4  colorIntensity;
+
+    // The normalized light vector, in world space (direction from the
+    // current fragment's position to the light).
+    vec3  l;
+
+    // The dot product of the shading normal (with normal mapping applied)
+    // and the light vector. This value is equal to the result of
+    // saturate(dot(getWorldSpaceNormal(), lightData.l)).
+    // This value is always between 0.0 and 1.0. When the value is <= 0.0,
+    // the current fragment is not visible from the light and lighting
+    // computations can be skipped.
+    float NdotL;
+
+    // The position of the light in world space.
+    vec3  worldPosition;
+
+    // Attenuation of the light based on the distance from the current
+    // fragment to the light in world space. This value between 0.0 and 1.0
+    // is computed differently for each type of light (it's always 1.0 for
+    // directional lights).
+    float attenuation;
+
+    // Visibility factor computed from shadow maps or other occlusion data
+    // specific to the light being evaluated. This value is between 0.0 and
+    // 1.0.
+    float visibility;
+};
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#### Example
+
+The material below shows how to use custom surface shading to implement a simplified toon shader:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+material {
+    name : Toon,
+    shadingModel : lit,
+    parameters : [
+        {
+            type : float3,
+            name : baseColor
+        }
+    ],
+    customSurfaceShading : true
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor.rgb = materialParams.baseColor;
+    }
+
+    vec3 surfaceShading(
+            const MaterialInputs materialInputs,
+            const ShadingData shadingData,
+            const LightData lightData
+    ) {
+        // Number of visible shade transitions
+        const float shades = 5.0;
+        // Ambient intensity
+        const float ambient = 0.1;
+
+        float toon = max(ceil(lightData.NdotL * shades) / shades, ambient);
+
+        // Shadowing and attenuation
+        toon *= lightData.visibility * lightData.attenuation;
+
+        // Color and intensity
+        vec3 light = lightData.colorIntensity.rgb * lightData.colorIntensity.w;
+
+        return shadingData.diffuseColor * light * toon;
+    }
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The result can be seen in figure [toonShading].
+
+![Figure [toonShading]: simple toon shading implemented with custom
+surface shading](images/screenshot_toon_shading.png)
+
 
 ## Shader public APIs
 
@@ -1879,6 +2159,7 @@ The following APIs are only available from the vertex block:
 **getCustom0()** to **getCustom7()** | float4   |  Custom vertex attribute
 **getWorldFromModelMatrix()**        | float4x4 |  Matrix that converts from model (object) space to world space
 **getWorldFromModelNormalMatrix()**  | float3x3 |  Matrix that converts normals from model (object) space to world space
+**getVertexIndex()**                 | int      |  Index of the current vertex
 
 ### Fragment only
 
@@ -1892,7 +2173,7 @@ The following APIs are only available from the fragment block:
 **getWorldNormalVector()**              | float3   |  Normalized normal in world space, after bump mapping (must be used after `prepareMaterial()`)
 **getWorldGeometricNormalVector()**     | float3   |  Normalized normal in world space, before bump mapping (can be used before `prepareMaterial()`)
 **getWorldReflectedVector()**           | float3   |  Reflection of the view vector about the normal (must be used after `prepareMaterial()`)
-**getNormalizedViewportCoord(float2)**  | float2   |  Normalized viewport position (i.e. clip-space position normalized to [0, 1], can be used before `prepareMaterial()`)
+**getNormalizedViewportCoord()**        | float3   |  Normalized viewport position (i.e. NDC coordinates normalized to [0, 1], can be used before `prepareMaterial()`)
 **getNdotV()**                          | float    |  The result of `dot(normal, view)`, always strictly greater than 0 (must be used after `prepareMaterial()`)
 **getColor()**                          | float4   |  Interpolated color of the fragment, if the color attribute is required
 **getUV0()**                            | float2   |  First interpolated set of UV coordinates, only available if the uv0 attribute is required
@@ -2023,6 +2304,8 @@ variants:
 - `dynamicLighting`, used when a non-directional light (point, spot, etc.) is present in the scene
 - `shadowReceiver`, used when an object can receive shadows
 - `skinning`, used when an object is animated using GPU skinning or vertex morphing
+- `fog`, used when global fog is applied to the scene
+- `vsm`, used when VSM shadows are enabled and the object is a shadow receiver
 
 Example:
 ```

@@ -40,13 +40,9 @@ public:
 
     template<typename T>
     using is_supported_parameter_t = typename std::enable_if<
-            std::is_same<bool, T>::value ||
             std::is_same<float, T>::value ||
             std::is_same<int32_t, T>::value ||
             std::is_same<uint32_t, T>::value ||
-            std::is_same<math::bool2, T>::value ||
-            std::is_same<math::bool3, T>::value ||
-            std::is_same<math::bool4, T>::value ||
             std::is_same<math::int2, T>::value ||
             std::is_same<math::int3, T>::value ||
             std::is_same<math::int4, T>::value ||
@@ -56,9 +52,25 @@ public:
             std::is_same<math::float2, T>::value ||
             std::is_same<math::float3, T>::value ||
             std::is_same<math::float4, T>::value ||
-            std::is_same<math::mat3f, T>::value ||
-            std::is_same<math::mat4f, T>::value
+            std::is_same<math::mat4f, T>::value ||
+            // these types are slower as they need a layout conversion
+            std::is_same<bool, T>::value ||
+            std::is_same<math::bool2, T>::value ||
+            std::is_same<math::bool3, T>::value ||
+            std::is_same<math::bool4, T>::value ||
+            std::is_same<math::mat3f, T>::value
     >::type;
+
+    /**
+     * Creates a new MaterialInstance using another MaterialInstance as a template for initialization.
+     * The new MaterialInstance is an instance of the same Material of the template instance and
+     * must be destroyed just like any other MaterialInstance.
+     *
+     * @param other A MaterialInstance to use as a template for initializing a new instance
+     * @param name  A name for the new MaterialInstance or nullptr to use the template's name
+     * @return      A new MaterialInstance
+     */
+    static MaterialInstance* duplicate(MaterialInstance const* other, const char* name = nullptr) noexcept;
 
     /**
      * @return the Material associated with this instance
@@ -78,7 +90,7 @@ public:
      * @throws utils::PreConditionPanic if name doesn't exist or no-op if exceptions are disabled.
      */
     template<typename T, typename = is_supported_parameter_t<T>>
-    void setParameter(const char* name, T value) noexcept;
+    void setParameter(const char* name, T const& value) noexcept;
 
     /**
      * Set a uniform array by name

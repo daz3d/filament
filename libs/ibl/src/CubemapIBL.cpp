@@ -292,10 +292,19 @@ static float UTILS_UNUSED VisibilityAshikhmin(float NoV, float NoL, float /*a*/)
  *
  */
 
+UTILS_ALWAYS_INLINE
 void CubemapIBL::roughnessFilter(
         utils::JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
         float linearRoughness, size_t maxNumSamples, math::float3 mirror, bool prefilter,
-        Progress updater)
+        Progress updater, void* userdata) {
+    roughnessFilter(js, dst, { levels.data(), uint32_t(levels.size()) },
+            linearRoughness, maxNumSamples, mirror, prefilter, updater, userdata);
+}
+
+void CubemapIBL::roughnessFilter(
+        utils::JobSystem& js, Cubemap& dst, const utils::Slice<Cubemap>& levels,
+        float linearRoughness, size_t maxNumSamples, math::float3 mirror, bool prefilter,
+        Progress updater, void* userdata)
 {
     const float numSamples = maxNumSamples;
     const float inumSamples = 1.0f / numSamples;
@@ -311,7 +320,7 @@ void CubemapIBL::roughnessFilter(
                 (CubemapUtils::EmptyState&, size_t y, Cubemap::Face f, Cubemap::Texel* data, size_t dim) {
                     if (UTILS_UNLIKELY(updater)) {
                         size_t p = progress.fetch_add(1, std::memory_order_relaxed) + 1;
-                        updater(0, (float)p / ((float) dim * 6.0f));
+                        updater(0, (float)p / ((float) dim * 6.0f), userdata);
                     }
                     const Cubemap& cm = levels[0];
                     for (size_t x = 0; x < dim; ++x, ++data) {
@@ -417,7 +426,7 @@ void CubemapIBL::roughnessFilter(
             Cubemap::Face f, Cubemap::Texel* data, size_t dim) {
         if (UTILS_UNLIKELY(updater)) {
             size_t p = progress.fetch_add(1, std::memory_order_relaxed) + 1;
-            updater(0, (float) p / ((float) dim * 6.0f));
+            updater(0, (float) p / ((float) dim * 6.0f), userdata);
         }
         mat3 R;
         const size_t numSamples = cache.size();
@@ -512,26 +521,27 @@ void CubemapIBL::roughnessFilter(
  * -----------------------
  *
  * We are trying to evaluate the following integral:
- * (we pre-multiply by PI to avoid a 1/PI in the shader)
  *
- *                       /
- *             Ed() = PI | L(s) <n•l> ds
- *                       /
- *                       Ω
+ *                     /
+ *             Ed() =  | L(s) <n•l> ds
+ *                     /
+ *                     Ω
  *
  * For this, we're using importance sampling:
  *
- *                    PI     L(l)
- *            Ed() = ---- ∑ ------- <n•l>
- *                    N   l   pdf
+ *                    1     L(l)
+ *            Ed() = --- ∑ ------- <n•l>
+ *                    N  l   pdf
  *
  *
  *  It results that:
  *
- *            PI           n•l
+ *             1           PI
  *    Ed() = ---- ∑ L(l) ------  <n•l>
- *            N   l        PI
+ *            N   l        n•l
  *
+ *
+ *  To avoid to multiply by 1/PI in the shader, we do it here, which simplifies to:
  *
  *  +----------------------+
  *  |          1           |
@@ -542,7 +552,7 @@ void CubemapIBL::roughnessFilter(
  */
 
 void CubemapIBL::diffuseIrradiance(JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
-        size_t maxNumSamples, CubemapIBL::Progress updater)
+        size_t maxNumSamples, CubemapIBL::Progress updater, void* userdata)
 {
     const float numSamples = maxNumSamples;
     const float inumSamples = 1.0f / numSamples;
@@ -594,7 +604,7 @@ void CubemapIBL::diffuseIrradiance(JobSystem& js, Cubemap& dst, const std::vecto
 
         if (updater) {
             size_t p = progress.fetch_add(1, std::memory_order_relaxed) + 1;
-            updater(0, (float)p / ((float) dim * 6.0f));
+            updater(0, (float)p / ((float) dim * 6.0f), userdata);
         }
 
         mat3 R;

@@ -17,6 +17,7 @@
 #include <jni.h>
 
 #include <filament/ColorGrading.h>
+#include <filament/ToneMapper.h>
 
 #include <math/vec3.h>
 #include <math/vec4.h>
@@ -30,26 +31,56 @@ Java_com_google_android_filament_ColorGrading_nCreateBuilder(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_ColorGrading_nDestroyBuilder(JNIEnv*, jclass,
-        jlong nativeBuilder) {
+Java_com_google_android_filament_ColorGrading_nDestroyBuilder(JNIEnv*, jclass, jlong nativeBuilder) {
     ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
     delete builder;
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_google_android_filament_ColorGrading_nBuilderBuild(JNIEnv*, jclass,
-        jlong nativeBuilder, jlong nativeEngine) {
+Java_com_google_android_filament_ColorGrading_nBuilderBuild(JNIEnv*, jclass, jlong nativeBuilder, jlong nativeEngine) {
     ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
     Engine *engine = (Engine *) nativeEngine;
     return (jlong) builder->build(*engine);
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_ColorGrading_nBuilderQuality(JNIEnv*, jclass, jlong nativeBuilder, jint quality_) {
+    ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
+    ColorGrading::QualityLevel quality = (ColorGrading::QualityLevel) quality_;
+    builder->quality(quality);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_ColorGrading_nBuilderToneMapper(JNIEnv*, jclass,
+        jlong nativeBuilder, jlong toneMapper_) {
+    ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
+    const ToneMapper* toneMapper = (const ToneMapper*) toneMapper_;
+    builder->toneMapper(toneMapper);
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_ColorGrading_nBuilderToneMapping(JNIEnv*, jclass,
         jlong nativeBuilder, jint toneMapping_) {
     ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
     ColorGrading::ToneMapping toneMapping = (ColorGrading::ToneMapping) toneMapping_;
     builder->toneMapping(toneMapping);
+}
+#pragma clang diagnostic pop
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_ColorGrading_nBuilderLuminanceScaling(JNIEnv*, jclass,
+        jlong nativeBuilder, jboolean luminanceScaling) {
+    ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
+    builder->luminanceScaling(luminanceScaling);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_ColorGrading_nBuilderExposure(JNIEnv*, jclass,
+        jlong nativeBuilder, jfloat exposure) {
+    ColorGrading::Builder* builder = (ColorGrading::Builder*) nativeBuilder;
+    builder->exposure(exposure);
 }
 
 extern "C" JNIEXPORT void JNICALL

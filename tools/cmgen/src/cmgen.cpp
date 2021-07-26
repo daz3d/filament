@@ -23,7 +23,10 @@
 #include <ibl/Image.h>
 #include <ibl/utilities.h>
 
+#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
 #include <imageio/BlockCompression.h>
+#endif
+
 #include <imageio/ImageDecoder.h>
 #include <imageio/ImageEncoder.h>
 
@@ -42,6 +45,8 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+
+#include <string.h>
 
 #include <getopt/getopt.h>
 
@@ -167,6 +172,7 @@ static void printUsage(char* name) {
             "       KTX files are always encoded with 3-channel RGB_10_11_11_REV data\n\n"
             "   --compression=COMPRESSION, -c COMPRESSION\n"
             "       Format specific compression:\n"
+#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
             "           KTX:\n"
             "             astc_[fast|thorough]_[ldr|hdr]_WxH, where WxH is a valid block size\n"
             "             s3tc_rgba_dxt5\n"
@@ -174,6 +180,7 @@ static void printUsage(char* name) {
             "               FORMAT is rgb8_alpha, srgb8_alpha, rgba8, or srgb8_alpha8\n"
             "               METRIC is rgba, rgbx, rec709, numeric, or normalxyz\n"
             "               EFFORT is an integer between 0 and 100\n"
+#endif
             "           PNG: Ignored\n"
             "           PNG RGBM: Ignored\n"
             "           Radiance: Ignored\n"
@@ -181,7 +188,8 @@ static void printUsage(char* name) {
             "           OpenEXR: RAW, RLE, ZIPS, ZIP, PIZ (default)\n"
             "           DDS: 8, 16 (default), 32\n\n"
             "   --size=power-of-two, -s power-of-two\n"
-            "       Size of the output cubemaps (base level), 256 by default\n\n"
+            "       Size of the output cubemaps (base level), 256 by default\n"
+            "       Also applies to DFG LUT\n\n"
             "   --deploy=dir, -x dir\n"
             "       Generate everything needed for deployment into <dir>\n\n"
             "   --extract=dir\n"
@@ -677,11 +685,11 @@ int main(int argc, char* argv[]) {
             Cubemap blurred = CubemapUtils::create(image, dim);
             CubemapIBL::roughnessFilter(js, blurred, levels, linear_roughness, g_num_samples,
                     float3{ 1, 1, 1 }, !g_ibl_no_prefilter,
-                    [&updater, quiet = g_quiet](size_t index, float v) {
-                        if (!quiet) {
-                            updater.update(index, v);
+                    [](size_t index, float v, void* userdata) {
+                        if (!g_quiet) {
+                            ((ProgressUpdater*) userdata)->update(index, v);
                         }
-                    });
+                    }, &updater);
             if (!g_quiet) {
                 updater.stop();
                 std::cout << "Extract faces..." << std::endl;
@@ -933,7 +941,7 @@ void iblRoughnessPrefilter(
         .endianness = KtxBundle::ENDIAN_DEFAULT,
         .glType = KtxBundle::R11F_G11F_B10F,
         .glTypeSize = 1,
-        .glFormat = KtxBundle::R11F_G11F_B10F,
+        .glFormat = KtxBundle::RGB,
         .glInternalFormat = KtxBundle::R11F_G11F_B10F,
         .glBaseInternalFormat = KtxBundle::R11F_G11F_B10F,
         .pixelWidth = 1U << baseExp,
@@ -972,11 +980,11 @@ void iblRoughnessPrefilter(
         }
         CubemapIBL::roughnessFilter(js, dst, levels, roughness, numSamples,
                 float3{ 1, 1, 1 }, prefilter,
-                [&updater, quiet = g_quiet](size_t index, float v) {
-                    if (!quiet) {
-                        updater.update(index, v);
+                [](size_t index, float v, void* userdata) {
+                    if (!g_quiet) {
+                        ((ProgressUpdater*) userdata)->update(index, v);
                     }
-                });
+                }, &updater);
         if (!g_quiet) {
             updater.stop();
         }
@@ -1061,11 +1069,11 @@ void iblDiffuseIrradiance(utils::JobSystem& js, const utils::Path& iname,
         updater.start();
     }
     CubemapIBL::diffuseIrradiance(js, dst, levels, numSamples,
-            [&updater, quiet = g_quiet](size_t index, float v) {
-                if (!quiet) {
-                    updater.update(index, v);
+            [](size_t index, float v, void* userdata) {
+                if (!g_quiet) {
+                    ((ProgressUpdater*) userdata)->update(index, v);
                 }
-            });
+            }, &updater);
     if (!g_quiet) {
         updater.stop();
     }
@@ -1192,7 +1200,7 @@ void extractCubemapFaces(utils::JobSystem& js, const utils::Path& iname, const C
             .endianness = KtxBundle::ENDIAN_DEFAULT,
             .glType = KtxBundle::R11F_G11F_B10F,
             .glTypeSize = 1,
-            .glFormat = KtxBundle::R11F_G11F_B10F,
+            .glFormat = KtxBundle::RGB,
             .glInternalFormat = KtxBundle::R11F_G11F_B10F,
             .glBaseInternalFormat = KtxBundle::R11F_G11F_B10F,
             .pixelWidth = dim,
@@ -1261,8 +1269,10 @@ static void saveImage(const std::string& path, ImageEncoder::Format format, cons
 }
 
 static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubemap& cm) {
-    CompressionConfig compression {};
     auto& info = container.info();
+
+#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
+    CompressionConfig compression {};
     if (!g_compression.empty()) {
         bool valid = parseOptionString(g_compression, &compression);
         if (!valid) {
@@ -1278,6 +1288,12 @@ static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubema
         info.glBaseInternalFormat = KtxBundle::RGB;
         info.glInternalFormat = KtxBundle::RGB;
     }
+#else
+    if (!g_compression.empty()) {
+        std::cerr << "Block compression is not supported in this build." << std::endl;
+        exit(1);
+    }
+#endif
 
     const uint32_t dim = (const uint32_t) cm.getDimensions();
     for (uint32_t j = 0; j < 6; j++) {
@@ -1294,12 +1310,14 @@ static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubema
         }
         LinearImage image = toLinearImage(cm.getImageForFace(face));
 
+#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
         if (compression.type != CompressionConfig::INVALID) {
             CompressedTexture tex = compressTexture(compression, image);
             container.setBlob(blobIndex, tex.data.get(), tex.size);
             info.glInternalFormat = (uint32_t) tex.format;
             continue;
         }
+#endif
 
         auto uintData = fromLinearToRGB_10_11_11_REV(image);
         container.setBlob(blobIndex, uintData.get(), dim * dim * 4);

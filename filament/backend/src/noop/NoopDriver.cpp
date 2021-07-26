@@ -31,7 +31,7 @@ NoopDriver::NoopDriver() noexcept : DriverBase(new ConcreteDispatcher<NoopDriver
 NoopDriver::~NoopDriver() noexcept = default;
 
 backend::ShaderModel NoopDriver::getShaderModel() const noexcept {
-#if defined(ANDROID) || defined(IOS)
+#if defined(ANDROID) || defined(IOS) || defined(__EMSCRIPTEN__)
     return ShaderModel::GL_ES_30;
 #else
     return ShaderModel::GL_CORE_41;
@@ -48,8 +48,17 @@ void NoopDriver::terminate() {
 void NoopDriver::tick(int) {
 }
 
-void NoopDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId,
-        backend::FrameFinishedCallback, void*) {
+void NoopDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId) {
+}
+
+void NoopDriver::setFrameScheduledCallback(Handle<HwSwapChain> sch,
+        backend::FrameScheduledCallback callback, void* user) {
+
+}
+
+void NoopDriver::setFrameCompletedCallback(Handle<HwSwapChain> sch,
+        backend::FrameCompletedCallback callback, void* user) {
+
 }
 
 void NoopDriver::setPresentationTime(int64_t monotonic_clock_ns) {
@@ -64,9 +73,6 @@ void NoopDriver::flush(int) {
 void NoopDriver::finish(int) {
 }
 
-void NoopDriver::destroyUniformBuffer(Handle<HwUniformBuffer> ubh) {
-}
-
 void NoopDriver::destroyRenderPrimitive(Handle<HwRenderPrimitive> rph) {
 }
 
@@ -74,6 +80,9 @@ void NoopDriver::destroyVertexBuffer(Handle<HwVertexBuffer> vbh) {
 }
 
 void NoopDriver::destroyIndexBuffer(Handle<HwIndexBuffer> ibh) {
+}
+
+void NoopDriver::destroyBufferObject(Handle<HwBufferObject> boh) {
 }
 
 void NoopDriver::destroyTexture(Handle<HwTexture> th) {
@@ -135,6 +144,10 @@ bool NoopDriver::isTextureFormatSupported(TextureFormat format) {
     return true;
 }
 
+bool NoopDriver::isTextureSwizzleSupported() {
+    return true;
+}
+
 bool NoopDriver::isTextureFormatMipmappable(backend::TextureFormat format) {
     return true;
 }
@@ -151,9 +164,12 @@ bool NoopDriver::isFrameTimeSupported() {
     return true;
 }
 
-void NoopDriver::updateVertexBuffer(Handle<HwVertexBuffer> vbh, size_t index,
-        BufferDescriptor&& p, uint32_t byteOffset) {
-    scheduleDestroy(std::move(p));
+math::float2 NoopDriver::getClipSpaceParams() {
+    return math::float2{ -1.0f, 0.0f };
+}
+
+uint8_t NoopDriver::getMaxDrawBuffers() {
+    return backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT;
 }
 
 void NoopDriver::updateIndexBuffer(Handle<HwIndexBuffer> ibh, BufferDescriptor&& p,
@@ -161,10 +177,22 @@ void NoopDriver::updateIndexBuffer(Handle<HwIndexBuffer> ibh, BufferDescriptor&&
     scheduleDestroy(std::move(p));
 }
 
+void NoopDriver::updateBufferObject(Handle<HwBufferObject> ibh, BufferDescriptor&& p,
+        uint32_t byteOffset) {
+    scheduleDestroy(std::move(p));
+}
+
+void NoopDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh, uint32_t index,
+        Handle<HwBufferObject> boh) {
+}
+
 void NoopDriver::update2DImage(Handle<HwTexture> th,
         uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width, uint32_t height,
         PixelBufferDescriptor&& data) {
     scheduleDestroy(std::move(data));
+}
+
+void NoopDriver::setMinMaxLevels(Handle<HwTexture> th, uint32_t minLevel, uint32_t maxLevel) {
 }
 
 void NoopDriver::update3DImage(Handle<HwTexture> th,
@@ -196,7 +224,7 @@ SyncStatus NoopDriver::getSyncStatus(Handle<HwSync> sh) {
 void NoopDriver::setExternalImage(Handle<HwTexture> th, void* image) {
 }
 
-void NoopDriver::setExternalImagePlane(Handle<HwTexture> th, void* image, size_t plane) {
+void NoopDriver::setExternalImagePlane(Handle<HwTexture> th, void* image, uint32_t plane) {
 }
 
 void NoopDriver::setExternalStream(Handle<HwTexture> th, Handle<HwStream> sh) {
@@ -206,10 +234,6 @@ void NoopDriver::generateMipmaps(Handle<HwTexture> th) { }
 
 bool NoopDriver::canGenerateMipmaps() {
     return true;
-}
-
-void NoopDriver::loadUniformBuffer(Handle<HwUniformBuffer> ubh, BufferDescriptor&& data) {
-    scheduleDestroy(std::move(data));
 }
 
 void NoopDriver::updateSamplerGroup(Handle<HwSamplerGroup> sbh,
@@ -222,9 +246,11 @@ void NoopDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassPar
 void NoopDriver::endRenderPass(int) {
 }
 
+void NoopDriver::nextSubpass(int) {
+}
+
 void NoopDriver::setRenderPrimitiveBuffer(Handle<HwRenderPrimitive> rph,
-        Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh,
-        uint32_t enabledAttributes) {
+        Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh) {
 }
 
 void NoopDriver::setRenderPrimitiveRange(Handle<HwRenderPrimitive> rph,
@@ -238,20 +264,20 @@ void NoopDriver::makeCurrent(Handle<HwSwapChain> drawSch, Handle<HwSwapChain> re
 void NoopDriver::commit(Handle<HwSwapChain> sch) {
 }
 
-void NoopDriver::bindUniformBuffer(size_t index, Handle<HwUniformBuffer> ubh) {
+void NoopDriver::bindUniformBuffer(uint32_t index, Handle<HwBufferObject> ubh) {
 }
 
-void NoopDriver::bindUniformBufferRange(size_t index, Handle<HwUniformBuffer> ubh,
-        size_t offset, size_t size) {
+void NoopDriver::bindUniformBufferRange(uint32_t index, Handle<HwBufferObject> ubh,
+        uint32_t offset, uint32_t size) {
 }
 
-void NoopDriver::bindSamplers(size_t index, Handle<HwSamplerGroup> sbh) {
+void NoopDriver::bindSamplers(uint32_t index, Handle<HwSamplerGroup> sbh) {
 }
 
-void NoopDriver::insertEventMarker(char const* string, size_t len) {
+void NoopDriver::insertEventMarker(char const* string, uint32_t len) {
 }
 
-void NoopDriver::pushGroupMarker(char const* string,  size_t len) {
+void NoopDriver::pushGroupMarker(char const* string,  uint32_t len) {
 }
 
 void NoopDriver::popGroupMarker(int) {

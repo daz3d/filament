@@ -25,6 +25,7 @@
 
 #include <private/filament/SamplerBindingMap.h>
 #include <private/filament/SamplerInterfaceBlock.h>
+#include <private/filament/SubpassInfo.h>
 #include <private/filament/Variant.h>
 
 #include <filaflat/ShaderBuilder.h>
@@ -78,6 +79,7 @@ public:
 
     backend::Handle<backend::HwProgram> getProgram(uint8_t variantKey) const noexcept {
 #if FILAMENT_ENABLE_MATDBG
+        mActivePrograms.set(variantKey);
         if (UTILS_UNLIKELY(mPendingEdits.load())) {
             const_cast<FMaterial*>(this)->applyPendingEdits();
         }
@@ -127,7 +129,8 @@ public:
 
     size_t getParameterCount() const noexcept {
         return mUniformInterfaceBlock.getUniformInfoList().size() +
-                mSamplerInterfaceBlock.getSamplerInfoList().size();
+                mSamplerInterfaceBlock.getSamplerInfoList().size() +
+                (mSubpassInfo.isValid ? 1 : 0);
     }
     size_t getParameters(ParameterInfo* parameters, size_t count) const noexcept;
 
@@ -148,12 +151,18 @@ public:
     static void onEditCallback(void* userdata, const utils::CString& name, const void* packageData,
             size_t packageSize);
 
-    /** Queries the program cache to check which variants are resident. */
-    static void onQueryCallback(void* userdata, uint16_t* variants);
+    using VariantList = utils::bitset<uint64_t, VARIANT_COUNT>;
+
+    /**
+     * Returns a list of "active" variants.
+     *
+     * This works by checking which variants have been accessed since the previous call, then
+     * clearing out the internal list.  Note that the active vs inactive status is merely a visual
+     * indicator in the matdbg UI, and that it gets updated about every second.
+     */
+    static void onQueryCallback(void* userdata, VariantList* pActiveVariants);
 
     /** @}*/
-
-    static MaterialParser* createParser(backend::Backend backend, const void* data, size_t size);
 
 private:
     backend::Handle<backend::HwProgram> getProgramSlow(uint8_t variantKey) const noexcept;
@@ -162,6 +171,10 @@ private:
 
     // try to order by frequency of use
     mutable std::array<backend::Handle<backend::HwProgram>, VARIANT_COUNT> mCachedPrograms;
+
+#if FILAMENT_ENABLE_MATDBG
+    mutable VariantList mActivePrograms;
+#endif
 
     backend::RasterState mRasterState;
     BlendingMode mRenderBlendingMode = BlendingMode::OPAQUE;
@@ -193,7 +206,12 @@ private:
     FMaterialInstance mDefaultInstance;
     SamplerInterfaceBlock mSamplerInterfaceBlock;
     UniformInterfaceBlock mUniformInterfaceBlock;
+    SubpassInfo mSubpassInfo;
     SamplerBindingMap mSamplerBindings;
+
+#if FILAMENT_ENABLE_MATDBG
+    matdbg::MaterialKey mDebuggerId;
+#endif
 
     utils::CString mName;
     FEngine& mEngine;

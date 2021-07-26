@@ -50,10 +50,15 @@ public:
 
     void setImage(FEngine& engine, size_t level,
             uint32_t xoffset, uint32_t yoffset, uint32_t width, uint32_t height,
-            PixelBufferDescriptor&& buffer) const noexcept;
+            PixelBufferDescriptor&& buffer) const;
 
     void setImage(FEngine& engine, size_t level,
-            PixelBufferDescriptor&& buffer, const FaceOffsets& faceOffsets) const noexcept;
+            uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
+            uint32_t width, uint32_t height, uint32_t depth,
+            PixelBufferDescriptor&& buffer) const;
+
+    void setImage(FEngine& engine, size_t level,
+            PixelBufferDescriptor&& buffer, const FaceOffsets& faceOffsets) const;
 
     void generatePrefilterMipmap(FEngine& engine,
             PixelBufferDescriptor&& buffer, const FaceOffsets& faceOffsets,
@@ -81,6 +86,9 @@ public:
     // synchronous call to the backend. returns whether a backend supports a particular format.
     static bool isTextureFormatSupported(FEngine& engine, InternalFormat format) noexcept;
 
+    // synchronous call to the backend. returns whether a backend supports texture swizzling.
+    static bool isTextureSwizzleSupported(FEngine& engine) noexcept;
+
     // storage needed on the CPU side for texture data uploads
     static size_t computeTextureDataSize(Texture::Format format, Texture::Type type,
             size_t stride, size_t height, size_t alignment) noexcept;
@@ -102,6 +110,9 @@ public:
     static inline uint8_t maxLevelCount(uint32_t width, uint32_t height) noexcept {
         return std::max(1, std::ilogbf(std::max(width, height)) + 1);
     }
+
+    static bool validatePixelFormatAndType(backend::TextureFormat internalFormat,
+            backend::PixelDataFormat format, backend::PixelDataType type) noexcept;
 
 private:
     friend class Texture;

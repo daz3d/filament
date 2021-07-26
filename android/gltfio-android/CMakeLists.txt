@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.19)
+project(gltfio-android)
 
 set(FILAMENT_DIR ${FILAMENT_DIST_DIR})
 set(GLTFIO_DIR ../../libs/gltfio)
@@ -29,7 +30,6 @@ set(GLTFIO_SRCS
         ${GLTFIO_DIR}/include/gltfio/AssetLoader.h
         ${GLTFIO_DIR}/include/gltfio/MaterialProvider.h
         ${GLTFIO_DIR}/include/gltfio/ResourceLoader.h
-        ${GLTFIO_DIR}/include/gltfio/SimpleViewer.h
         ${GLTFIO_DIR}/include/gltfio/FilamentAsset.h
         ${GLTFIO_DIR}/include/gltfio/FilamentInstance.h
 
@@ -45,7 +45,11 @@ set(GLTFIO_SRCS
         ${GLTFIO_DIR}/src/FilamentInstance.cpp
         ${GLTFIO_DIR}/src/GltfEnums.h
         ${GLTFIO_DIR}/src/MaterialProvider.cpp
+        ${GLTFIO_DIR}/src/MorphHelper.h
+        ${GLTFIO_DIR}/src/MorphHelper.cpp
         ${GLTFIO_DIR}/src/ResourceLoader.cpp
+        ${GLTFIO_DIR}/src/TangentsJob.h
+        ${GLTFIO_DIR}/src/TangentsJob.cpp
         ${GLTFIO_DIR}/src/UbershaderLoader.cpp
         ${GLTFIO_DIR}/src/Wireframe.cpp
         ${GLTFIO_DIR}/src/Wireframe.h
@@ -57,7 +61,9 @@ set(GLTFIO_SRCS
         src/main/cpp/AssetLoader.cpp
         src/main/cpp/FilamentAsset.cpp
         src/main/cpp/FilamentInstance.cpp
-        src/main/cpp/MaterialProvider.cpp
+        src/main/cpp/MaterialKey.cpp
+        src/main/cpp/MaterialKey.h
+        src/main/cpp/UbershaderLoader.cpp
         src/main/cpp/ResourceLoader.cpp
 
         ${FILAMENT_DIR}/include/gltfio/resources/gltfresources_lite.h

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 
 # ==================================================================================================
 # Library
@@ -9,7 +9,7 @@ set(TARGET matlang)
 # ==================================================================================================
 # Sources and headers
 # ==================================================================================================
-file(GLOB_RECURSE HDRS
+set(HDRS
         src/matc/CommandlineConfig.h
         src/matc/Compiler.h
         src/matc/Config.h

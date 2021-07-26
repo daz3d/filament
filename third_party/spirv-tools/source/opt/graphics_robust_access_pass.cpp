@@ -272,10 +272,11 @@ void GraphicsRobustAccessPass::ClampIndicesForAccessChain(
 
   // Replaces one of the OpAccessChain index operands with a new value.
   // Updates def-use analysis.
-  auto replace_index = [&inst, def_use_mgr](uint32_t operand_index,
-                                            Instruction* new_value) {
+  auto replace_index = [this, &inst, def_use_mgr](uint32_t operand_index,
+                                                  Instruction* new_value) {
     inst.SetOperand(operand_index, {new_value->result_id()});
     def_use_mgr->AnalyzeInstUse(&inst);
+    module_status_.modified = true;
     return SPV_SUCCESS;
   };
 
@@ -320,9 +321,13 @@ void GraphicsRobustAccessPass::ClampIndicesForAccessChain(
       maxval_width *= 2;
     }
     // Determine the type for |maxval|.
+    uint32_t next_id = context()->module()->IdBound();
     analysis::Integer signed_type_for_query(maxval_width, true);
     auto* maxval_type =
         type_mgr->GetRegisteredType(&signed_type_for_query)->AsInteger();
+    if (next_id != context()->module()->IdBound()) {
+      module_status_.modified = true;
+    }
     // Access chain indices are treated as signed, so limit the maximum value
     // of the index so it will always be positive for a signed clamp operation.
     maxval = std::min(maxval, ((uint64_t(1) << (maxval_width - 1)) - 1));
@@ -802,8 +807,11 @@ spv_result_t GraphicsRobustAccessPass::ClampCoordinateForImageTexelPointer(
     opt::Instruction* image_texel_pointer) {
   // TODO(dneto): Write tests for this code.
   // TODO(dneto): Use signed-clamp
+  (void)(image_texel_pointer);
   return SPV_SUCCESS;
 
+  // Do not compile this code until it is ready to be used.
+#if 0
   // Example:
   //   %texel_ptr = OpImageTexelPointer %texel_ptr_type %image_ptr %coord
   //   %sample
@@ -1035,6 +1043,7 @@ spv_result_t GraphicsRobustAccessPass::ClampCoordinateForImageTexelPointer(
   def_use_mgr->AnalyzeInstUse(image_texel_pointer);
 
   return SPV_SUCCESS;
+#endif
 }
 
 opt::Instruction* GraphicsRobustAccessPass::InsertInst(

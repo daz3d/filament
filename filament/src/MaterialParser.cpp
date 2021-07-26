@@ -28,6 +28,7 @@
 
 #include <private/filament/SamplerInterfaceBlock.h>
 #include <private/filament/UniformInterfaceBlock.h>
+#include <private/filament/SubpassInfo.h>
 
 #include <utils/CString.h>
 
@@ -68,11 +69,13 @@ MaterialParser::MaterialParserDetails::MaterialParserDetails(Backend backend, co
 }
 
 template<typename T>
-bool MaterialParser::MaterialParserDetails::getFromSimpleChunk(filamat::ChunkType type, T* value) const noexcept {
-    if (mChunkContainer.hasChunk(type)) {
-        Unflattener unflattener(
-                mChunkContainer.getChunkStart(type),
-                mChunkContainer.getChunkEnd(type));
+UTILS_NOINLINE
+bool MaterialParser::MaterialParserDetails::getFromSimpleChunk(
+        filamat::ChunkType type, T* value) const noexcept {
+    ChunkContainer const& chunkContainer = mChunkContainer;
+    ChunkContainer::ChunkDesc const* pChunkDesc;
+    if (chunkContainer.hasChunk(type, &pChunkDesc)) {
+        Unflattener unflattener(pChunkDesc->start, pChunkDesc->start + pChunkDesc->size);
         return unflattener.read(value);
     }
     return false;
@@ -135,6 +138,14 @@ bool MaterialParser::getSIB(SamplerInterfaceBlock* sib) const noexcept {
     const uint8_t* end = mImpl.mChunkContainer.getChunkEnd(type);
     Unflattener unflattener(start, end);
     return ChunkSamplerInterfaceBlock::unflatten(unflattener, sib);
+}
+
+bool MaterialParser::getSubpasses(SubpassInfo* subpass) const noexcept {
+    auto type = MaterialSubpass;
+    const uint8_t* start = mImpl.mChunkContainer.getChunkStart(type);
+    const uint8_t* end = mImpl.mChunkContainer.getChunkEnd(type);
+    Unflattener unflattener(start, end);
+    return ChunkSubpassInterfaceBlock::unflatten(unflattener, subpass);
 }
 
 bool MaterialParser::getShaderModels(uint32_t* value) const noexcept {
@@ -287,9 +298,9 @@ bool ChunkUniformInterfaceBlock::unflatten(Unflattener& unflattener,
 
     for (uint64_t i = 0; i < numFields; i++) {
         CString fieldName;
-        uint64_t fieldSize;
-        uint8_t fieldType;
-        uint8_t fieldPrecision;
+        uint64_t fieldSize = 0;
+        uint8_t fieldType = 0;
+        uint8_t fieldPrecision = 0;
 
         if (!unflattener.read(&fieldName)) {
             return false;
@@ -334,10 +345,10 @@ bool ChunkSamplerInterfaceBlock::unflatten(Unflattener& unflattener,
 
     for (uint64_t i = 0; i < numFields; i++) {
         CString fieldName;
-        uint8_t fieldType;
-        uint8_t fieldFormat;
-        uint8_t fieldPrecision;
-        bool fieldMultisample;
+        uint8_t fieldType = 0;
+        uint8_t fieldFormat = 0;
+        uint8_t fieldPrecision = 0;
+        bool fieldMultisample = false;
 
         if (!unflattener.read(&fieldName)) {
             return false;
@@ -366,6 +377,61 @@ bool ChunkSamplerInterfaceBlock::unflatten(Unflattener& unflattener,
     }
 
     *sib = builder.build();
+    return true;
+}
+
+bool ChunkSubpassInterfaceBlock::unflatten(Unflattener& unflattener,
+        filament::SubpassInfo* subpass) {
+
+    CString block;
+    if (!unflattener.read(&block)) {
+        return false;
+    }
+    subpass->block = block;
+
+    // Read number of subpasses.
+    uint64_t numSubpasses = 0;
+    if (!unflattener.read(&numSubpasses)) {
+        return false;
+    }
+
+    for (uint64_t i = 0; i < numSubpasses; i++) {
+        CString subpassName;
+        uint8_t subpassType = 0;
+        uint8_t subpassFormat = 0;
+        uint8_t subpassPrecision = 0;
+
+        if (!unflattener.read(&subpass->name)) {
+            return false;
+        }
+
+        if (!unflattener.read(&subpassType)) {
+            return false;
+        }
+
+        if (!unflattener.read(&subpassFormat)) {
+            return false;
+        }
+
+        if (!unflattener.read(&subpassPrecision)) {
+            return false;
+        }
+
+        if (!unflattener.read(&subpass->attachmentIndex)) {
+            return false;
+        }
+
+        if (!unflattener.read(&subpass->binding)) {
+            return false;
+        }
+
+        subpass->type = SubpassType (subpassType);
+        subpass->format = Format (subpassFormat);
+        subpass->precision = Precision (subpassPrecision);
+
+        subpass->isValid = true;
+    }
+
     return true;
 }
 

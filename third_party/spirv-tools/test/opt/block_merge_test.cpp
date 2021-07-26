@@ -639,6 +639,40 @@ OpFunctionEnd
   SinglePassRunAndMatch<BlockMergePass>(text, true);
 }
 
+TEST_F(BlockMergeTest, DontMergeTerminateInvocation) {
+  const std::string text = R"(
+; CHECK: OpLoopMerge [[merge:%\w+]] [[cont:%\w+]] None
+; CHECK-NEXT: OpBranch [[ret:%\w+]]
+; CHECK: [[ret:%\w+]] = OpLabel
+; CHECK-NEXT: OpTerminateInvocation
+; CHECK-DAG: [[cont]] = OpLabel
+; CHECK-DAG: [[merge]] = OpLabel
+OpCapability Shader
+OpExtension "SPV_KHR_terminate_invocation"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %func "func"
+OpExecutionMode %func OriginUpperLeft
+%void = OpTypeVoid
+%bool = OpTypeBool
+%functy = OpTypeFunction %void
+%func = OpFunction %void None %functy
+%1 = OpLabel
+OpBranch %2
+%2 = OpLabel
+OpLoopMerge %3 %4 None
+OpBranch %5
+%5 = OpLabel
+OpTerminateInvocation
+%4 = OpLabel
+OpBranch %2
+%3 = OpLabel
+OpUnreachable
+OpFunctionEnd
+)";
+
+  SinglePassRunAndMatch<BlockMergePass>(text, true);
+}
+
 TEST_F(BlockMergeTest, DontMergeUnreachable) {
   const std::string text = R"(
 ; CHECK: OpLoopMerge [[merge:%\w+]] [[cont:%\w+]] None
@@ -710,6 +744,7 @@ TEST_F(BlockMergeTest, DontMergeSwitch) {
 ; CHECK: OpLoopMerge [[merge:%\w+]] [[cont:%\w+]] None
 ; CHECK-NEXT: OpBranch [[ret:%\w+]]
 ; CHECK: [[ret:%\w+]] = OpLabel
+; CHECK-NEXT: OpSelectionMerge
 ; CHECK-NEXT: OpSwitch
 ; CHECK-DAG: [[cont]] = OpLabel
 ; CHECK-DAG: [[merge]] = OpLabel
@@ -729,6 +764,7 @@ OpBranch %2
 OpLoopMerge %3 %4 None
 OpBranch %5
 %5 = OpLabel
+OpSelectionMerge %6 None
 OpSwitch %int_0 %6
 %6 = OpLabel
 OpReturn

@@ -40,12 +40,20 @@ public:
         struct Attachment {
             id<MTLTexture> color = nil;
             id<MTLTexture> depth = nil;
-            MTLRegion region;
+            MTLRegion region = {};
             uint8_t level = 0;
         };
 
         Attachment source, destination;
         SamplerMagFilter filter;
+
+        bool blitColor() const {
+            return source.color != nil && destination.color != nil;
+        }
+
+        bool blitDepth() const {
+            return source.depth != nil && destination.depth != nil;
+        }
 
         bool colorDestinationIsFullAttachment() const {
             return destination.color.width == destination.region.size.width &&
@@ -91,6 +99,9 @@ private:
 
     void blitFastPath(id<MTLCommandBuffer> cmdBuffer, bool& blitColor, bool& blitDepth,
             const BlitArgs& args);
+    void blitSlowPath(id<MTLCommandBuffer> cmdBuffer, bool& blitColor, bool& blitDepth,
+            const BlitArgs& args);
+    id<MTLTexture> createIntermediateTexture(id<MTLTexture> t, MTLSize size);
     id<MTLFunction> compileFragmentFunction(BlitFunctionKey key);
     id<MTLFunction> getBlitVertexFunction();
     id<MTLFunction> getBlitFragmentFunction(BlitFunctionKey key);

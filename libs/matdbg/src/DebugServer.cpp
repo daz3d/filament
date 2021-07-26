@@ -18,23 +18,30 @@
 
 #include <CivetServer.h>
 
+#include <utils/FixedCapacityVector.h>
 #include <utils/Hash.h>
 #include <utils/Log.h>
 
 #include <spirv_glsl.hpp>
 #include <spirv-tools/libspirv.h>
 
-#include <matdbg/ShaderReplacer.h>
+#include <matdbg/JsonWriter.h>
 #include <matdbg/ShaderExtractor.h>
 #include <matdbg/ShaderInfo.h>
-#include <matdbg/JsonWriter.h>
+#include <matdbg/ShaderReplacer.h>
 
 #include <filaflat/ChunkContainer.h>
 
+#include <tsl/robin_set.h>
+
 #include <backend/DriverEnums.h>
+
+#include "sca/GLSLTools.h"
 
 #include <sstream>
 #include <string>
+
+using utils::FixedCapacityVector;
 
 // If set to 0, this serves HTML from a resgen resource. Use 1 only during local development, which
 // serves files directly from the source code tree.
@@ -56,6 +63,29 @@ using filamat::ChunkType;
 static const StaticString kSuccessHeader =
         "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
         "Connection: close\r\n\r\n";
+
+static const StaticString kErrorHeader =
+        "HTTP/1.1 404 Not Found\r\nContent-Type: %s\r\n"
+        "Connection: close\r\n\r\n";
+
+static void spirvToAsm(struct mg_connection *conn, const uint32_t* spirv, size_t size) {
+    auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
+    spv_text text = nullptr;
+    const uint32_t options = SPV_BINARY_TO_TEXT_OPTION_INDENT |
+            SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
+    spvBinaryToText(context, spirv, size / 4, options, &text, nullptr);
+
+    mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
+    mg_write(conn, text->str, text->length);
+    spvTextDestroy(text);
+    spvContextDestroy(context);
+}
+
+static void spirvToGlsl(struct mg_connection *conn, const uint32_t* spirv, size_t size) {
+    auto glsl = ShaderExtractor::spirvToGLSL(spirv, size / 4);
+    mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
+    mg_printf(conn, glsl.c_str(), glsl.size());
+}
 
 class FileRequestHandler : public CivetHandler {
 public:
@@ -114,8 +144,16 @@ public:
         std::string uri(request->local_uri);
 
         const auto error = [request](int line) {
-            slog.e << "DebugServer: 404 at " <<  line << ": " << request->query_string << io::endl;
+            slog.e << "DebugServer: 404 at line " <<  line << ": " << request->query_string
+                    << io::endl;
             return false;
+        };
+
+        const auto softError = [request, conn](const char* msg) {
+            slog.e << "DebugServer: " <<  msg << ": " << request->query_string << io::endl;
+            mg_printf(conn, kErrorHeader.c_str(), "application/txt");
+            mg_write(conn, msg, strlen(msg));
+            return true;
         };
 
         if (uri == "/api/active") {
@@ -207,10 +245,16 @@ public:
             return true;
         }
 
+        const StaticString glsl("glsl");
+        const StaticString msl("msl");
+        const StaticString spirv("spirv");
+
         char type[6] = {};
         if (mg_get_var(request->query_string, qlength, "type", type, sizeof(type)) < 0) {
             return error(__LINE__);
         }
+
+        CString language(type, strlen(type));
 
         char glindex[4] = {};
         char vkindex[4] = {};
@@ -228,7 +272,11 @@ public:
         }
 
         if (glindex[0]) {
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialGlsl));
+            if (language != glsl) {
+                return softError("Only GLSL is supported.");
+            }
+
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialGlsl));
             if (!getGlShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -259,7 +307,7 @@ public:
             }
 
             filaflat::ShaderBuilder builder;
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialSpirv));
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialSpirv));
             if (!getVkShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -272,25 +320,17 @@ public:
             const auto& item = info[shaderIndex];
             extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
 
-            // TODO: Add a transpiler that depends on "type" and add an MSL type instead of
-            // piggybacking on type=GLSL.
-
-            mg_printf(conn, kSuccessHeader.c_str(), "application/text");
-
-            if (true) {
-                auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
-                spv_text text = nullptr;
-                const uint32_t options = SPV_BINARY_TO_TEXT_OPTION_INDENT |
-                        SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
-                const uint32_t* data = (const uint32_t*) builder.data();
-                spvBinaryToText(context, data, builder.size() / 4, options, &text, nullptr);
-
-                mg_write(conn, text->str, text->length);
-                spvTextDestroy(text);
-                spvContextDestroy(context);
+            if (language == spirv) {
+                spirvToAsm(conn, (const uint32_t*) builder.data(), builder.size());
+                return true;
             }
 
-            return true;
+            if (language == glsl) {
+                spirvToGlsl(conn, (const uint32_t*) builder.data(), builder.size());
+                return true;
+            }
+
+            return softError("Only SPIRV is supported.");
         }
 
         if (metalindex[0]) {
@@ -300,7 +340,7 @@ public:
             }
 
             filaflat::ShaderBuilder builder;
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialMetal));
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialMetal));
             if (!getMetalShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -313,9 +353,13 @@ public:
             const auto& item = info[shaderIndex];
             extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
 
-            mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
-            mg_write(conn, builder.data(), builder.size() - 1);
-            return true;
+            if (language == msl) {
+                mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
+                mg_write(conn, builder.data(), builder.size() - 1);
+                return true;
+            }
+
+            return softError("Only MSL is supported.");
         }
 
         return error(__LINE__);
@@ -334,15 +378,41 @@ public:
     }
 
     void handleReadyState(CivetServer *server, struct mg_connection *conn) override {
-        mConnection = conn;
+        mConnections.insert(conn);
     }
 
     bool handleData(CivetServer *server, struct mg_connection *conn, int bits, char *data,
             size_t size) override {
-        // TODO: Is there a better way to ignore the handshake message that occurs after startup?
-        if  (size < 8) {
+
+        // First check if this chunk is a continuation of a partial existing message.
+        if (mServer->mChunkedMessageRemaining > 0) {
+            const CString chunk(data, size);
+            const size_t pos = mServer->mChunkedMessage.size();
+
+            // Append the partial existing message.
+            mServer->mChunkedMessage = mServer->mChunkedMessage.insert(pos, chunk);
+
+            // Determine number of outstanding bytes.
+            if (size > mServer->mChunkedMessageRemaining) {
+                mServer->mChunkedMessageRemaining = 0;
+            } else {
+                mServer->mChunkedMessageRemaining -= size;
+            }
+
+            // Return early and wait for more chunks if some bytes are still outstanding.
+            if (mServer->mChunkedMessageRemaining > 0) {
+                return true;
+            }
+
+            data = mServer->mChunkedMessage.data();
+            size = mServer->mChunkedMessage.size();
+
+        // Ignore the handshake message that occurs after startup.
+        } else if (size < 8) {
             return true;
         }
+
+        mServer->mChunkedMessageRemaining = 0;
 
         // Every WebSocket message is prefixed with a command name followed by a space.
         //
@@ -356,7 +426,7 @@ public:
         //
         // Commands:
         //
-        //     EDIT [material id] [api index] [shader index] [entire shader source....]
+        //     EDIT [material id] [api index] [shader index] [shader length] [shader source....]
         //
 
         const static StaticString kEditCmd = "EDIT ";
@@ -367,33 +437,46 @@ public:
             uint32_t matid;
             int api;
             int shaderIndex;
-            str >> std::hex >> matid >> std::dec >> api >> shaderIndex;
-            const char* source = data + kEditCmdLength + str.tellg();
+            int shaderLength;
+            str >> std::hex >> matid >> std::dec >> api >> shaderIndex >> shaderLength;
+            const char* source = data + kEditCmdLength + str.tellg() + 1;
             const size_t remaining = size - kEditCmdLength - str.tellg();
-            mServer->handleEditCommand(matid, backend::Backend(api), shaderIndex, source, remaining);
+
+            // Return early and wait for more chunks if some bytes are still outstanding.
+            if (remaining < shaderLength + 1) {
+                mServer->mChunkedMessage = CString(data, size);
+                mServer->mChunkedMessageRemaining = shaderLength + 1 - remaining;
+                return true;
+            }
+
+            mServer->handleEditCommand(matid, backend::Backend(api), shaderIndex, source,
+                    shaderLength);
             return true;
         }
 
-        slog.e << "Bad WebSocket message." << io::endl;
+        const std::string firstFewChars(data, std::min(size, size_t(8)));
+        slog.e << "Bad WebSocket message. First few characters: "
+               << "[" << firstFewChars << "]" << io::endl;
         return false;
     }
 
     void handleClose(CivetServer *server, const struct mg_connection *conn) override {
-        mConnection = nullptr;
+        struct mg_connection *key = const_cast<struct mg_connection *>(conn);
+        mConnections.erase(key);
     }
 
-    // Notify the JavaScript client that a new material package has been loaded.
-    void notify(const DebugServer::MaterialRecord& material) {
-        if (mConnection) {
+    // Notify all JavaScript clients that a new material package has been loaded.
+    void addMaterial(const DebugServer::MaterialRecord& material) {
+        for (auto connection : mConnections) {
             char matid[9] = {};
-            sprintf(matid, "%8.8x", material.key);
-            mg_websocket_write(mConnection, MG_WEBSOCKET_OPCODE_TEXT, matid, 8);
+            snprintf(matid, sizeof(matid), "%8.8x", material.key);
+            mg_websocket_write(connection, MG_WEBSOCKET_OPCODE_TEXT, matid, 8);
         }
     }
 
 private:
     DebugServer* mServer;
-    struct mg_connection* mConnection = nullptr;
+    tsl::robin_set<struct mg_connection*> mConnections;
 };
 
 DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
@@ -403,11 +486,13 @@ DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
     mCss = CString((const char*) MATDBG_RESOURCES_STYLE_DATA, MATDBG_RESOURCES_STYLE_SIZE - 1);
     #endif
 
-    // By default the server spawns 50 threads so we override this to 2. This limits the server
-    // to having no more than 2 HTTP clients, which is perfectly fine for debugging purposes.
+    // By default the server spawns 50 threads so we override this to 10. According to the civetweb
+    // documentation, "it is recommended to use num_threads of at least 5, since browsers often
+    /// establish multiple connections to load a single web page, including all linked documents
+    // (CSS, JavaScript, images, ...)."  If this count is too small, the web app basically hangs.
     const char* kServerOptions[] = {
         "listening_ports", "8080",
-        "num_threads", "2",
+        "num_threads", "10",
         "error_log_file", "civetweb.txt",
         nullptr
     };
@@ -431,9 +516,11 @@ DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
     mServer->addWebSocketHandler("", mWebSocketHandler);
 
     slog.i << "DebugServer listening at http://localhost:" << port << io::endl;
+    filamat::GLSLTools::init();
 }
 
 DebugServer::~DebugServer() {
+    filamat::GLSLTools::shutdown();
     for (auto& pair : mMaterialRecords) {
         delete [] pair.second.package;
     }
@@ -442,11 +529,12 @@ DebugServer::~DebugServer() {
     delete mServer;
 }
 
-void DebugServer::addMaterial(const CString& name, const void* data, size_t size, void* userdata) {
+MaterialKey
+DebugServer::addMaterial(const CString& name, const void* data, size_t size, void* userdata) {
     filaflat::ChunkContainer* container = new filaflat::ChunkContainer(data, size);
     if (!container->parse()) {
         slog.e << "DebugServer: unable to parse material package: " << name.c_str() << io::endl;
-        return;
+        return {};
     }
 
     const uint32_t seed = 42;
@@ -460,7 +548,12 @@ void DebugServer::addMaterial(const CString& name, const void* data, size_t size
 
     MaterialRecord info = {userdata, package, size, name, key};
     mMaterialRecords.insert({key, info});
-    mWebSocketHandler->notify(info);
+    mWebSocketHandler->addMaterial(info);
+    return key;
+}
+
+void DebugServer::removeMaterial(MaterialKey key) {
+    mMaterialRecords.erase(key);
 }
 
 const DebugServer::MaterialRecord* DebugServer::getRecord(const MaterialKey& key) const {
@@ -471,7 +564,7 @@ const DebugServer::MaterialRecord* DebugServer::getRecord(const MaterialKey& key
 void DebugServer::updateActiveVariants() {
     if (mQueryCallback) {
         for (auto& pair : mMaterialRecords) {
-            uint16_t& result = mMaterialRecords[pair.first].activeVariants;
+            VariantList& result = mMaterialRecords[pair.first].activeVariants;
             mQueryCallback(pair.second.userdata, &result);
         }
     }
@@ -493,11 +586,12 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         return error(__LINE__);
     }
 
-    std::vector<ShaderInfo> infos;
+    FixedCapacityVector<ShaderInfo> infos;
     size_t shaderCount;
     switch (api) {
         case backend::Backend::OPENGL: {
             shaderCount = getShaderCount(package, ChunkType::MaterialGlsl);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getGlShaderInfo(package, infos.data())) {
                 return error(__LINE__);
@@ -506,6 +600,7 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         }
         case backend::Backend::VULKAN: {
             shaderCount = getShaderCount(package, ChunkType::MaterialSpirv);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getVkShaderInfo(package, infos.data())) {
                 return error(__LINE__);
@@ -514,6 +609,7 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         }
         case backend::Backend::METAL: {
             shaderCount = getShaderCount(package, ChunkType::MaterialMetal);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getMetalShaderInfo(package, infos.data())) {
                 return error(__LINE__);

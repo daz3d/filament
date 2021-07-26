@@ -73,8 +73,8 @@ static void convertFaces(cgltf_accessor* target, const draco::Mesh* mesh) {
     const cgltf_size size = mesh->num_faces() * 3 * sizeof(T);
     cgltf_buffer_view* view = target->buffer_view;
     cgltf_buffer* buffer = view->buffer;
-    *buffer = { size, nullptr, malloc(size) };
-    *view = { buffer, 0, size, 0, cgltf_buffer_view_type_indices };
+    *buffer = { nullptr, size, nullptr, malloc(size) };
+    *view = { nullptr, buffer, 0, size, 0, cgltf_buffer_view_type_indices };
     T* dest = (T*) buffer->data;
     for (uint32_t id = 0, n = mesh->num_faces(); id < n; ++id) {
         draco::Mesh::Face face = mesh->face(draco::FaceIndex(id));
@@ -94,8 +94,8 @@ static void convertAttribs(cgltf_accessor* target, const draco::PointAttribute* 
     const uint32_t size = target->stride * n;
     cgltf_buffer_view* view = target->buffer_view;
     cgltf_buffer* buffer = view->buffer;
-    *buffer = { size, nullptr, malloc(size) };
-    *view = { buffer, 0, size, 0, cgltf_buffer_view_type_vertices };
+    *buffer = { nullptr, size, nullptr, malloc(size) };
+    *view = { nullptr, buffer, 0, size, 0, cgltf_buffer_view_type_vertices };
     T* dest = (T*) buffer->data;
     for (draco::PointIndex i(0); i < n; ++i, dest += ncomps) {
         attr->ConvertValue(attr->mapped_index(i), ncomps, dest);
@@ -117,10 +117,10 @@ DracoMesh* DracoMesh::decode(const uint8_t* data, size_t dataSize) {
     return new DracoMesh(new DracoMeshDetails { std::move(meshStatus).value() });
 }
 
-void DracoMesh::getFaceIndices(cgltf_accessor* target) const {
+bool DracoMesh::getFaceIndices(cgltf_accessor* target) const {
     // Return early if we've already decompressed this data.
     if (target->buffer_view) {
-        return;
+        return true;
     }
 
     draco::Mesh* mesh = mDetails->mesh.get();
@@ -131,7 +131,7 @@ void DracoMesh::getFaceIndices(cgltf_accessor* target) const {
     if (target->count != count) {
         slog.e << "The glTF accessor wants " << target->count << " indices, "
                << "but the decoded Draco mesh has " <<  count << " indices." << io::endl;
-        return;
+        return false;
     }
 
     cgltf_buffer_view* view = new cgltf_buffer_view;
@@ -149,8 +149,9 @@ void DracoMesh::getFaceIndices(cgltf_accessor* target) const {
         case cgltf_component_type_r_8u: convertFaces<uint8_t>(target, mesh); break;
         default:
             slog.e << "Unexpected component type for Draco indices." << io::endl;
-            break;
+            return false;
     }
+    return true;
 }
 
 bool DracoMesh::getVertexAttributes(uint32_t attributeId, cgltf_accessor* target) const {
@@ -173,11 +174,12 @@ bool DracoMesh::getVertexAttributes(uint32_t attributeId, cgltf_accessor* target
     // DracoMesh.
     uint32_t count = mesh->num_points();
     if (target->count != count) {
-        slog.w << "The glTF accessor wants " << target->count << " vertices, "
+        slog.e << "The glTF accessor wants " << target->count << " vertices, "
                << "but the decoded Draco mesh has " <<  count << " vertices." << io::endl;
-        if (target->count < count) {
-            count = target->count;
-        }
+
+        // It is tempting to degrade gracefully by processing only the lesser of the two
+        // counts, but doing so would lead to invalid indices in the index buffer.
+        return false;
     }
 
     cgltf_buffer_view* view = new cgltf_buffer_view;
@@ -209,7 +211,10 @@ bool DracoMesh::getVertexAttributes(uint32_t attributeId, cgltf_accessor* target
 DracoMesh::~DracoMesh() {}
 struct DracoMeshDetails {};
 DracoMesh* DracoMesh::decode(const uint8_t* data, size_t dataSize) { return nullptr; }
-void DracoMesh::getFaceIndices(cgltf_accessor* target) const {}
+
+bool DracoMesh::getFaceIndices(cgltf_accessor* target) const {
+    return false;
+}
 
 bool DracoMesh::getVertexAttributes(uint32_t attributeId, cgltf_accessor* target) const {
     return false;

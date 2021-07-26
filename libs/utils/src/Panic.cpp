@@ -122,7 +122,7 @@ void TPanic<T>::buildMessage() {
 #else
     type = "Panic";
 #endif
-    m_msg = panicString(std::move(type), m_function, m_line, m_file, m_reason.c_str());
+    m_msg = panicString(type, m_function, m_line, m_file, m_reason.c_str());
 }
 
 UTILS_ALWAYS_INLINE
@@ -149,7 +149,7 @@ void TPanic<T>::panic(char const* function, char const* file, int line, const ch
 
 namespace details {
 
-void logAndPanic(char const* function, char const* file, int line, const char* format, ...) noexcept {
+void panicLog(char const* function, char const* file, int line, const char* format, ...) noexcept {
     va_list args;
     va_start(args, format);
     std::string reason(formatString(format, args));
