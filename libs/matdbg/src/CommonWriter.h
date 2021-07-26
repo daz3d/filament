@@ -29,6 +29,8 @@
 #include <matdbg/JsonWriter.h>
 #include <matdbg/ShaderInfo.h>
 
+#include <string>
+
 namespace filament {
 namespace matdbg {
 
@@ -195,6 +197,13 @@ const char* toString(backend::SamplerType type) noexcept {
 }
 
 inline
+const char* toString(backend::SubpassType type) noexcept {
+    switch (type) {
+        case backend::SubpassType::SUBPASS_INPUT: return "subpassInput";
+    }
+}
+
+inline
 const char* toString(backend::Precision precision) noexcept {
     switch (precision) {
         case backend::Precision::LOW: return "lowp";
@@ -213,6 +222,10 @@ const char* toString(backend::SamplerFormat format) noexcept {
         case backend::SamplerFormat::SHADOW: return "shadow";
     }
 }
+
+// Returns a human-readable variant description.
+// For example: DYN|DIR
+std::string formatVariantString(uint8_t variant, MaterialDomain domain) noexcept;
 
 } // namespace matdbg
 } // namespace filament

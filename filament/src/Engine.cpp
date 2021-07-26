@@ -17,7 +17,10 @@
 #include "details/Engine.h"
 
 #include "MaterialParser.h"
+#include "ResourceAllocator.h"
 
+#include "backend/DriverEnums.h"
+#include "details/BufferObject.h"
 #include "details/DFG.h"
 #include "details/VertexBuffer.h"
 #include "details/Fence.h"
@@ -34,9 +37,6 @@
 #include "details/Texture.h"
 #include "details/View.h"
 
-#include "fg/ResourceAllocator.h"
-
-
 #include <private/filament/SibGenerator.h>
 
 #include <filament/MaterialEnums.h>
@@ -45,6 +45,7 @@
 #include <utils/Log.h>
 #include <utils/Panic.h>
 #include <utils/Systrace.h>
+#include <utils/debug.h>
 
 #include <memory>
 
@@ -63,9 +64,6 @@ FEngine* FEngine::create(Backend backend, Platform* platform, void* sharedGLCont
     SYSTRACE_CALL();
 
     FEngine* instance = new FEngine(backend, platform, sharedGLContext);
-
-    slog.i << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << instance << " "
-            << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)") << io::endl;
 
     // initialize all fields that need an instance of FEngine
     // (this cannot be done safely in the ctor)
@@ -107,6 +105,51 @@ FEngine* FEngine::create(Backend backend, Platform* platform, void* sharedGLCont
     return instance;
 }
 
+#if UTILS_HAS_THREADING
+
+void FEngine::createAsync(CreateCallback callback, void* user,
+        Backend backend, Platform* platform, void* sharedGLContext) {
+    SYSTRACE_ENABLE();
+    SYSTRACE_CALL();
+    FEngine* instance = new FEngine(backend, platform, sharedGLContext);
+
+    // start the driver thread
+    instance->mDriverThread = std::thread(&FEngine::loop, instance);
+
+    // launch a thread to call the callback -- so it can't do any damage.
+    std::thread callbackThread = std::thread([instance, callback, user]() {
+        instance->mDriverBarrier.await();
+        callback(user, instance);
+    });
+
+    // let the callback thread die on its own
+    callbackThread.detach();
+}
+
+FEngine* FEngine::getEngine(void* token) {
+
+    FEngine* instance = static_cast<FEngine*>(token);
+
+    ASSERT_PRECONDITION(instance->mMainThreadId == std::this_thread::get_id(),
+            "Engine::createAsync() and Engine::getEngine() must be called on the same thread.");
+
+    // we use mResourceAllocator as a proxy for "am I already initialized"
+    if (!instance->mResourceAllocator) {
+        if (UTILS_UNLIKELY(!instance->mDriver)) {
+            // something went horribly wrong during driver initialization
+            instance->mDriverThread.join();
+            return nullptr;
+        }
+
+        // now we can initialize the largest part of the engine
+        instance->init();
+    }
+
+    return instance;
+}
+
+#endif
+
 // these must be static because only a pointer is copied to the render stream
 // Note that these coordinates are specified in OpenGL clip space. Other backends can transform
 // these in the vertex shader as needed.
@@ -131,12 +174,25 @@ FEngine::FEngine(Backend backend, Platform* platform, void* sharedGLContext) :
         mCameraManager(*this),
         mCommandBufferQueue(CONFIG_MIN_COMMAND_BUFFERS_SIZE, CONFIG_COMMAND_BUFFERS_SIZE),
         mPerRenderPassAllocator("per-renderpass allocator", CONFIG_PER_RENDER_PASS_ARENA_SIZE),
+        mJobSystem(getJobSystemThreadPoolSize()),
         mEngineEpoch(std::chrono::steady_clock::now()),
-        mDriverBarrier(1)
+        mDriverBarrier(1),
+        mMainThreadId(std::this_thread::get_id())
 {
     // we're assuming we're on the main thread here.
     // (it may not be the case)
     mJobSystem.adopt();
+
+    slog.i << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
+           << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)") << io::endl;
+}
+
+uint32_t FEngine::getJobSystemThreadPoolSize() noexcept {
+    // 1 thread for the user, 1 thread for the backend
+    int threadCount = std::thread::hardware_concurrency() - 2;
+    // make sure we have at least 1 thread though
+    threadCount = std::max(1, threadCount);
+    return threadCount;
 }
 
 /*
@@ -151,7 +207,7 @@ void FEngine::init() {
     mCommandStream = CommandStream(*mDriver, mCommandBufferQueue.getCircularBuffer());
     DriverApi& driverApi = getDriverApi();
 
-    mResourceAllocator = new fg::ResourceAllocator(driverApi);
+    mResourceAllocator = new ResourceAllocator(driverApi);
 
     mFullScreenTriangleVb = upcast(VertexBuffer::Builder()
             .vertexCount(3)
@@ -172,8 +228,7 @@ void FEngine::init() {
 
     mFullScreenTriangleRph = driverApi.createRenderPrimitive();
     driverApi.setRenderPrimitiveBuffer(mFullScreenTriangleRph,
-            mFullScreenTriangleVb->getHwHandle(), mFullScreenTriangleIb->getHwHandle(),
-            mFullScreenTriangleVb->getDeclaredAttributes().getValue());
+            mFullScreenTriangleVb->getHwHandle(), mFullScreenTriangleIb->getHwHandle());
     driverApi.setRenderPrimitiveRange(mFullScreenTriangleRph, PrimitiveType::TRIANGLES,
             0, 0, 2, (uint32_t)mFullScreenTriangleIb->getIndexCount());
 
@@ -192,7 +247,6 @@ void FEngine::init() {
     // 3 bands = 9 float3
     const float sh[9 * 3] = { 0.0f };
     mDefaultIbl = upcast(IndirectLight::Builder()
-            .reflections(mDefaultIblTexture)
             .irradiance(3, reinterpret_cast<const float3*>(sh))
             .build(*this));
 
@@ -207,8 +261,6 @@ void FEngine::init() {
     mPostProcessManager.init();
     mLightManager.init(*this);
     mDFG = std::make_unique<DFG>(*this);
-
-    mMainThreadId = std::this_thread::get_id();
 }
 
 FEngine::~FEngine() noexcept {
@@ -230,7 +282,7 @@ void FEngine::shutdown() {
 
 #ifndef NDEBUG
     // print out some statistics about this run
-    size_t wm = mCommandBufferQueue.getHigWatermark();
+    size_t wm = mCommandBufferQueue.getHighWatermark();
     size_t wmpct = wm / (CONFIG_COMMAND_BUFFERS_SIZE / 100);
     slog.d << "CircularBuffer: High watermark "
            << wm / 1024 << " KiB (" << wmpct << "%)" << io::endl;
@@ -276,6 +328,7 @@ void FEngine::shutdown() {
     // this must be done after Skyboxes and before materials
     destroy(mSkyboxMaterial);
 
+    cleanupResourceList(mBufferObjects);
     cleanupResourceList(mIndexBuffers);
     cleanupResourceList(mVertexBuffers);
     cleanupResourceList(mTextures);
@@ -326,13 +379,13 @@ void FEngine::prepare() {
     // skipped is the UBO hasn't changed. Still we could have a lot of these.
     FEngine::DriverApi& driver = getDriverApi();
     for (auto& materialInstanceList : mMaterialInstances) {
-        for (auto& item : materialInstanceList.second) {
+        for (const auto& item : materialInstanceList.second) {
             item->commit(driver);
         }
     }
 
     // Commit default material instances.
-    for (auto& material : mMaterials) {
+    for (const auto& material : mMaterials) {
         material->getDefaultInstance()->commit(driver);
     }
 }
@@ -341,17 +394,13 @@ void FEngine::gc() {
     // Note: this runs in a Job
 
     JobSystem& js = mJobSystem;
-    auto parent = js.createJob();
+    auto *parent = js.createJob();
     auto em = std::ref(mEntityManager);
 
-    js.run(jobs::createJob(js, parent, &FRenderableManager::gc, &mRenderableManager, em),
-            JobSystem::DONT_SIGNAL);
-    js.run(jobs::createJob(js, parent, &FLightManager::gc, &mLightManager, em),
-            JobSystem::DONT_SIGNAL);
-    js.run(jobs::createJob(js, parent, &FTransformManager::gc, &mTransformManager, em),
-            JobSystem::DONT_SIGNAL);
-    js.run(jobs::createJob(js, parent, &FCameraManager::gc, &mCameraManager, em),
-            JobSystem::DONT_SIGNAL);
+    js.run(jobs::createJob(js, parent, &FRenderableManager::gc, &mRenderableManager, em));
+    js.run(jobs::createJob(js, parent, &FLightManager::gc, &mLightManager, em));
+    js.run(jobs::createJob(js, parent, &FTransformManager::gc, &mTransformManager, em));
+    js.run(jobs::createJob(js, parent, &FCameraManager::gc, &mCameraManager, em));
 
     js.runAndWait(parent);
 }
@@ -504,6 +553,10 @@ inline T* FEngine::create(ResourceList<T>& list, typename T::Builder const& buil
     return p;
 }
 
+FBufferObject* FEngine::createBufferObject(const BufferObject::Builder& builder) noexcept {
+    return create(mBufferObjects, builder);
+}
+
 FVertexBuffer* FEngine::createVertexBuffer(const VertexBuffer::Builder& builder) noexcept {
     return create(mVertexBuffers, builder);
 }
@@ -554,8 +607,8 @@ FRenderer* FEngine::createRenderer() noexcept {
 }
 
 FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
-        const char* name) noexcept {
-    FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, material, name);
+        const FMaterialInstance* other, const char* name) noexcept {
+    FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, other, name);
     if (p) {
         auto pos = mMaterialInstances.emplace(material, "MaterialInstance");
         pos.first->second.insert(p);
@@ -592,6 +645,13 @@ FFence* FEngine::createFence(FFence::Type type) noexcept {
 }
 
 FSwapChain* FEngine::createSwapChain(void* nativeWindow, uint64_t flags) noexcept {
+    if (UTILS_UNLIKELY(flags & backend::SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER)) {
+        // If this flag is set, then the nativeWindow is a CVPixelBufferRef.
+        // The call to setupExternalImage is synchronous, and allows the driver to take ownership of
+        // the buffer on this thread.
+        // For non-Metal backends, this is a no-op.
+        getDriverApi().setupExternalImage(nativeWindow);
+    }
     FSwapChain* p = mHeapAllocator.make<FSwapChain>(*this, nativeWindow, flags);
     if (p) {
         mSwapChains.insert(p);
@@ -675,6 +735,10 @@ bool FEngine::terminateAndDestroy(const T* ptr, ResourceList<T, L>& list) {
 
 // -----------------------------------------------------------------------------------------------
 
+bool FEngine::destroy(const FBufferObject* p) {
+    return terminateAndDestroy(p, mBufferObjects);
+}
+
 bool FEngine::destroy(const FVertexBuffer* p) {
     return terminateAndDestroy(p, mVertexBuffers);
 }
@@ -747,7 +811,7 @@ bool FEngine::destroy(const FMaterial* ptr) {
 bool FEngine::destroy(const FMaterialInstance* ptr) {
     if (ptr == nullptr) return true;
     auto pos = mMaterialInstances.find(ptr->getMaterial());
-    assert(pos != mMaterialInstances.cend());
+    assert_invariant(pos != mMaterialInstances.cend());
     if (pos != mMaterialInstances.cend()) {
         return terminateAndDestroy(ptr, pos->second);
     }
@@ -765,7 +829,7 @@ void FEngine::destroy(Entity e) {
 
 void* FEngine::streamAlloc(size_t size, size_t alignment) noexcept {
     // we allow this only for small allocations
-    if (size > 1024) {
+    if (size > 65536) {
         return nullptr;
     }
     return getDriverApi().allocate(size, alignment);
@@ -809,6 +873,17 @@ void Engine::destroy(Engine* engine) {
     FEngine::destroy(upcast(engine));
 }
 
+#if UTILS_HAS_THREADING
+void Engine::createAsync(Engine::CreateCallback callback, void* user, Backend backend,
+        Platform* platform, void* sharedGLContext) {
+    FEngine::createAsync(callback, user, backend, platform, sharedGLContext);
+}
+
+Engine* Engine::getEngine(void* token) {
+    return FEngine::getEngine(token);
+}
+#endif
+
 void Engine::destroy(Engine** pEngine) {
     if (pEngine) {
         Engine* engine = *pEngine;
@@ -827,6 +902,10 @@ const Material* Engine::getDefaultMaterial() const noexcept {
 
 Backend Engine::getBackend() const noexcept {
     return upcast(this)->getBackend();
+}
+
+Platform* Engine::getPlatform() const noexcept {
+    return upcast(this)->getPlatform();
 }
 
 Renderer* Engine::createRenderer() noexcept {
@@ -863,6 +942,10 @@ SwapChain* Engine::createSwapChain(void* nativeWindow, uint64_t flags) noexcept 
 
 SwapChain* Engine::createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept {
     return upcast(this)->createSwapChain(width, height, flags);
+}
+
+bool Engine::destroy(const BufferObject* p) {
+    return upcast(this)->destroy(upcast(p));
 }
 
 bool Engine::destroy(const VertexBuffer* p) {
@@ -933,6 +1016,10 @@ void Engine::flushAndWait() {
     upcast(this)->flushAndWait();
 }
 
+utils::EntityManager& Engine::getEntityManager() noexcept {
+    return upcast(this)->getEntityManager();
+}
+
 RenderableManager& Engine::getRenderableManager() noexcept {
     return upcast(this)->getRenderableManager();
 }
@@ -963,16 +1050,6 @@ utils::JobSystem& Engine::getJobSystem() noexcept {
 
 DebugRegistry& Engine::getDebugRegistry() noexcept {
     return upcast(this)->getDebugRegistry();
-}
-
-Camera* Engine::createCamera() noexcept {
-    return createCamera(upcast(this)->getEntityManager().create());
-}
-
-void Engine::destroy(const Camera* camera) {
-    Entity e = camera->getEntity();
-    destroyCameraComponent(e);
-    upcast(this)->getEntityManager().destroy(e);
 }
 
 } // namespace filament

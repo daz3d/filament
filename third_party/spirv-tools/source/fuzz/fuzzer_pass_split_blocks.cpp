@@ -23,12 +23,11 @@ namespace spvtools {
 namespace fuzz {
 
 FuzzerPassSplitBlocks::FuzzerPassSplitBlocks(
-    opt::IRContext* ir_context, FactManager* fact_manager,
+    opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
     protobufs::TransformationSequence* transformations)
-    : FuzzerPass(ir_context, fact_manager, fuzzer_context, transformations) {}
-
-FuzzerPassSplitBlocks::~FuzzerPassSplitBlocks() = default;
+    : FuzzerPass(ir_context, transformation_context, fuzzer_context,
+                 transformations) {}
 
 void FuzzerPassSplitBlocks::Apply() {
   // Gather up pointers to all the blocks in the module.  We are then able to
@@ -95,10 +94,7 @@ void FuzzerPassSplitBlocks::Apply() {
     // If the position we have chosen turns out to be a valid place to split
     // the block, we apply the split. Otherwise the block just doesn't get
     // split.
-    if (transformation.IsApplicable(GetIRContext(), *GetFactManager())) {
-      transformation.Apply(GetIRContext(), GetFactManager());
-      *GetTransformations()->add_transformation() = transformation.ToMessage();
-    }
+    MaybeApplyTransformation(transformation);
   }
 }
 

@@ -26,6 +26,7 @@
 #include "components/RenderableManager.h"
 
 #include "details/Allocators.h"
+#include "details/BufferObject.h"
 #include "details/Camera.h"
 #include "details/DebugRegistry.h"
 #include "details/Fence.h"
@@ -59,6 +60,7 @@
 namespace filament {
 namespace matdbg {
 class DebugServer;
+using MaterialKey = uint32_t;
 } // namespace matdbg
 } // namespace filament
 #endif
@@ -72,6 +74,7 @@ class DebugServer;
 
 #include <chrono>
 #include <memory>
+#include <random>
 #include <unordered_map>
 
 namespace filament {
@@ -84,10 +87,6 @@ class Driver;
 class Program;
 } // namespace driver
 
-namespace fg {
-class ResourceAllocator;
-} // namespace fg
-
 class FFence;
 class FMaterialInstance;
 class FRenderer;
@@ -96,6 +95,7 @@ class FSwapChain;
 class FView;
 
 class DFG;
+class ResourceAllocator;
 
 /*
  * Concrete implementation of the Engine interface. This keeps track of all hardware resources
@@ -131,6 +131,14 @@ public:
 public:
     static FEngine* create(Backend backend = Backend::DEFAULT,
             Platform* platform = nullptr, void* sharedGLContext = nullptr);
+
+#if UTILS_HAS_THREADING
+    static void createAsync(CreateCallback callback, void* user,
+            Backend backend = Backend::DEFAULT,
+            Platform* platform = nullptr, void* sharedGLContext = nullptr);
+
+    static FEngine* getEngine(void* token);
+#endif
 
     static void destroy(FEngine* engine);
 
@@ -202,8 +210,12 @@ public:
         return mBackend;
     }
 
-    fg::ResourceAllocator& getResourceAllocator() noexcept {
-        assert(mResourceAllocator);
+    Platform* getPlatform() const noexcept {
+        return mPlatform;
+    }
+
+    ResourceAllocator& getResourceAllocator() noexcept {
+        assert_invariant(mResourceAllocator);
         return *mResourceAllocator;
     }
 
@@ -217,6 +229,7 @@ public:
     template <typename T>
     T* create(ResourceList<T>& list, typename T::Builder const& builder) noexcept;
 
+    FBufferObject* createBufferObject(const BufferObject::Builder& builder) noexcept;
     FVertexBuffer* createVertexBuffer(const VertexBuffer::Builder& builder) noexcept;
     FIndexBuffer* createIndexBuffer(const IndexBuffer::Builder& builder) noexcept;
     FIndirectLight* createIndirectLight(const IndirectLight::Builder& builder) noexcept;
@@ -231,7 +244,8 @@ public:
     void createLight(const LightManager::Builder& builder, utils::Entity entity);
 
     FRenderer* createRenderer() noexcept;
-    FMaterialInstance* createMaterialInstance(const FMaterial* material, const char* name) noexcept;
+    FMaterialInstance* createMaterialInstance(const FMaterial* material,
+            const FMaterialInstance* other, const char* name) noexcept;
 
     FScene* createScene() noexcept;
     FView* createView() noexcept;
@@ -244,6 +258,7 @@ public:
     void destroyCameraComponent(utils::Entity entity) noexcept;
 
 
+    bool destroy(const FBufferObject* p);
     bool destroy(const FVertexBuffer* p);
     bool destroy(const FFence* p);
     bool destroy(const FIndexBuffer* p);
@@ -266,6 +281,17 @@ public:
 
     // flush the current buffer
     void flush();
+
+    // flush the current buffer based on some heuristics
+    void flushIfNeeded() {
+        auto counter = mFlushCounter + 1;
+        if (UTILS_LIKELY(counter < 128)) {
+            mFlushCounter = counter;
+        } else {
+            mFlushCounter = 0;
+            flush();
+        }
+    }
 
     /**
      * Processes the platform's event queue when called from the platform's event-handling thread.
@@ -294,6 +320,10 @@ public:
 
     utils::JobSystem& getJobSystem() noexcept {
         return mJobSystem;
+    }
+
+    std::default_random_engine& getRandomEngine() {
+        return mRandomEngine;
     }
 
 private:
@@ -328,8 +358,9 @@ private:
     FTransformManager mTransformManager;
     FLightManager mLightManager;
     FCameraManager mCameraManager;
-    fg::ResourceAllocator* mResourceAllocator = nullptr;
+    ResourceAllocator* mResourceAllocator = nullptr;
 
+    ResourceList<FBufferObject> mBufferObjects{ "BufferObject" };
     ResourceList<FRenderer> mRenderers{ "Renderer" };
     ResourceList<FView> mViews{ "View" };
     ResourceList<FScene> mScenes{ "Scene" };
@@ -355,11 +386,15 @@ private:
     std::thread mDriverThread;
     backend::CommandBufferQueue mCommandBufferQueue;
     DriverApi mCommandStream;
+    uint32_t mFlushCounter = 0;
 
     LinearAllocatorArena mPerRenderPassAllocator;
     HeapAllocatorArena mHeapAllocator;
 
     utils::JobSystem mJobSystem;
+    static uint32_t getJobSystemThreadPoolSize() noexcept;
+
+    std::default_random_engine mRandomEngine;
 
     Epoch mEngineEpoch;
 
@@ -385,7 +420,6 @@ public:
         struct {
             bool far_uses_shadowcasters = true;
             bool focus_shadowcasters = true;
-            bool checkerboard = false;
             bool lispsm = true;
             bool visualize_cascades = false;
             bool tightly_bound_scene = true;
@@ -398,7 +432,12 @@ public:
         struct {
             bool camera_at_origin = true;
         } view;
-         matdbg::DebugServer* server = nullptr;
+        struct {
+            // When set to true, the backend will attempt to capture the next frame and write the
+            // capture to file. At the moment, only supported by the Metal backend.
+            bool doFrameCapture = false;
+        } renderer;
+        matdbg::DebugServer* server = nullptr;
     } debug;
 };
 

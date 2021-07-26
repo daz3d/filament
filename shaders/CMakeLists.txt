@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(shaders C ASM)
 
 set(TARGET shaders)
@@ -41,6 +41,7 @@ set(SHADERS
         src/post_process_inputs.fs
         src/post_process_inputs.vs
         src/shading_lit.fs
+        src/shading_lit_custom.fs
         src/shading_model_cloth.fs
         src/shading_model_standard.fs
         src/shading_model_subsurface.fs
@@ -53,7 +54,6 @@ set(SHADERS
 # These files aren't part of libshaders, but are included by materials inside
 # filament/src/materials:
 #
-# fxaa.fs
 # tone_mapping.fs
 # conversion_functions.fs
 # dithering.fs

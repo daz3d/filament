@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.google.android.filament:filament-android:1.8.0'
+    implementation 'com.google.android.filament:filament-android:1.11.0'
 }
 ```
 
@@ -57,6 +57,14 @@ A runtime material builder/compiler. This library is large but contains a full s
 
 [![filamat-android-lite](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android-lite/badge.svg?subject=filamat-android-lite)](https://maven-badges.herokuapp.com/maven-central/com.google.android.filament/filamat-android-lite)  
 A much smaller alternative to `filamat-android` that can only generate OpenGL shaders. It does not provide validation or optimizations.
+
+### iOS
+
+iOS projects can use CocoaPods to install the latest release:
+
+```
+pod 'Filament', '~> 1.11.0'
+```
 
 ### Snapshots
 
@@ -107,7 +115,7 @@ Here are a few screenshots of applications that use Filament in production:
 ### APIs
 
 - Native C++ API for Android, iOS, Linux, macOS and Windows
-- Java/JNI API for Android, Linux, macOS and Windows
+- Java/JNI API for Android
 - JavaScript API
 
 ### Backends
@@ -123,29 +131,75 @@ Here are a few screenshots of applications that use Filament in production:
 - Clustered forward renderer
 - Cook-Torrance microfacet specular BRDF
 - Lambertian diffuse BRDF
+- Custom lighting/surface shading
 - HDR/linear lighting
 - Metallic workflow
 - Clear coat
 - Anisotropic lighting
 - Approximated translucent (subsurface) materials
-- Cloth shading
+- Cloth/fabric/sheen shading
 - Normal mapping & ambient occlusion mapping
 - Image-based lighting
 - Physically-based camera (shutter speed, sensitivity and aperture)
 - Physical light units
 - Point lights, spot lights and directional light
+- Specular anti-aliasing
 - Spot and directional light shadows
+- Cascaded shadows
+- EVSM or PCF shadows
+- Transparent shadows
 - Contact shadows
 - Screen-space ambient occlusion
 - Screen-space refraction
 - Global fog
+- Dynamic resolution
+
+### Post processing
+
 - HDR bloom
 - Depth of field bokeh
 - Multiple tone mappers: ACES, filmic, etc.
 - Color grading: white balance, channel mixer, shadows/mid-tones/highlights, ASC CDL,
   contrast, saturation, etc.
-- FXAA, MSAA and specular anti-aliasing
-- Dynamic resolution
+- TAA, FXAA, MSAA
+- Screen-space lens flares
+
+### glTF 2.0
+
+- Encodings
+  - [x] Embeded
+  - [x] Binary
+
+- Primitive Types
+  - [x] Points
+  - [x] Lines
+  - [ ] Line Loop
+  - [ ] Line Strip
+  - [x] Triangles
+  - [ ] Triangle Strip
+  - [ ] Triangle Fan
+
+- Animation
+  - [x] Transform animation
+  - [x] Linear interpolation
+  - [x] Morph animation
+    - [x] Sparse accessor
+  - [x] Skin animation
+  - [x] Joint animation
+
+- Extensions
+  - [x] KHR_draco_mesh_compression
+  - [x] KHR_lights_punctual
+  - [x] KHR_materials_clearcoat
+  - [x] KHR_materials_ior
+  - [x] KHR_materials_pbrSpecularGlossiness
+  - [x] KHR_materials_sheen
+  - [x] KHR_materials_transmission
+  - [x] KHR_materials_unlit
+  - [x] KHR_materials_volume
+  - [x] KHR_mesh_quantization
+  - [x] KHR_texture_transform
+
 
 ## Rendering with Filament
 
@@ -213,20 +267,6 @@ For complete examples of Linux, macOS and Windows Filament applications, look at
 in the `samples/` directory. These samples are all based on `samples/app/` which contains the code
 that creates a native window with SDL2 and initializes the Filament engine, renderer and views.
 
-### Java on Linux, macOS and Windows
-
-After building Filament, you can use `filament-java.jar` and its companion `filament-jni` native
-library to use Filament in desktop Java applications.
-
-You must always first initialize Filament by calling `Filament.init()`.
-
-You can use Filament either with AWT or Swing, using respectively a `FilamentCanvas` or a
-`FilamentPanel`.
-
-Following the steps above (how to use Filament from native code), create an `Engine` and a
-`Renderer`, but instead of calling `beginFrame` and `endFrame` on the renderer itself, call
-these methods on `FilamentCanvas` or `FilamentPanel`.
-
 ### Android
 
 See `android/samples` for examples of how to use Filament on Android.
@@ -243,7 +283,7 @@ creating the swap chain in the `onNativeWindowChanged()` callback.
 
 ### iOS
 
-Filament is supported on iOS 12.0 and above. See `ios/samples` for examples of using Filament on
+Filament is supported on iOS 11.0 and above. See `ios/samples` for examples of using Filament on
 iOS.
 
 Filament on iOS is largely the same as native rendering with C++. A `CAEAGLLayer` or `CAMetalLayer`
@@ -278,9 +318,9 @@ and tools.
 - `docs`:                     Documentation
   - `math`:                   Mathematica notebooks used to explore BRDFs, equations, etc.
 - `filament`:                 Filament rendering engine (minimal dependencies)
+  - `backend`:                Rendering backends/drivers (Vulkan, Metal, OpenGL/ES)
 - `ide`:                      Configuration files for IDEs (CLion, etc.)
 - `ios`:                      Sample projects for iOS
-- `java`:                     Java bindings for Filament libraries
 - `libs`:                     Libraries
   - `bluegl`:                 OpenGL bindings for macOS, Linux and Windows
   - `bluevk`:                 Vulkan bindings for macOS, Linux, Windows and Android
@@ -300,6 +340,7 @@ and tools.
   - `math`:                   Math library
   - `mathio`:                 Math types support for output streams
   - `utils`:                  Utility library (threads, memory, data structures, etc.)
+  - `viewer`:                 glTF viewer library (requires gltfio)
 - `samples`:                  Sample desktop applications
 - `shaders`:                  Shaders used by `filamat` and `matc`
 - `third_party`:              External libraries and assets

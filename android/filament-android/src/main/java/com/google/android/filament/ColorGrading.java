@@ -88,6 +88,16 @@ public class ColorGrading {
     long mNativeObject;
 
     /**
+     * Color grading quality level.
+     */
+    public enum QualityLevel {
+        LOW,
+        MEDIUM,
+        HIGH,
+        ULTRA
+    }
+
+    /**
      * List of available tone-mapping operators.
      */
     public enum ToneMapping {
@@ -99,15 +109,16 @@ public class ColorGrading {
         ACES,
         /** Filmic tone mapping, modelled after ACES but applied in sRGB space. */
         FILMIC,
-        /** Filmic tone mapping, with more contrast and saturation. */
-        UCHIMURA,
+        /** Exposure value invariant luminance scaling tone mapping, offers the best behaviors in high intensity areas. */
+        EVILS,
         /** Reinhard luma-based tone mapping. */
         REINHARD,
         /** Tone mapping used to validate/debug scene exposure. */
         DISPLAY_RANGE,
     }
 
-    ColorGrading(long colorGrading) {
+    // NOTE: This constructor is public only so that filament-utils can use it.
+    public ColorGrading(long colorGrading) {
         mNativeObject = colorGrading;
     }
 
@@ -125,6 +136,24 @@ public class ColorGrading {
         public Builder() {
             mNativeBuilder = nCreateBuilder();
             mFinalizer = new BuilderFinalizer(mNativeBuilder);
+        }
+
+        /**
+         * Sets the quality level of the color grading. When color grading is implemented using
+         * a 3D LUT, the quality level may impact the resolution and bit depth of the backing
+         * 3D texture. For instance, a low quality level will use a 16x16x16 10 bit LUT, a medium
+         * quality level will use a 32x32x32 10 bit LUT, a high quality will use a 32x32x32 16 bit
+         * LUT, and a ultra quality will use a 64x64x64 16 bit LUT.
+         *
+         * The default quality is {@link QualityLevel#MEDIUM}.
+         *
+         * @param qualityLevel The desired quality of the color grading process
+         *
+         * @return This Builder, for chaining calls
+         */
+        public Builder quality(QualityLevel qualityLevel) {
+            nBuilderQuality(mNativeBuilder, qualityLevel.ordinal());
+            return this;
         }
 
         /**
@@ -242,7 +271,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder shadowsMidtonesHighlights(
+        public Builder shadowsMidtonesHighlights(
                 @NonNull @Size(min = 4) float[] shadows,
                 @NonNull @Size(min = 4) float[] midtones,
                 @NonNull @Size(min = 4) float[] highlights,
@@ -281,7 +310,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder slopeOffsetPower(
+        public Builder slopeOffsetPower(
                 @NonNull @Size(min = 3) float[] slope,
                 @NonNull @Size(min = 3) float[] offset,
                 @NonNull @Size(min = 3) float[] power) {
@@ -332,7 +361,7 @@ public class ColorGrading {
          *
          * @return This Builder, for chaining calls
          */
-        Builder vibrance(float vibrance) {
+        public Builder vibrance(float vibrance) {
             nBuilderVibrance(mNativeBuilder, vibrance);
             return this;
         }
@@ -433,7 +462,8 @@ public class ColorGrading {
     private static native long nCreateBuilder();
     private static native void nDestroyBuilder(long nativeBuilder);
 
-    private static native void nBuilderToneMapping(long nativeBuilder, int ordinal);
+    private static native void nBuilderQuality(long nativeBuilder, int quality);
+    private static native void nBuilderToneMapping(long nativeBuilder, int toneMapper);
     private static native void nBuilderWhiteBalance(long nativeBuilder, float temperature, float tint);
     private static native void nBuilderChannelMixer(long nativeBuilder, float[] outRed, float[] outGreen, float[] outBlue);
     private static native void nBuilderShadowsMidtonesHighlights(long nativeBuilder, float[] shadows, float[] midtones, float[] highlights, float[] ranges);

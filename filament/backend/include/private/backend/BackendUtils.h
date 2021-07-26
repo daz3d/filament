@@ -18,8 +18,28 @@
 
 #include <stddef.h>
 
+#ifndef FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB
+#    define FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB 1
+#endif
+
 namespace filament {
 namespace backend {
+
+/**
+ * Returns true if the shader string requests the Google-style line directive extension.
+ */
+bool requestsGoogleLineDirectivesExtension(const char* shader, size_t length) noexcept;
+
+/**
+ * Edit a GLSL shader string in-place so any Google-style line directives are turned into regular
+ * line directives.
+ *
+ * E.g.:
+ * #line 100 "foobar.h"
+ * is transformed to (_ denotes a space)
+ * #line 100 __________
+ */
+void removeGoogleLineDirectives(char* shader, size_t length) noexcept;
 
 /**
  * Returns the number of bytes per pixel for the given format. For compressed texture formats,

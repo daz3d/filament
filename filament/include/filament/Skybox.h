@@ -104,15 +104,14 @@ public:
          */
         Builder& showSun(bool show) noexcept;
 
-
         /**
-         * Skybox intensity when no IndirectLight is set
+         * Skybox intensity when no IndirectLight is set on the Scene.
          *
-         * This call is ignored when an IndirectLight is set, otherwise it is used in its place.
-         *
+         * This call is ignored when an IndirectLight is set on the Scene, and the intensity
+         * of the IndirectLight is used instead.
          *
          * @param envIntensity  Scale factor applied to the skybox texel values such that
-         *                      the result is in cd/m^2 (lux) units (default = 30000)
+         *                      the result is in lux, or lumen/m^2 (default = 30000)
          *
          * @return This Builder, for chaining calls.
          *
@@ -167,9 +166,14 @@ public:
     uint8_t getLayerMask() const noexcept;
 
     /**
-     * Returns the skybox's intensity in cd/m^2.
+     * Returns the skybox's intensity in lux, or lumen/m^2.
      */
     float getIntensity() const noexcept;
+
+    /**
+     * @return the associated texture, or null if it does not exist
+     */
+    Texture const* getTexture() const noexcept;
 };
 
 } // namespace filament

@@ -23,6 +23,11 @@
 #include "MockIncluder.h"
 
 #include <utils/CString.h>
+#include <utils/JobSystem.h>
+
+#include <memory>
+
+using namespace utils;
 
 // -------------------------------------------------------------------------------------------------
 
@@ -115,6 +120,87 @@ TEST(IncludeParser, LineNumbers) {
         EXPECT_EQ(1, result[0].line);
         EXPECT_EQ(2, result[1].line);
         EXPECT_EQ(4, result[2].line);
+}
+
+TEST(IncludeParser, IncludeWithinStarComment) {
+    {
+        utils::CString code(R"(/* #include "foobar.h" */)");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(/* */ /*#include "foobar.h"*/)");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(/**/ /* /* #include "foobar.h" */ */)");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(/*#include "foobar.h")");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(/*   */ #include "foobar.h")");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(1, result.size());
+        EXPECT_STREQ("foobar.h", result[0].name.c_str());
+        EXPECT_EQ(8, result[0].startPosition);
+        EXPECT_EQ(19, result[0].length);
+        EXPECT_EQ(1, result[0].line);
+    }
+}
+
+TEST(IncludeParser, IncludeWithinSlashComment) {
+    {
+        utils::CString code(R"(// #include "foobar.h")");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(
+        //
+        // #include "foobar.h"
+        )");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code(R"(
+        //
+        // // #include "foobar.h"
+
+        )");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
+    {
+        utils::CString code("// comment\n#include \"foobar.h\"");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(1, result.size());
+        EXPECT_STREQ("foobar.h", result[0].name.c_str());
+        EXPECT_EQ(11, result[0].startPosition);
+        EXPECT_EQ(19, result[0].length);
+        EXPECT_EQ(2, result[0].line);
+    }
+}
+
+TEST(IncludeParser, IncludeWithinBothSlashStarComments) {
+    {
+        utils::CString code(R"(
+        // none of these are valid includes:
+        // #include "foobar.h"
+        /* #include "foobar.h" */
+        /* // #include "foobar.h" */
+        // /* #include "foobar.h" */
+        /* #include "foobar.h"
+        )");
+        auto result = filamat::parseForIncludes(code);
+        EXPECT_EQ(0, result.size());
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -387,15 +473,18 @@ TEST(IncludeResolver, MultipleIncludesSameLineLineDirective) {
 
 class MaterialBuilder : public ::testing::Test {
 protected:
-
+    std::unique_ptr<JobSystem> jobSystem;
     filamat::MaterialBuilder mBuilder;
 
     MaterialBuilder() {
+        jobSystem = std::make_unique<JobSystem>();
+        jobSystem->adopt();
         filamat::MaterialBuilder::init();
         mBuilder.optimization(filamat::MaterialBuilder::Optimization::NONE);
     }
 
     virtual ~MaterialBuilder() {
+        jobSystem->emancipate();
         filamat::MaterialBuilder::shutdown();
     }
 };
@@ -406,7 +495,7 @@ TEST_F(MaterialBuilder, NoIncluder) {
     )");
     mBuilder.material(shaderCode.c_str());
 
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
 
     // Shader code with an include should fail to compile if no includer is specified.
     EXPECT_FALSE(result.isValid());
@@ -426,7 +515,7 @@ TEST_F(MaterialBuilder, Include) {
     )");
     mBuilder.includeCallback(includer);
 
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
     EXPECT_TRUE(result.isValid());
 }
 
@@ -447,7 +536,7 @@ TEST_F(MaterialBuilder, IncludeVertex) {
     )");
     mBuilder.includeCallback(includer);
 
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
     EXPECT_TRUE(result.isValid());
 }
 
@@ -467,7 +556,7 @@ TEST_F(MaterialBuilder, IncludeWithinFunction) {
 
     mBuilder.includeCallback(includer);
 
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
     EXPECT_TRUE(result.isValid());
 }
 
@@ -480,11 +569,11 @@ TEST_F(MaterialBuilder, IncludeFailure) {
     MockIncluder includer;
     mBuilder.includeCallback(includer);
 
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
     EXPECT_FALSE(result.isValid());
 }
 
 TEST_F(MaterialBuilder, NoShaderCode) {
-    filamat::Package result = mBuilder.build();
+    filamat::Package result = mBuilder.build(*jobSystem);
     EXPECT_TRUE(result.isValid());
 }

@@ -23,7 +23,7 @@
 #include <math/fast.h>
 #include <math/scalar.h>
 
-#include <assert.h>
+#include <utils/debug.h>
 
 using namespace filament::math;
 using namespace utils;
@@ -42,7 +42,7 @@ struct LightManager::BuilderDetails {
     float mIntensity = 100000.0f;
     FLightManager::IntensityUnit mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;
     float3 mDirection = { 0.0f, -1.0f, 0.0f };
-    float2 mSpotInnerOuter = { (float) F_PI, (float) F_PI };
+    float2 mSpotInnerOuter = { f::PI, f::PI };
     float mSunAngle = 0.00951f; // 0.545° in radians
     float mSunHaloSize = 10.0f;
     float mSunHaloFalloff = 80.0f;
@@ -148,7 +148,7 @@ FLightManager::FLightManager(FEngine& engine) noexcept : mEngine(engine) {
 FLightManager::~FLightManager() {
     // all components should have been destroyed when we get here
     // (terminate should have been called from Engine's shutdown())
-    assert(mManager.getComponentCount() == 0);
+    assert_invariant(mManager.getComponentCount() == 0);
 }
 
 void FLightManager::init(FEngine& engine) noexcept {
@@ -161,7 +161,7 @@ void FLightManager::create(const FLightManager::Builder& builder, utils::Entity 
         destroy(entity);
     }
     Instance i = manager.addComponent(entity);
-    assert(i);
+    assert_invariant(i);
 
     if (i) {
         // This needs to happen before we call the set() methods below
@@ -171,22 +171,8 @@ void FLightManager::create(const FLightManager::Builder& builder, utils::Entity 
         lightType.shadowCaster = builder->mCastShadows;
         lightType.lightCaster = builder->mCastLight;
 
-        ShadowParams& shadowParams = manager[i].shadowParams;
-        shadowParams.options.mapSize = clamp(builder->mShadowOptions.mapSize, 0u, 2048u);
-        shadowParams.options.shadowCascades = clamp<uint8_t>(builder->mShadowOptions.shadowCascades, 1, CONFIG_MAX_SHADOW_CASCADES);
-        shadowParams.options.constantBias = clamp(builder->mShadowOptions.constantBias, 0.0f, 2.0f);
-        shadowParams.options.normalBias = clamp(builder->mShadowOptions.normalBias, 0.0f, 3.0f);
-        shadowParams.options.shadowFar = std::max(builder->mShadowOptions.shadowFar, 0.0f);
-        shadowParams.options.shadowNearHint = std::max(builder->mShadowOptions.shadowNearHint, 0.0f);
-        shadowParams.options.shadowFarHint = std::max(builder->mShadowOptions.shadowFarHint, 0.0f);
-        shadowParams.options.stable = builder->mShadowOptions.stable;
-        shadowParams.options.polygonOffsetConstant = builder->mShadowOptions.polygonOffsetConstant;
-        shadowParams.options.polygonOffsetSlope = builder->mShadowOptions.polygonOffsetSlope;
-        shadowParams.options.screenSpaceContactShadows = builder->mShadowOptions.screenSpaceContactShadows;
-        shadowParams.options.stepCount = builder->mShadowOptions.stepCount;
-        shadowParams.options.maxShadowDistance = builder->mShadowOptions.maxShadowDistance;
-
         // set default values by calling the setters
+        setShadowOptions(i, builder->mShadowOptions);
         setLocalPosition(i, builder->mPosition);
         setLocalDirection(i, builder->mDirection);
         setColor(i, builder->mColor);
@@ -227,14 +213,28 @@ void FLightManager::terminate() noexcept {
     }
 }
 
+void FLightManager::setShadowOptions(Instance i, ShadowOptions const& options) noexcept {
+    ShadowParams& params = mManager[i].shadowParams;
+    params.options = options;
+    params.options.mapSize = clamp(options.mapSize, 8u, 2048u);
+    params.options.shadowCascades = clamp<uint8_t>(options.shadowCascades, 1, CONFIG_MAX_SHADOW_CASCADES);
+    params.options.constantBias = clamp(options.constantBias, 0.0f, 2.0f);
+    params.options.normalBias = clamp(options.normalBias, 0.0f, 3.0f);
+    params.options.shadowFar = std::max(options.shadowFar, 0.0f);
+    params.options.shadowNearHint = std::max(options.shadowNearHint, 0.0f);
+    params.options.shadowFarHint = std::max(options.shadowFarHint, 0.0f);
+    params.options.vsm.msaaSamples = std::max(uint8_t(0), options.vsm.msaaSamples);
+    params.options.vsm.blurWidth = std::max(0.0f, options.vsm.blurWidth);
+}
+
 void FLightManager::setLocalPosition(Instance i, const float3& position) noexcept {
-    assert(i);
+    assert_invariant(i);
     auto& manager = mManager;
     manager[i].position = position;
 }
 
 void FLightManager::setLocalDirection(Instance i, float3 direction) noexcept {
-    assert(i);
+    assert_invariant(i);
     auto& manager = mManager;
     manager[i].direction = direction;
 }
@@ -262,9 +262,9 @@ void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit
             case Type::POINT:
                 if (unit == IntensityUnit::LUMEN_LUX) {
                     // li = lp / (4 * pi)
-                    luminousIntensity = luminousPower * float(F_1_PI) * 0.25f;
+                    luminousIntensity = luminousPower * f::ONE_OVER_PI * 0.25f;
                 } else {
-                    assert(unit == IntensityUnit::CANDELA);
+                    assert_invariant(unit == IntensityUnit::CANDELA);
                     // intensity specified directly in candela, no conversion needed
                     luminousIntensity = luminousPower;
                 }
@@ -275,13 +275,13 @@ void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit
                 float cosOuter = std::sqrt(spotParams.cosOuterSquared);
                 if (unit == IntensityUnit::LUMEN_LUX) {
                     // li = lp / (2 * pi * (1 - cos(cone_outer / 2)))
-                    luminousIntensity = luminousPower / (2.0f * float(F_PI) * (1.0f - cosOuter));
+                    luminousIntensity = luminousPower / (f::TAU * (1.0f - cosOuter));
                 } else {
-                    assert(unit == IntensityUnit::CANDELA);
+                    assert_invariant(unit == IntensityUnit::CANDELA);
                     // intensity specified directly in candela, no conversion needed
                     luminousIntensity = luminousPower;
                     // lp = li * (2 * pi * (1 - cos(cone_outer / 2)))
-                    luminousPower = luminousIntensity * (2.0f * float(F_PI) * (1.0f - cosOuter));
+                    luminousPower = luminousIntensity * (f::TAU * (1.0f - cosOuter));
                 }
                 spotParams.luminousPower = luminousPower;
                 break;
@@ -289,9 +289,9 @@ void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit
             case Type::SPOT:
                 if (unit == IntensityUnit::LUMEN_LUX) {
                     // li = lp / pi
-                    luminousIntensity = luminousPower * float(F_1_PI);
+                    luminousIntensity = luminousPower * f::ONE_OVER_PI;
                 } else {
-                    assert(unit == IntensityUnit::CANDELA);
+                    assert_invariant(unit == IntensityUnit::CANDELA);
                     // intensity specified directly in candela, no conversion needed
                     luminousIntensity = luminousPower;
                 }
@@ -315,8 +315,8 @@ void FLightManager::setSpotLightCone(Instance i, float inner, float outer) noexc
     auto& manager = mManager;
     if (i && isSpotLight(i)) {
         // clamp the inner/outer angles to pi
-        float innerClamped = std::min(std::abs(inner), float(F_PI_2));
-        float outerClamped = std::min(std::abs(outer), float(F_PI_2));
+        float innerClamped = std::min(std::abs(inner), f::PI_2);
+        float outerClamped = std::min(std::abs(outer), f::PI_2);
 
         // outer must always be bigger than inner
         outerClamped = std::max(innerClamped, outerClamped);
@@ -338,7 +338,7 @@ void FLightManager::setSpotLightCone(Instance i, float inner, float outer) noexc
         if (type == Type::FOCUSED_SPOT) {
             // li = lp / (2 * pi * (1 - cos(cone_outer / 2)))
             float luminousPower = spotParams.luminousPower;
-            float luminousIntensity = luminousPower / (2.0f * float(F_PI) * (1.0f - cosOuter));
+            float luminousIntensity = luminousPower / (f::TAU * (1.0f - cosOuter));
             manager[i].intensity = luminousIntensity;
         }
     }
@@ -347,7 +347,7 @@ void FLightManager::setSpotLightCone(Instance i, float inner, float outer) noexc
 void FLightManager::setSunAngularRadius(Instance i, float angularRadius) noexcept {
     if (i && isSunLight(i)) {
         angularRadius = clamp(angularRadius, 0.25f, 20.0f);
-        mManager[i].sunAngularRadius = angularRadius * float(F_PI / 180.0);
+        mManager[i].sunAngularRadius = angularRadius * f::DEG_TO_RAD;
     }
 }
 
@@ -367,6 +367,50 @@ void FLightManager::setShadowCaster(Instance i, bool shadowCaster) noexcept {
     if (i) {
         LightType& lightType = mManager[i].lightType;
         lightType.shadowCaster = shadowCaster;
+    }
+}
+
+float FLightManager::getSpotLightInnerCone(Instance i) const noexcept {
+    const auto& spotParams = getSpotParams(i);
+    float cosOuter = std::cos(spotParams.outerClamped);
+    float scale = spotParams.scaleOffset.x;
+    float inner = std::acos((1.0f / scale) + cosOuter);
+    return inner;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ShadowCascades utility methods
+// ------------------------------------------------------------------------------------------------
+
+void LightManager::ShadowCascades::computeUniformSplits(float splitPositions[3], uint8_t cascades) {
+    size_t s = 0;
+    cascades = max(cascades, (uint8_t) 4u);
+    for (size_t c = 1; c < cascades; c++) {
+        splitPositions[s++] = (float) c / cascades;
+    }
+}
+
+void LightManager::ShadowCascades::computeLogSplits(float splitPositions[3], uint8_t cascades,
+        float near, float far) {
+    size_t s = 0;
+    cascades = max(cascades, (uint8_t) 4u);
+    for (size_t c = 1; c < cascades; c++) {
+        splitPositions[s++] =
+            (near * std::pow(far / near, (float) c / cascades) - near) / (far - near);
+    }
+}
+
+void LightManager::ShadowCascades::computePracticalSplits(float splitPositions[3], uint8_t cascades,
+        float near, float far, float lambda) {
+    float uniformSplits[3];
+    float logSplits[3];
+    cascades = max(cascades, (uint8_t) 4u);
+    computeUniformSplits(uniformSplits, cascades);
+    computeLogSplits(logSplits, cascades, near, far);
+    size_t s = 0;
+    for (size_t c = 1; c < cascades; c++) {
+        splitPositions[s] = lambda * logSplits[s] + (1.0f - lambda) * uniformSplits[s];
+        s++;
     }
 }
 
@@ -435,7 +479,7 @@ void LightManager::setFalloff(Instance i, float radius) noexcept {
 }
 
 float LightManager::getFalloff(Instance i) const noexcept {
-    return upcast(this)->getSquaredFalloffInv(i);
+    return upcast(this)->getFalloff(i);
 }
 
 void LightManager::setSpotLightCone(Instance i, float inner, float outer) noexcept {
@@ -446,13 +490,17 @@ float LightManager::getSpotLightOuterCone(Instance i) const noexcept {
     return upcast(this)->getSpotParams(i).outerClamped;
 }
 
+float LightManager::getSpotLightInnerCone(Instance i) const noexcept {
+    return upcast(this)->getSpotLightInnerCone(i);
+}
+
 void LightManager::setSunAngularRadius(Instance i, float angularRadius) noexcept {
     upcast(this)->setSunAngularRadius(i, angularRadius);
 }
 
 float LightManager::getSunAngularRadius(Instance i) const noexcept {
     float radius = upcast(this)->getSunAngularRadius(i);
-    return radius * float(180.0 / F_PI);
+    return radius * f::RAD_TO_DEG;
 }
 
 void LightManager::setSunHaloSize(Instance i, float haloSize) noexcept {

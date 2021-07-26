@@ -44,16 +44,8 @@ static void BM_trig(benchmark::State& state) noexcept {
     {
         PerformanceCounters pc(state);
         for (auto _ : state) {
-            if (std::is_same<A, Vector>::value) {
-#pragma clang loop vectorize(enable)
-                for (size_t i = 0, c = data.size(); i < c; i++) {
-                    res[i] = f(data[i]);
-                }
-            } else if (std::is_same<A, Scalar>::value) {
-#pragma clang loop unroll(disable) vectorize(disable)
-                for (size_t i = 0, c = data.size(); i < c; i++) {
-                    res[i] = f(data[i]);
-                }
+            for (size_t i = 0, c = data.size(); i < c; i++) {
+                res[i] = f(data[i]);
             }
             benchmark::ClobberMemory();
             benchmark::DoNotOptimize(res);
@@ -81,16 +73,8 @@ static void BM_func(benchmark::State& state) noexcept {
     {
         PerformanceCounters pc(state);
         for (auto _ : state) {
-            if (std::is_same<A, Vector>::value) {
-#pragma clang loop vectorize(enable)
-                for (size_t i = 0, c = data.size(); i < c; i++) {
-                    res[i] = f(data[i]);
-                }
-            } else if (std::is_same<A, Scalar>::value) {
-#pragma clang loop unroll(disable) vectorize(disable)
-                for (size_t i = 0, c = data.size(); i < c; i++) {
-                    res[i] = f(data[i]);
-                }
+            for (size_t i = 0, c = data.size(); i < c; i++) {
+                res[i] = f(data[i]);
             }
             benchmark::ClobberMemory();
             benchmark::DoNotOptimize(res);
@@ -145,11 +129,6 @@ struct StdExp2dot2Log {
     float operator()(float v) { return std::exp(2.2f * std::log(v)); }
     static const char* label() { return "std::exp(2.2f * std::log(x))"; }
 };
-struct FastPow2dot2 {
-    using result_type = float;
-    float operator()(float v) { return fast::pow2dot2(v); }
-    static const char* label() { return "fast::pow2dot2"; }
-};
 
 struct Float16 {
     using result_type = half;
@@ -176,7 +155,5 @@ BENCHMARK_TEMPLATE(BM_func, Vector, FastISqrt);
 
 BENCHMARK_TEMPLATE(BM_func, Scalar, StdPow2dot2);
 BENCHMARK_TEMPLATE(BM_func, Scalar, StdExp2dot2Log);
-BENCHMARK_TEMPLATE(BM_func, Scalar, FastPow2dot2);
-BENCHMARK_TEMPLATE(BM_func, Vector, FastPow2dot2);
 
 BENCHMARK_TEMPLATE(BM_func, Scalar, Float16);

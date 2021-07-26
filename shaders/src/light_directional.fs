@@ -2,7 +2,7 @@
 // Directional light evaluation
 //------------------------------------------------------------------------------
 
-#if !defined(TARGET_MOBILE)
+#if FILAMENT_QUALITY < FILAMENT_QUALITY_HIGH
 #define SUN_AS_AREA_LIGHT
 #endif
 
@@ -35,6 +35,12 @@ void evaluateDirectionalLight(const MaterialInputs material,
 
     Light light = getDirectionalLight();
 
+#if defined(MATERIAL_CAN_SKIP_LIGHTING)
+    if (light.NoL <= 0.0) {
+        return;
+    }
+#endif
+
     float visibility = 1.0;
 #if defined(HAS_SHADOWING)
     if (light.NoL > 0.0) {
@@ -58,14 +64,17 @@ void evaluateDirectionalLight(const MaterialInputs material,
         #if defined(MATERIAL_HAS_AMBIENT_OCCLUSION)
         visibility *= computeMicroShadowing(light.NoL, material.ambientOcclusion);
         #endif
-    } else {
 #if defined(MATERIAL_CAN_SKIP_LIGHTING)
-        return;
+        if (visibility <= 0.0) {
+            return;
+        }
 #endif
     }
-#elif defined(MATERIAL_CAN_SKIP_LIGHTING)
-    if (light.NoL <= 0.0) return;
 #endif
 
+#if defined(MATERIAL_HAS_CUSTOM_SURFACE_SHADING)
+    color.rgb += customSurfaceShading(material, pixel, light, visibility);
+#else
     color.rgb += surfaceShading(pixel, light, visibility);
+#endif
 }

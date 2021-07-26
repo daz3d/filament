@@ -131,7 +131,7 @@ public class RenderableManager {
          * @param type specifies the topology of the primitive (e.g., PrimitiveType.TRIANGLES)
          * @param vertices specifies the vertex buffer, which in turn specifies a set of attributes
          * @param indices specifies the index buffer (either u16 or u32)
-         * @param offset specifies where in the index buffer to start reading (expressed as a number of bytes)
+         * @param offset specifies where in the index buffer to start reading (expressed as a number of indices)
          * @param minIndex specifies the minimum index contained in the index buffer
          * @param maxIndex specifies the maximum index contained in the index buffer
          * @param count number of indices to read (for triangles, this should be a multiple of 3)
@@ -268,6 +268,14 @@ public class RenderableManager {
 
         /**
          * Controls if this renderable casts shadows, false by default.
+         *
+         * If the View's shadow type is set to {@link View.ShadowType#VSM}, castShadows should only
+         * be disabled if either is true:
+         * <ul>
+         *   <li>{@link RenderableManager#setReceiveShadows} is also disabled</li>
+         *   <li>the object is guaranteed to not cast shadows on itself or other objects (for
+         *   example, a ground plane)</li>
+         * </ul>
          */
         @NonNull
         public Builder castShadows(boolean enabled) {

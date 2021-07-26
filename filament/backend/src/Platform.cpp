@@ -17,54 +17,56 @@
 #include <backend/Platform.h>
 
 #include <utils/Systrace.h>
+#include <utils/debug.h>
 
 #if defined(ANDROID)
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #include <sys/system_properties.h>
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3)
         #include "opengl/PlatformEGLAndroid.h"
     #endif
-    #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkAndroid.h"
     #endif
-#elif defined(SWIFTSHADER)
-    #include "opengl/PlatformEGL.h"
 #elif defined(IOS)
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3)
         #include "opengl/PlatformCocoaTouchGL.h"
     #endif
-    #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoaTouch.h"
     #endif
 #elif defined(__APPLE__)
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3) && !defined(FILAMENT_USE_SWIFTSHADER)
         #include "opengl/PlatformCocoaGL.h"
     #endif
-    #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoa.h"
     #endif
 #elif defined(__linux__)
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3) && !defined(FILAMENT_USE_SWIFTSHADER)
         #include "opengl/PlatformGLX.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkLinux.h"
     #endif
 #elif defined(WIN32)
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3) && !defined(FILAMENT_USE_SWIFTSHADER)
         #include "opengl/PlatformWGL.h"
     #endif
-    #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    #if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkWindows.h"
     #endif
 #elif defined(__EMSCRIPTEN__)
     #include "opengl/PlatformWebGL.h"
 #else
-    #ifndef FILAMENT_USE_EXTERNAL_GLES3
+    #if defined(FILAMENT_SUPPORTS_OPENGL) && !defined(FILAMENT_USE_EXTERNAL_GLES3)
         #include "opengl/PlatformDummyGL.h"
     #endif
 #endif
 
 #if defined (FILAMENT_SUPPORTS_METAL)
-    #include "metal/PlatformMetal.h"
+namespace filament::backend {
+filament::backend::DefaultPlatform* createDefaultMetalPlatform();
+}
 #endif
 
 #include "noop/PlatformNoop.h"
@@ -80,9 +82,26 @@ Platform::~Platform() noexcept = default;
 // createDriver(). The passed-in backend hint is replaced with the resolved backend.
 DefaultPlatform* DefaultPlatform::create(Backend* backend) noexcept {
     SYSTRACE_CALL();
-    assert(backend);
+    assert_invariant(backend);
+
+#if defined(ANDROID)
+    char scratch[PROP_VALUE_MAX + 1];
+    int length = __system_property_get("debug.filament.backend", scratch);
+    if (length > 0) {
+        *backend = Backend(atoi(scratch));
+    }
+#endif
+
     if (*backend == Backend::DEFAULT) {
+#if defined(__EMSCRIPTEN__)
         *backend = Backend::OPENGL;
+#elif defined(ANDROID)
+        *backend = Backend::OPENGL;
+#elif defined(IOS) || defined(__APPLE__)
+        *backend = Backend::METAL;
+#else
+        *backend = Backend::VULKAN;
+#endif
     }
     if (*backend == Backend::NOOP) {
         return new PlatformNoop();
@@ -108,29 +127,32 @@ DefaultPlatform* DefaultPlatform::create(Backend* backend) noexcept {
     }
     if (*backend == Backend::METAL) {
 #if defined(FILAMENT_SUPPORTS_METAL)
-        return new PlatformMetal();
+        return createDefaultMetalPlatform();
 #else
         return nullptr;
 #endif
     }
-    #if defined(FILAMENT_USE_EXTERNAL_GLES3)
-        return nullptr;
-    #elif defined(SWIFTSHADER)
-        return new PlatformEGL();
-    #elif defined(ANDROID)
-        return new PlatformEGLAndroid();
-    #elif defined(IOS)
-        return new PlatformCocoaTouchGL();
-    #elif defined(__APPLE__)
-        return new PlatformCocoaGL();
-    #elif defined(__linux__)
-        return new PlatformGLX();
-    #elif defined(WIN32)
-        return new PlatformWGL();
-    #elif defined(__EMSCRIPTEN__)
-        return new PlatformWebGL();
+    assert_invariant(*backend == Backend::OPENGL);
+    #if defined(FILAMENT_SUPPORTS_OPENGL)
+        #if defined(FILAMENT_USE_EXTERNAL_GLES3) || defined(FILAMENT_USE_SWIFTSHADER)
+            return nullptr;
+        #elif defined(ANDROID)
+            return new PlatformEGLAndroid();
+        #elif defined(IOS)
+            return new PlatformCocoaTouchGL();
+        #elif defined(__APPLE__)
+            return new PlatformCocoaGL();
+        #elif defined(__linux__)
+            return new PlatformGLX();
+        #elif defined(WIN32)
+            return new PlatformWGL();
+        #elif defined(__EMSCRIPTEN__)
+            return new PlatformWebGL();
+        #else
+            return new PlatformDummyGL();
+        #endif
     #else
-        return new PlatformDummyGL();
+        return nullptr;
     #endif
 }
 

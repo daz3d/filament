@@ -18,17 +18,21 @@
  #define TNT_FILAMENT_DRIVER_VULKANHANDLES_H
 
 #include "VulkanDriver.h"
-#include "VulkanBinder.h"
+#include "VulkanPipelineCache.h"
 #include "VulkanBuffer.h"
+#include "VulkanSwapChain.h"
+#include "VulkanTexture.h"
+#include "VulkanUtility.h"
 
 namespace filament {
 namespace backend {
 
 struct VulkanProgram : public HwProgram {
     VulkanProgram(VulkanContext& context, const Program& builder) noexcept;
+    VulkanProgram(VulkanContext& context, VkShaderModule vs, VkShaderModule fs) noexcept;
     ~VulkanProgram();
     VulkanContext& context;
-    VulkanBinder::ProgramBundle bundle;
+    VulkanPipelineCache::ProgramBundle bundle;
     Program::SamplerGroupInfo samplerGroupInfo;
 };
 
@@ -42,8 +46,9 @@ struct VulkanProgram : public HwProgram {
 // which are not representative when this is the default render target.
 struct VulkanRenderTarget : private HwRenderTarget {
     // Creates an offscreen render target.
-    VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height,
-            VulkanAttachment color[MRT::TARGET_COUNT], VulkanAttachment depthStencil[2]);
+    VulkanRenderTarget(VulkanContext& context, uint32_t width, uint32_t height, uint8_t samples,
+            VulkanAttachment color[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT], VulkanAttachment depthStencil[2],
+            VulkanStagePool& stagePool);
 
     // Creates a special "default" render target (i.e. associated with the swap chain)
     explicit VulkanRenderTarget(VulkanContext& context);
@@ -54,43 +59,56 @@ struct VulkanRenderTarget : private HwRenderTarget {
     void transformClientRectToPlatform(VkViewport* bounds) const;
     VkExtent2D getExtent() const;
     VulkanAttachment getColor(int target) const;
+    VulkanAttachment getMsaaColor(int target) const;
     VulkanAttachment getDepth() const;
-    int getColorTargetCount() const;
-    bool invalidate();
+    VulkanAttachment getMsaaDepth() const;
+    int getColorTargetCount(const VulkanRenderPass& pass) const;
+    uint8_t getSamples() const { return mSamples; }
+    bool hasDepth() const { return mDepth.format != VK_FORMAT_UNDEFINED; }
+    bool isSwapChain() const { return !mOffscreen; }
+
 private:
-    VulkanAttachment mColor[MRT::TARGET_COUNT] = {};
+    VulkanAttachment mColor[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT] = {};
     VulkanAttachment mDepth = {};
     VulkanContext& mContext;
-    bool mOffscreen;
-};
-
-struct VulkanSwapChain : public HwSwapChain {
-    VulkanSurfaceContext surfaceContext;
+    const bool mOffscreen;
+    uint8_t mSamples;
+    VulkanAttachment mMsaaAttachments[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT] = {};
+    VulkanAttachment mMsaaDepthAttachment = {};
 };
 
 struct VulkanVertexBuffer : public HwVertexBuffer {
-    VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool, uint8_t bufferCount,
-            uint8_t attributeCount, uint32_t elementCount,
+    VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
+            uint8_t bufferCount, uint8_t attributeCount, uint32_t elementCount,
             AttributeArray const& attributes);
-    std::vector<std::unique_ptr<VulkanBuffer>> buffers;
+    utils::FixedCapacityVector<VulkanBuffer*> buffers;
 };
 
 struct VulkanIndexBuffer : public HwIndexBuffer {
-    VulkanIndexBuffer(VulkanContext& context, VulkanStagePool& stagePool, uint8_t elementSize,
-            uint32_t indexCount) : HwIndexBuffer(elementSize, indexCount),
+    VulkanIndexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
+            uint8_t elementSize, uint32_t indexCount) : HwIndexBuffer(elementSize, indexCount),
             indexType(elementSize == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32),
-            buffer(new VulkanBuffer(context, stagePool, VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            elementSize * indexCount)) {}
+            buffer(new VulkanBuffer(context, stagePool,
+                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT, elementSize * indexCount)) {}
     const VkIndexType indexType;
     const std::unique_ptr<VulkanBuffer> buffer;
 };
 
+struct VulkanBufferObject : public HwBufferObject {
+    VulkanBufferObject(VulkanContext& context, VulkanStagePool& stagePool,
+            uint32_t byteCount) : HwBufferObject(byteCount),
+            buffer(new VulkanBuffer(context, stagePool,
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, byteCount)) {}
+    const std::unique_ptr<VulkanBuffer> buffer;
+};
+
 struct VulkanUniformBuffer : public HwUniformBuffer {
-    VulkanUniformBuffer(VulkanContext& context, VulkanStagePool& stagePool, uint32_t numBytes,
-            backend::BufferUsage usage);
+    VulkanUniformBuffer(VulkanContext& context, VulkanStagePool& stagePool,
+            uint32_t numBytes, backend::BufferUsage usage);
     ~VulkanUniformBuffer();
     void loadFromCpu(const void* cpuData, uint32_t numBytes);
     VkBuffer getGpuBuffer() const { return mGpuBuffer; }
+
 private:
     VulkanContext& mContext;
     VulkanStagePool& mStagePool;
@@ -99,58 +117,15 @@ private:
 };
 
 struct VulkanSamplerGroup : public HwSamplerGroup {
-    VulkanSamplerGroup(VulkanContext& context, uint32_t count) : HwSamplerGroup(count) {}
-};
-
-struct VulkanTexture : public HwTexture {
-    VulkanTexture(VulkanContext& context, SamplerType target, uint8_t levels,
-            TextureFormat format, uint8_t samples, uint32_t w, uint32_t h, uint32_t depth,
-            TextureUsage usage, VulkanStagePool& stagePool);
-    ~VulkanTexture();
-    void update2DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
-            int miplevel);
-    void update3DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
-            uint32_t depth, int miplevel);
-    void updateCubeImage(const PixelBufferDescriptor& data, const FaceOffsets& faceOffsets,
-            int miplevel);
-
-    // Issues a barrier that transforms the layout of the image, e.g. from a CPU-writeable
-    // layout to a GPU-readable layout.
-    static void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
-            VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
-            uint32_t layers, uint32_t levels, VkImageAspectFlags aspect);
-
-    VkFormat vkformat;
-    VkImageView imageView = VK_NULL_HANDLE;
-    VkImage textureImage = VK_NULL_HANDLE;
-    VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
-private:
-
-    // Issues a copy from a VkBuffer to a specified miplevel in a VkImage. The given width and
-    // height define a subregion within the miplevel.
-    void copyBufferToImage(VkCommandBuffer cmdbuffer, VkBuffer buffer, VkImage image,
-            uint32_t width, uint32_t height, uint32_t depth,
-            FaceOffsets const* faceOffsets, uint32_t miplevel);
-
-    VkImageAspectFlags mAspect;
-    VulkanContext& mContext;
-    VulkanStagePool& mStagePool;
+    VulkanSamplerGroup(uint32_t count) : HwSamplerGroup(count) {}
 };
 
 struct VulkanRenderPrimitive : public HwRenderPrimitive {
-    explicit VulkanRenderPrimitive(VulkanContext& context) {}
     void setPrimitiveType(backend::PrimitiveType pt);
-    void setBuffers(VulkanVertexBuffer* vertexBuffer, VulkanIndexBuffer* indexBuffer,
-            uint32_t enabledAttributes);
+    void setBuffers(VulkanVertexBuffer* vertexBuffer, VulkanIndexBuffer* indexBuffer);
     VulkanVertexBuffer* vertexBuffer = nullptr;
     VulkanIndexBuffer* indexBuffer = nullptr;
     VkPrimitiveTopology primitiveTopology;
-    // The "varray" field describes the structure of the vertex and gets passed to VulkanBinder,
-    // which in turn passes it to vkCreateGraphicsPipelines. The "buffers" and "offsets" vectors are
-    // passed to vkCmdBindVertexBuffers at draw call time.
-    VulkanBinder::VertexArray varray;
-    std::vector<VkBuffer> buffers;
-    std::vector<VkDeviceSize> offsets;
 };
 
 struct VulkanFence : public HwFence {
@@ -169,7 +144,7 @@ struct VulkanTimerQuery : public HwTimerQuery {
     uint32_t startingQueryIndex;
     uint32_t stoppingQueryIndex;
     VulkanContext& mContext;
-    std::atomic<VulkanCommandBuffer*> cmdbuffer;
+    std::atomic<VulkanCommandBuffer const*> cmdbuffer;
 };
 
 } // namespace filament

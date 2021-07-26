@@ -229,6 +229,8 @@ inline MTLPixelFormat getMetalFormat(TextureFormat format) noexcept {
         case TextureFormat::DEPTH32F: return MTLPixelFormatDepth32Float;
 #if !defined(IOS)
         case TextureFormat::DEPTH24_STENCIL8: return MTLPixelFormatDepth24Unorm_Stencil8;
+#else
+        case TextureFormat::DEPTH24_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
 #endif
         case TextureFormat::DEPTH32F_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
 
@@ -417,6 +419,31 @@ constexpr inline MTLCompareFunction getCompareFunction(SamplerCompareFunc compar
         case SamplerCompareFunc::N:
             return MTLCompareFunctionNever;
     }
+}
+
+API_AVAILABLE(macos(10.15), ios(13.0))
+constexpr inline MTLTextureSwizzle getSwizzle(TextureSwizzle swizzle) {
+    switch (swizzle) {
+        case TextureSwizzle::SUBSTITUTE_ZERO:
+            return MTLTextureSwizzleZero;
+        case TextureSwizzle::SUBSTITUTE_ONE:
+            return MTLTextureSwizzleOne;
+        case TextureSwizzle::CHANNEL_0:
+            return MTLTextureSwizzleRed;
+        case TextureSwizzle::CHANNEL_1:
+            return MTLTextureSwizzleGreen;
+        case TextureSwizzle::CHANNEL_2:
+            return MTLTextureSwizzleBlue;
+        case TextureSwizzle::CHANNEL_3:
+            return MTLTextureSwizzleAlpha;
+    }
+}
+
+API_AVAILABLE(macos(10.15), ios(13.0))
+inline MTLTextureSwizzleChannels getSwizzleChannels(TextureSwizzle r, TextureSwizzle g, TextureSwizzle b,
+        TextureSwizzle a) {
+    return MTLTextureSwizzleChannelsMake(getSwizzle(r), getSwizzle(g), getSwizzle(b),
+            getSwizzle(a));
 }
 
 } // namespace backend

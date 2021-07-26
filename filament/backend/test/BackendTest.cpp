@@ -46,6 +46,7 @@ BackendTest::~BackendTest() {
     if (sBackend == Backend::OPENGL) {
         return;
     }
+    flushAndWait();
     driver->terminate();
     delete driver;
 }
@@ -53,7 +54,7 @@ BackendTest::~BackendTest() {
 void BackendTest::initializeDriver() {
     auto backend = static_cast<filament::backend::Backend>(sBackend);
     DefaultPlatform* platform = DefaultPlatform::create(&backend);
-    assert(static_cast<uint8_t>(backend) == static_cast<uint8_t>(sBackend));
+    assert_invariant(static_cast<uint8_t>(backend) == static_cast<uint8_t>(sBackend));
     driver = platform->createDriver(nullptr);
     commandStream = CommandStream(*driver, commandBufferQueue.getCircularBuffer());
 }
@@ -67,6 +68,15 @@ void BackendTest::executeCommands() {
             commandBufferQueue.releaseBuffer(item);
         }
     }
+}
+
+void BackendTest::flushAndWait(uint64_t timeout) {
+    auto& api = getDriverApi();
+    auto fence = api.createFence();
+    api.finish();
+    executeCommands();
+    api.wait(fence, timeout);
+    api.destroyFence(fence);
 }
 
 Handle<HwSwapChain> BackendTest::createSwapChain() {

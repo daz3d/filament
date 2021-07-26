@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(utils)
 
 set(TARGET utils)
@@ -14,6 +14,7 @@ file(GLOB_RECURSE PUBLIC_HDRS ${PUBLIC_HDR_DIR}/${TARGET}/*.h)
 set(DIST_HDRS
         ${PUBLIC_HDR_DIR}/${TARGET}/algorithm.h
         ${PUBLIC_HDR_DIR}/${TARGET}/bitset.h
+        ${PUBLIC_HDR_DIR}/${TARGET}/debug.h
         ${PUBLIC_HDR_DIR}/${TARGET}/Allocator.h
         ${PUBLIC_HDR_DIR}/${TARGET}/BitmaskEnum.h
         ${PUBLIC_HDR_DIR}/${TARGET}/compiler.h
@@ -21,9 +22,12 @@ set(DIST_HDRS
         ${PUBLIC_HDR_DIR}/${TARGET}/Entity.h
         ${PUBLIC_HDR_DIR}/${TARGET}/EntityInstance.h
         ${PUBLIC_HDR_DIR}/${TARGET}/EntityManager.h
+        ${PUBLIC_HDR_DIR}/${TARGET}/FixedCapacityVector.h
+        ${PUBLIC_HDR_DIR}/${TARGET}/Log.h
         ${PUBLIC_HDR_DIR}/${TARGET}/memalign.h
         ${PUBLIC_HDR_DIR}/${TARGET}/Mutex.h
         ${PUBLIC_HDR_DIR}/${TARGET}/NameComponentManager.h
+        ${PUBLIC_HDR_DIR}/${TARGET}/ostream.h
         ${PUBLIC_HDR_DIR}/${TARGET}/Path.h
         ${PUBLIC_HDR_DIR}/${TARGET}/SingleInstanceComponentManager.h
         ${PUBLIC_HDR_DIR}/${TARGET}/Slice.h
@@ -43,6 +47,7 @@ set(DIST_GENERIC_HDRS
 set(SRCS
         src/api_level.cpp
         src/ashmem.cpp
+        src/debug.cpp
         src/Allocator.cpp
         src/CallStack.cpp
         src/CString.cpp
@@ -84,6 +89,8 @@ target_link_libraries(${TARGET} PUBLIC tsl)
 
 if (ANDROID)
     target_link_libraries(${TARGET} PUBLIC log)
+    target_link_libraries(${TARGET} PRIVATE dl)
+    target_link_libraries(${TARGET} PUBLIC android)
 endif()
 
 if (WIN32)
@@ -95,6 +102,7 @@ if (LINUX)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     target_link_libraries(${TARGET} PRIVATE Threads::Threads)
+    target_link_libraries(${TARGET} PRIVATE dl)
 endif()
 
 # ==================================================================================================
@@ -104,7 +112,6 @@ target_compile_options(${TARGET} PRIVATE
 # TODO: use hidden by default and expose what we need
 #        -fvisibility=hidden
 #        -fvisibility-inlines-hidden
-        $<$<PLATFORM_ID:Linux>:-fPIC>
 )
 
 # ==================================================================================================
@@ -131,6 +138,7 @@ set(TEST_SRCS
         test/test_CString.cpp
         test/test_CyclicBarrier.cpp
         test/test_Entity.cpp
+        test/test_FixedCapacityVector.cpp
         test/test_JobSystem.cpp
         test/test_StructureOfArrays.cpp
         test/test_sstream.cpp

@@ -24,6 +24,7 @@
 
 #include <utils/Panic.h>
 #include <utils/trap.h>
+#include <utils/debug.h>
 
 #include <math.h>
 
@@ -49,8 +50,9 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     return MTLTextureUsage(u);
 }
 
-MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow, uint64_t flags)
-        : layer(nativeWindow) {
+MetalSwapChain::MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow, uint64_t flags)
+        : context(context), layer(nativeWindow), externalImage(context),
+        type(SwapChainType::CAMETALLAYER) {
 
     if (!(flags & SwapChain::CONFIG_TRANSPARENT) && !nativeWindow.opaque) {
         utils::slog.w << "Warning: Filament SwapChain has no CONFIG_TRANSPARENT flag, "
@@ -68,40 +70,214 @@ MetalSwapChain::MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow,
         nativeWindow.framebufferOnly = NO;
     }
 
-    layer.device = device;
+    layer.device = context.device;
 }
 
-MetalSwapChain::MetalSwapChain(int32_t width, int32_t height, uint64_t flags) : headlessWidth(width),
-        headlessHeight(height) { }
+MetalSwapChain::MetalSwapChain(MetalContext& context, int32_t width, int32_t height, uint64_t flags)
+        : context(context), headlessWidth(width), headlessHeight(height), externalImage(context),
+        type(SwapChainType::HEADLESS) { }
+
+MetalSwapChain::MetalSwapChain(MetalContext& context, CVPixelBufferRef pixelBuffer, uint64_t flags)
+        : context(context), externalImage(context), type(SwapChainType::CVPIXELBUFFERREF) {
+    assert_invariant(flags & backend::SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER);
+    MetalExternalImage::assertWritableImage(pixelBuffer);
+    externalImage.set(pixelBuffer);
+    assert_invariant(externalImage.isValid());
+}
+
+MetalSwapChain::~MetalSwapChain() {
+    externalImage.set(nullptr);
+}
+
+NSUInteger MetalSwapChain::getSurfaceWidth() const {
+    if (isHeadless()) {
+        return headlessWidth;
+    }
+    if (isPixelBuffer()) {
+        return externalImage.getWidth();
+    }
+    return (NSUInteger) layer.drawableSize.width;
+}
+
+NSUInteger MetalSwapChain::getSurfaceHeight() const {
+    if (isHeadless()) {
+        return headlessHeight;
+    }
+    if (isPixelBuffer()) {
+        return externalImage.getHeight();
+    }
+    return (NSUInteger) layer.drawableSize.height;
+}
+
+id<MTLTexture> MetalSwapChain::acquireDrawable() {
+    if (drawable) {
+        return drawable.texture;
+    }
+
+    if (isHeadless()) {
+        if (headlessDrawable) {
+            return headlessDrawable;
+        }
+        // For headless surfaces we construct a "fake" drawable, which is simply a renderable
+        // texture.
+        MTLTextureDescriptor* textureDescriptor = [MTLTextureDescriptor new];
+        textureDescriptor.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        textureDescriptor.width = headlessWidth;
+        textureDescriptor.height = headlessHeight;
+        // Specify MTLTextureUsageShaderRead so the headless surface can be blitted from.
+        textureDescriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+#if defined(IOS)
+        textureDescriptor.storageMode = MTLStorageModeShared;
+#else
+        textureDescriptor.storageMode = MTLStorageModeManaged;
+#endif
+        headlessDrawable = [context.device newTextureWithDescriptor:textureDescriptor];
+        return headlessDrawable;
+    }
+
+    if (isPixelBuffer()) {
+        return externalImage.getMetalTextureForDraw();
+    }
+
+    assert_invariant(isCaMetalLayer());
+    drawable = [layer nextDrawable];
+
+    ASSERT_POSTCONDITION(drawable != nil, "Could not obtain drawable.");
+    return drawable.texture;
+}
+
+void MetalSwapChain::releaseDrawable() {
+    drawable = nil;
+}
+
+id<MTLTexture> MetalSwapChain::acquireDepthTexture() {
+    if (depthTexture) {
+        // If the surface size has changed, we'll need to allocate a new depth texture.
+        if (depthTexture.width != getSurfaceWidth() ||
+            depthTexture.height != getSurfaceHeight()) {
+            depthTexture = nil;
+        } else {
+            return depthTexture;
+        }
+    }
+
+    const MTLPixelFormat depthFormat =
+#if defined(IOS)
+            MTLPixelFormatDepth32Float;
+#else
+    context.device.depth24Stencil8PixelFormatSupported ?
+            MTLPixelFormatDepth24Unorm_Stencil8 : MTLPixelFormatDepth32Float;
+#endif
+
+    const NSUInteger width = getSurfaceWidth();
+    const NSUInteger height = getSurfaceHeight();
+    MTLTextureDescriptor* descriptor =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:depthFormat
+                                                               width:width
+                                                              height:height
+                                                           mipmapped:NO];
+    descriptor.usage = MTLTextureUsageRenderTarget;
+    descriptor.resourceOptions = MTLResourceStorageModePrivate;
+
+    depthTexture = [context.device newTextureWithDescriptor:descriptor];
+
+    return depthTexture;
+}
+
+void MetalSwapChain::setFrameScheduledCallback(FrameScheduledCallback callback, void* user) {
+    frameScheduledCallback = callback;
+    frameScheduledUserData = user;
+}
+
+void MetalSwapChain::setFrameCompletedCallback(FrameCompletedCallback callback, void* user) {
+    frameCompletedCallback = callback;
+    frameCompletedUserData = user;
+}
+
+void MetalSwapChain::present() {
+    if (frameCompletedCallback) {
+        scheduleFrameCompletedCallback();
+    }
+    if (drawable) {
+        if (frameScheduledCallback) {
+            scheduleFrameScheduledCallback();
+        } else  {
+            [getPendingCommandBuffer(&context) presentDrawable:drawable];
+        }
+    }
+}
+
+void presentDrawable(bool presentFrame, void* user) {
+    // CFBridgingRelease here is used to balance the CFBridgingRetain inside of acquireDrawable.
+    id<CAMetalDrawable> drawable = (id<CAMetalDrawable>) CFBridgingRelease(user);
+    if (presentFrame) {
+        [drawable present];
+    }
+    // The drawable will be released here when the "drawable" variable goes out of scope.
+}
+
+void MetalSwapChain::scheduleFrameScheduledCallback() {
+    if (!frameScheduledCallback) {
+        return;
+    }
+
+    assert_invariant(drawable);
+    backend::FrameScheduledCallback callback = frameScheduledCallback;
+    // This block strongly captures drawable to keep it alive until the handler executes.
+    // We cannot simply reference this->drawable inside the block because the block would then only
+    // capture the _this_ pointer (MetalSwapChain*) instead of the drawable.
+    id<CAMetalDrawable> d = drawable;
+    void* userData = frameScheduledUserData;
+    [getPendingCommandBuffer(&context) addScheduledHandler:^(id<MTLCommandBuffer> cb) {
+        // CFBridgingRetain is used here to give the drawable a +1 retain count before
+        // casting it to a void*.
+        PresentCallable callable(presentDrawable, (void*) CFBridgingRetain(d));
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            callback(callable, userData);
+        });
+    }];
+}
+
+void MetalSwapChain::scheduleFrameCompletedCallback() {
+    if (!frameCompletedCallback) {
+        return;
+    }
+
+    backend::FrameCompletedCallback callback = frameCompletedCallback;
+    void* userData = frameCompletedUserData;
+    [getPendingCommandBuffer(&context) addCompletedHandler:^(id<MTLCommandBuffer> cb) {
+        struct CallbackData {
+            void* userData;
+            backend::FrameCompletedCallback callback;
+        };
+        CallbackData* data = new CallbackData();
+        data->userData = userData;
+        data->callback = callback;
+
+        // Instantiate a BufferDescriptor with a callback for the sole purpose of passing it to
+        // scheduleDestroy. This forces the BufferDescriptor callback (and thus the
+        // FrameCompletedCallback) to be called on the user thread.
+        BufferDescriptor b(nullptr, 0u, [](void* buffer, size_t size, void* user) {
+            CallbackData* data = (CallbackData*) user;
+            data->callback(data->userData);
+            free(data);
+        }, data);
+        context.driver->scheduleDestroy(std::move(b));
+    }];
+}
+
+MetalBufferObject::MetalBufferObject(MetalContext& context, uint32_t byteCount)
+        : HwBufferObject(byteCount), buffer(std::make_unique<MetalBuffer>(context, byteCount)) {}
+
+void MetalBufferObject::updateBuffer(void* data, size_t size, uint32_t byteOffset) {
+    assert_invariant(byteOffset + size <= byteCount);
+    buffer->copyIntoBuffer(data, size);
+}
 
 MetalVertexBuffer::MetalVertexBuffer(MetalContext& context, uint8_t bufferCount,
             uint8_t attributeCount, uint32_t vertexCount, AttributeArray const& attributes)
     : HwVertexBuffer(bufferCount, attributeCount, vertexCount, attributes) {
-    buffers.reserve(bufferCount);
-
-    for (uint8_t bufferIndex = 0; bufferIndex < bufferCount; ++bufferIndex) {
-        // Calculate buffer size.
-        uint32_t size = 0;
-        for (auto const& item : attributes) {
-            if (item.buffer == bufferIndex) {
-                uint32_t end = item.offset + vertexCount * item.stride;
-                size = std::max(size, end);
-            }
-        }
-
-        MetalBuffer* buffer = nullptr;
-        if (size > 0) {
-            buffer = new MetalBuffer(context, size);
-        }
-        buffers.push_back(buffer);
-    }
-}
-
-MetalVertexBuffer::~MetalVertexBuffer() {
-    for (auto* b : buffers) {
-        delete b;
-    }
-    buffers.clear();
+    buffers.resize(bufferCount);
 }
 
 MetalIndexBuffer::MetalIndexBuffer(MetalContext& context, uint8_t elementSize, uint32_t indexCount)
@@ -111,23 +287,21 @@ MetalUniformBuffer::MetalUniformBuffer(MetalContext& context, size_t size) : HwU
         buffer(context, size) { }
 
 void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer*
-        indexBuffer, uint32_t enabledAttributes) {
+        indexBuffer) {
     this->vertexBuffer = vertexBuffer;
     this->indexBuffer = indexBuffer;
 
     const size_t attributeCount = vertexBuffer->attributes.size();
 
-    buffers.clear();
-    buffers.reserve(attributeCount);
-    offsets.clear();
-    offsets.reserve(attributeCount);
+    vertexDescription = {};
 
     // Each attribute gets its own vertex buffer.
 
     uint32_t bufferIndex = 0;
     for (uint32_t attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
-        if (!(enabledAttributes & (1U << attributeIndex))) {
-            const uint8_t flags = vertexBuffer->attributes[attributeIndex].flags;
+        const auto& attribute = vertexBuffer->attributes[attributeIndex];
+        if (attribute.buffer == Attribute::BUFFER_UNUSED) {
+            const uint8_t flags = attribute.flags;
             const MTLVertexFormat format = (flags & Attribute::FLAG_INTEGER_TARGET) ?
                     MTLVertexFormatUInt4 : MTLVertexFormatFloat4;
 
@@ -144,10 +318,6 @@ void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalInde
             };
             continue;
         }
-        const auto& attribute = vertexBuffer->attributes[attributeIndex];
-
-        buffers.push_back(vertexBuffer->buffers[attribute.buffer]);
-        offsets.push_back(attribute.offset);
 
         vertexDescription.attributes[attributeIndex] = {
                 .format = getMetalFormat(attribute.type,
@@ -165,7 +335,8 @@ void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalInde
 }
 
 MetalProgram::MetalProgram(id<MTLDevice> device, const Program& program) noexcept
-    : HwProgram(program.getName()) {
+    : HwProgram(program.getName()), vertexFunction(nil), fragmentFunction(nil), samplerGroupInfo(),
+        isValid(false) {
 
     using MetalFunctionPtr = __strong id<MTLFunction>*;
 
@@ -195,11 +366,15 @@ MetalProgram::MetalProgram(id<MTLDevice> device, const Program& program) noexcep
                         [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
                 utils::slog.w << description << utils::io::endl;
             }
-            ASSERT_POSTCONDITION(false, "Unable to compile Metal shading library.");
+            PANIC_LOG("Failed to compile Metal program.");
+            return;
         }
 
         *shaderFunctions[i] = [library newFunctionWithName:@"main0"];
     }
+
+    // All stages of the program have compiled successfuly, this is a valid program.
+    isValid = true;
 
     samplerGroupInfo = program.getSamplerGroupInfo();
 }
@@ -218,7 +393,8 @@ static MTLPixelFormat decidePixelFormat(id<MTLDevice> device, TextureFormat form
 
 MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t levels,
         TextureFormat format, uint8_t samples, uint32_t width, uint32_t height, uint32_t depth,
-        TextureUsage usage) noexcept
+        TextureUsage usage, TextureSwizzle r, TextureSwizzle g, TextureSwizzle b,
+        TextureSwizzle a) noexcept
     : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
         externalImage(context), reshaper(format) {
 
@@ -228,7 +404,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
     metalPixelFormat = decidePixelFormat(context.device, reshapedFormat);
 
     bytesPerElement = static_cast<uint8_t>(getFormatSize(reshapedFormat));
-    assert(bytesPerElement > 0);
+    assert_invariant(bytesPerElement > 0);
     blockWidth = static_cast<uint8_t>(getBlockWidth(reshapedFormat));
     blockHeight = static_cast<uint8_t>(getBlockHeight(reshapedFormat));
 
@@ -317,6 +493,34 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
             texture = nil;
             break;
     }
+
+    // If swizzling is set, set up a swizzled texture view that we'll use when sampling this texture.
+    const bool isDefaultSwizzle =
+            r == TextureSwizzle::CHANNEL_0 &&
+            g == TextureSwizzle::CHANNEL_1 &&
+            b == TextureSwizzle::CHANNEL_2 &&
+            a == TextureSwizzle::CHANNEL_3;
+    // If texture is nil, then it must be a SAMPLER_EXTERNAL texture. We'll ignore this case for now.
+    // TODO: implement swizzling for external textures.
+    if (!isDefaultSwizzle && texture && context.supportsTextureSwizzling) {
+        // Even though we've already checked context.supportsTextureSwizzling, we still need to
+        // guard these calls with @availability, otherwise the API usage will generate compiler
+        // warnings.
+        if (@available(macOS 10.15, iOS 13, *)) {
+            NSUInteger slices = texture.arrayLength;
+            if (texture.textureType == MTLTextureTypeCube ||
+                texture.textureType == MTLTextureTypeCubeArray) {
+                slices *= 6;
+            }
+            NSUInteger mips = texture.mipmapLevelCount;
+            MTLTextureSwizzleChannels swizzle = getSwizzleChannels(r, g, b, a);
+            swizzledTextureView = [texture newTextureViewWithPixelFormat:texture.pixelFormat
+                                                             textureType:texture.textureType
+                                                                  levels:NSMakeRange(0, mips)
+                                                                  slices:NSMakeRange(0, slices)
+                                                                 swizzle:swizzle];
+        }
+    }
 }
 
 MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t levels, TextureFormat format,
@@ -360,8 +564,15 @@ void MetalTexture::load3DImage(uint32_t level, uint32_t xoffset, uint32_t yoffse
     id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
     id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
 
-    loadSlice(level, xoffset, yoffset, zoffset, width, height, depth, 0, 0, p,
-            blitCommandEncoder, blitCommandBuffer);
+    if (target == SamplerType::SAMPLER_2D_ARRAY) {
+        // Metal uses 'slice' (not z offset) to index into individual layers of the texture array.
+        loadSlice(level, xoffset, yoffset, 0, width, height, depth, 0, zoffset, p,
+                blitCommandEncoder, blitCommandBuffer);
+    } else {
+        assert_invariant(target == SamplerType::SAMPLER_3D);
+        loadSlice(level, xoffset, yoffset, zoffset, width, height, depth, 0, 0, p,
+                blitCommandEncoder, blitCommandBuffer);
+    }
 
     updateLodRange(level);
 
@@ -406,8 +617,8 @@ void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset,
     const size_t sourceOffset = (data.left * bytesPerPixel) + (data.top * bytesPerRow) + byteOffset;
 
     if (data.type == PixelDataType::COMPRESSED) {
-        assert(blockWidth > 0);
-        assert(blockHeight > 0);
+        assert_invariant(blockWidth > 0);
+        assert_invariant(blockHeight > 0);
         // From https://developer.apple.com/documentation/metal/mtltexture/1515464-replaceregion:
         // For an ordinary or packed pixel format, the stride, in bytes, between rows of source
         // data. For a compressed pixel format, the stride is the number of bytes from the
@@ -424,7 +635,11 @@ void MetalTexture::loadSlice(uint32_t level, uint32_t xoffset, uint32_t yoffset,
     // Depending on the size of the required buffer, we either allocate a staging buffer or a
     // staging texture. Then the texture data is blited to the "real" texture.
     const size_t stagingBufferSize = bytesPerSlice * depth;
-    if (UTILS_LIKELY(stagingBufferSize <= context.device.maxBufferLength)) {
+    NSUInteger deviceMaxBufferLength = 0;
+    if (@available(macOS 10.14, iOS 12, *)) {
+        deviceMaxBufferLength = context.device.maxBufferLength;
+    }
+    if (UTILS_LIKELY(stagingBufferSize <= deviceMaxBufferLength)) {
         auto entry = context.bufferPool->acquireBuffer(stagingBufferSize);
         memcpy(entry->buffer.contents,
                 static_cast<uint8_t*>(data.buffer) + sourceOffset,
@@ -486,13 +701,13 @@ void MetalTexture::updateLodRange(uint32_t level) {
 }
 
 MetalRenderTarget::MetalRenderTarget(MetalContext* context, uint32_t width, uint32_t height,
-        uint8_t samples, Attachment colorAttachments[MRT::TARGET_COUNT], Attachment depthAttachment) :
+        uint8_t samples, Attachment colorAttachments[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT], Attachment depthAttachment) :
         HwRenderTarget(width, height), context(context), samples(samples) {
     // If we were given a single-sampled texture but the samples parameter is > 1, we create
     // multisampled sidecar textures and do a resolve automatically.
     const bool msaaResolve = samples > 1;
 
-    for (size_t i = 0; i < MRT::TARGET_COUNT; i++) {
+    for (size_t i = 0; i < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT; i++) {
         if (!colorAttachments[i]) {
             continue;
         }
@@ -533,8 +748,8 @@ void MetalRenderTarget::setUpRenderPassAttachments(MTLRenderPassDescriptor* desc
 
     const auto discardFlags = params.flags.discardEnd;
 
-    for (size_t i = 0; i < MRT::TARGET_COUNT; i++) {
-        Attachment attachment = getColorAttachment(i);
+    for (size_t i = 0; i < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT; i++) {
+        Attachment attachment = getDrawColorAttachment(i);
         if (!attachment) {
             continue;
         }
@@ -542,16 +757,25 @@ void MetalRenderTarget::setUpRenderPassAttachments(MTLRenderPassDescriptor* desc
         descriptor.colorAttachments[i].texture = attachment.texture;
         descriptor.colorAttachments[i].level = attachment.level;
         descriptor.colorAttachments[i].slice = attachment.layer;
-        descriptor.colorAttachments[i].loadAction = getLoadAction(params, getMRTColorFlag(i));
-        descriptor.colorAttachments[i].storeAction = getStoreAction(params, getMRTColorFlag(i));
+        descriptor.colorAttachments[i].loadAction = getLoadAction(params, getTargetBufferFlagsAt(i));
+        descriptor.colorAttachments[i].storeAction = getStoreAction(params,
+                getTargetBufferFlagsAt(i));
         descriptor.colorAttachments[i].clearColor = MTLClearColorMake(
                 params.clearColor.r, params.clearColor.g, params.clearColor.b, params.clearColor.a);
 
         if (multisampledColor[i]) {
+            // We're rendering into our temporary MSAA texture and doing an automatic resolve.
+            // We should not be attempting to load anything into the MSAA texture.
+            assert_invariant(descriptor.colorAttachments[i].loadAction != MTLLoadActionLoad);
+
             descriptor.colorAttachments[i].texture = multisampledColor[i];
-            const bool discard = any(discardFlags & getMRTColorFlag(i));
+            descriptor.colorAttachments[i].level = 0;
+            descriptor.colorAttachments[i].slice = 0;
+            const bool discard = any(discardFlags & getTargetBufferFlagsAt(i));
             if (!discard) {
                 descriptor.colorAttachments[i].resolveTexture = attachment.texture;
+                descriptor.colorAttachments[i].resolveLevel = attachment.level;
+                descriptor.colorAttachments[i].resolveSlice = attachment.layer;
                 descriptor.colorAttachments[i].storeAction = MTLStoreActionMultisampleResolve;
             }
         }
@@ -566,20 +790,39 @@ void MetalRenderTarget::setUpRenderPassAttachments(MTLRenderPassDescriptor* desc
     descriptor.depthAttachment.clearDepth = params.clearDepth;
 
     if (multisampledDepth) {
+        // We're rendering into our temporary MSAA texture and doing an automatic resolve.
+        // We should not be attempting to load anything into the MSAA texture.
+        assert_invariant(descriptor.depthAttachment.loadAction != MTLLoadActionLoad);
+
         descriptor.depthAttachment.texture = multisampledDepth;
+        descriptor.depthAttachment.level = 0;
+        descriptor.depthAttachment.slice = 0;
         const bool discard = any(discardFlags & TargetBufferFlags::DEPTH);
         if (!discard) {
             descriptor.depthAttachment.resolveTexture = depthAttachment.texture;
+            descriptor.depthAttachment.resolveLevel = depthAttachment.level;
+            descriptor.depthAttachment.resolveSlice = depthAttachment.layer;
             descriptor.depthAttachment.storeAction = MTLStoreActionMultisampleResolve;
         }
     }
 }
 
-MetalRenderTarget::Attachment MetalRenderTarget::getColorAttachment(size_t index) {
-    assert(index < MRT::TARGET_COUNT);
+MetalRenderTarget::Attachment MetalRenderTarget::getDrawColorAttachment(size_t index) {
+    assert_invariant(index < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT);
     Attachment result = color[index];
     if (index == 0 && defaultRenderTarget) {
-        result.texture = acquireDrawable(context);
+        assert_invariant(context->currentDrawSwapChain);
+        result.texture = context->currentDrawSwapChain->acquireDrawable();
+    }
+    return result;
+}
+
+MetalRenderTarget::Attachment MetalRenderTarget::getReadColorAttachment(size_t index) {
+    assert_invariant(index < MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT);
+    Attachment result = color[index];
+    if (index == 0 && defaultRenderTarget) {
+        assert_invariant(context->currentReadSwapChain);
+        result.texture = context->currentReadSwapChain->acquireDrawable();
     }
     return result;
 }
@@ -587,7 +830,7 @@ MetalRenderTarget::Attachment MetalRenderTarget::getColorAttachment(size_t index
 MetalRenderTarget::Attachment MetalRenderTarget::getDepthAttachment() {
     Attachment result = depth;
     if (defaultRenderTarget) {
-        result.texture = acquireDepthTexture(context);
+        result.texture = context->currentDrawSwapChain->acquireDepthTexture();
     }
     return result;
 }
@@ -644,7 +887,7 @@ void MetalFence::encode() {
         [event notifyListener:context.eventListener atValue:value block:^(id <MTLSharedEvent> o,
                 uint64_t value) {
             if (auto s = weakState.lock()) {
-                std::unique_lock<std::mutex> guard(s->mutex);
+                std::lock_guard<std::mutex> guard(s->mutex);
                 s->status = FenceStatus::CONDITION_SATISFIED;
                 s->cv.notify_all();
             }
@@ -658,11 +901,13 @@ void MetalFence::onSignal(MetalFenceSignalBlock block) {
 
 FenceStatus MetalFence::wait(uint64_t timeoutNs) {
     if (@available(macOS 10.14, iOS 12, *)) {
+        using ns = std::chrono::nanoseconds;
         std::unique_lock<std::mutex> guard(state->mutex);
         while (state->status == FenceStatus::TIMEOUT_EXPIRED) {
-            if (timeoutNs == 0 ||
-                state->cv.wait_for(guard, std::chrono::nanoseconds(timeoutNs)) ==
-                        std::cv_status::timeout) {
+            if (timeoutNs == FENCE_WAIT_FOR_EVER) {
+                state->cv.wait(guard);
+            } else if (timeoutNs == 0 ||
+                    state->cv.wait_for(guard, ns(timeoutNs)) == std::cv_status::timeout) {
                 return FenceStatus::TIMEOUT_EXPIRED;
             }
         }

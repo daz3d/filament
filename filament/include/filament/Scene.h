@@ -66,13 +66,27 @@ class UTILS_PUBLIC Scene : public FilamentAPI {
 public:
 
     /**
-     * Sets the SkyBox.
+     * Sets the Skybox.
      *
      * The Skybox is drawn last and covers all pixels not touched by geometry.
      *
      * @param skybox The Skybox to use to fill untouched pixels, or nullptr to unset the Skybox.
      */
     void setSkybox(Skybox* skybox) noexcept;
+
+    /**
+     * Returns the Skybox associated with the Scene.
+     *
+     * @return The associated Skybox, or nullptr if there is none.
+     */
+    Skybox* getSkybox() noexcept;
+
+    /**
+     * Returns an immutable Skybox associated with the Scene.
+     *
+     * @return The associated Skybox, or nullptr if there is none.
+     */
+    Skybox const* getSkybox() const noexcept;
 
     /**
      * Set the IndirectLight to use when rendering the Scene.
@@ -96,7 +110,7 @@ public:
     void addEntity(utils::Entity entity);
 
     /**
-     * Adds a contiguous list of entities to the Scene.
+     * Adds a list of entities to the Scene.
      *
      * @param entities Array containing entities to add to the scene.
      * @param count Size of the entity array.
@@ -110,6 +124,17 @@ public:
      *                   \p entity doesn't exist, this call is ignored.
      */
     void remove(utils::Entity entity);
+
+    /**
+     * Removes a list of entities to the Scene.
+     *
+     * This is equivalent to calling remove in a loop.
+     * If any of the specified entities do not exist in the scene, they are skipped.
+     *
+     * @param entities Array containing entities to remove from the scene.
+     * @param count Size of the entity array.
+     */
+    void removeEntities(const utils::Entity* entities, size_t count);
 
     /**
      * Returns the number of Renderable objects in the Scene.

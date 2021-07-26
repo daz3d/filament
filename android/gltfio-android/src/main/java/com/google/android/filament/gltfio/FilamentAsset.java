@@ -187,6 +187,16 @@ public class FilamentAsset {
     }
 
     /**
+     * Gets the glTF extras string for the asset or a specific node.
+     *
+     * @param entity the entity corresponding to the glTF node, or 0 to get the asset-level string.
+     * @return the requested extras string, or null if it does not exist.
+     */
+    public @Nullable String getExtras(@Entity int entity) {
+        return nGetExtras(mNativeObject, entity);
+    }
+
+    /**
      * Creates or retrieves the <code>Animator</code> interface for this asset.
      *
      * <p>When calling this for the first time, this must be called after
@@ -197,7 +207,11 @@ public class FilamentAsset {
         if (mAnimator != null) {
             return mAnimator;
         }
-        mAnimator = new Animator(nGetAnimator(getNativeObject()));
+        long nativeAnimator = nGetAnimator(getNativeObject());
+        if (nativeAnimator == 0) {
+            throw new IllegalStateException("Unable to create animator");
+        }
+        mAnimator = new Animator(nativeAnimator);
         return mAnimator;
     }
 
@@ -215,13 +229,14 @@ public class FilamentAsset {
      *
      * This should only be called after ResourceLoader#loadResources().
      * If using Animator, this should be called after getAnimator().
+     * If this is an instanced asset, this prevents creation of new instances.
      */
     public void releaseSourceData() {
         nReleaseSourceData(mNativeObject);
     }
 
     void clearNativeObject() {
-        mAnimator.clearNativeObject();
+        if (mAnimator != null) mAnimator.clearNativeObject();
         mNativeObject = 0;
     }
 
@@ -247,6 +262,7 @@ public class FilamentAsset {
 
     private static native void nGetBoundingBox(long nativeAsset, float[] box);
     private static native String nGetName(long nativeAsset, int entity);
+    private static native String nGetExtras(long nativeAsset, int entity);
     private static native long nGetAnimator(long nativeAsset);
     private static native int nGetResourceUriCount(long nativeAsset);
     private static native void nGetResourceUris(long nativeAsset, String[] result);

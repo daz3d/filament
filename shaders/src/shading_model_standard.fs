@@ -1,6 +1,14 @@
+#if defined(MATERIAL_HAS_SHEEN_COLOR)
+vec3 sheenLobe(const PixelParams pixel, float NoV, float NoL, float NoH) {
+    float D = distributionCloth(pixel.sheenRoughness, NoH);
+    float V = visibilityCloth(NoV, NoL);
+
+    return (D * V) * pixel.sheenColor;
+}
+#endif
+
 #if defined(MATERIAL_HAS_CLEAR_COAT)
 float clearCoatLobe(const PixelParams pixel, const vec3 h, float NoH, float LoH, out float Fcc) {
-
 #if defined(MATERIAL_HAS_NORMAL) || defined(MATERIAL_HAS_CLEAR_COAT_NORMAL)
     // If the material has a normal map, we want to use the geometric normal
     // instead to avoid applying the normal map details to the clear coat layer
@@ -12,15 +20,7 @@ float clearCoatLobe(const PixelParams pixel, const vec3 h, float NoH, float LoH,
     // clear coat specular lobe
     float D = distributionClearCoat(pixel.clearCoatRoughness, clearCoatNoH, h);
     float V = visibilityClearCoat(LoH);
-
-#if defined(DAZ_EXTENDED_PBR)
-    float reflectance = pixel.clearCoatReflectance;
-#else
-    // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
-    float reflectance = 0.04;	
-#endif
-
-    float F = F_Schlick(reflectance, 1.0, LoH) * pixel.clearCoat; // fix IOR to 1.5
+    float F = F_Schlick(0.04, 1.0, LoH) * pixel.clearCoat; // fix IOR to 1.5
 
     Fcc = F;
     return D * V * F;
@@ -113,8 +113,18 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
 #endif
 
     // TODO: attenuate the diffuse lobe to avoid energy gain
+
 #if defined(DAZ_EXTENDED_PBR)
     Fr *= pixel.specularAttenuation;
+#endif
+
+    // The energy compensation term is used to counteract the darkening effect
+    // at high roughness
+    vec3 color = Fd + Fr * pixel.energyCompensation;
+
+#if defined(MATERIAL_HAS_SHEEN_COLOR)
+    color *= pixel.sheenScaling;
+    color += sheenLobe(pixel, NoV, NoL, NoH);
 #endif
 
 #if defined(MATERIAL_HAS_CLEAR_COAT)
@@ -123,7 +133,7 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
     float attenuation = 1.0 - Fcc;
 
 #if defined(MATERIAL_HAS_NORMAL) || defined(MATERIAL_HAS_CLEAR_COAT_NORMAL)
-    vec3 color = (Fd + Fr * (pixel.energyCompensation * attenuation)) * attenuation * NoL;
+    color *= attenuation * NoL;
 
     // If the material has a normal map, we want to use the geometric normal
     // instead to avoid applying the normal map details to the clear coat layer
@@ -134,12 +144,9 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
     return (color * light.colorIntensity.rgb) *
             (light.colorIntensity.w * light.attenuation * occlusion);
 #else
-    vec3 color = (Fd + Fr * (pixel.energyCompensation * attenuation)) * attenuation + clearCoat;
+    color *= attenuation;
+    color += clearCoat;
 #endif
-#else
-    // The energy compensation term is used to counteract the darkening effect
-    // at high roughness
-    vec3 color = Fd + Fr * pixel.energyCompensation;
 #endif
 
     return (color * light.colorIntensity.rgb) *

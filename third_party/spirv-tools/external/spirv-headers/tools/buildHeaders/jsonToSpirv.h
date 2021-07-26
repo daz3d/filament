@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019 The Khronos Group Inc.
+// Copyright (c) 2014-2020 The Khronos Group Inc.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and/or associated documentation files (the "Materials"),
@@ -41,6 +41,8 @@ std::pair<bool, std::string> ReadFile(const std::string& path);
 void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders);
 
 // For parameterizing operands.
+// The ordering here affects the printing order in the SPIR-V specification.
+// Please add new operand classes at the end.
 enum OperandClass {
     OperandNone,
     OperandId,
@@ -51,6 +53,7 @@ enum OperandClass {
     OperandVariableLiterals,
     OperandVariableIdLiteral,
     OperandVariableLiteralId,
+    OperandAnySizeLiteralNumber,
     OperandLiteralNumber,
     OperandLiteralString,
     OperandSource,
@@ -79,10 +82,20 @@ enum OperandClass {
     OperandMemorySemantics,
     OperandMemoryOperands,
     OperandScope,
-	OperandGroupOperation,
+    OperandGroupOperation,
     OperandKernelEnqueueFlags,
     OperandKernelProfilingInfo,
     OperandCapability,
+    OperandRayFlags,
+    OperandRayQueryIntersection,
+    OperandRayQueryCommittedIntersectionType,
+    OperandRayQueryCandidateIntersectionType,
+    OperandFragmentShadingRate,
+    OperandFPDenormMode,
+    OperandFPOperationMode,
+    OperandQuantizationModes,
+    OperandOverflowModes,
+    OperandPackedVectorFormat,
 
     OperandOpcode,
 

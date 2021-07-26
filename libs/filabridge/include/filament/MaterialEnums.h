@@ -27,7 +27,7 @@
 namespace filament {
 
 // update this when a new version of filament wouldn't work with older materials
-static constexpr size_t MATERIAL_VERSION = 7;
+static constexpr size_t MATERIAL_VERSION = 11;
 
 /**
  * Supported shading models
@@ -46,6 +46,16 @@ enum class Shading : uint8_t {
 enum class Interpolation : uint8_t {
     SMOOTH,                 //!< default, smooth interpolation
     FLAT                    //!< flat interpolation
+};
+
+/**
+ * Shader quality, affect some global quality parameters
+ */
+enum class ShaderQuality : int8_t {
+    DEFAULT = -1,   // LOW on mobile, HIGH on desktop
+    LOW     = 0,    // enable optimizations that can slightly affect correctness
+    NORMAL  = 1,    // normal quality, correctness honored
+    HIGH    = 2     // higher quality (e.g. better upscaling, etc...)
 };
 
 /**
@@ -179,7 +189,7 @@ enum class RefractionType : uint8_t {
 // can't really use std::underlying_type<AttributeIndex>::type because the driver takes a uint32_t
 using AttributeBitset = utils::bitset32;
 
-static constexpr size_t MATERIAL_PROPERTIES_COUNT = 25;
+static constexpr size_t MATERIAL_PROPERTIES_COUNT = 26;
 enum class Property : uint8_t {
     BASE_COLOR,              //!< float4, all shading models
     ROUGHNESS,               //!< float,  lit shading models only
@@ -194,7 +204,8 @@ enum class Property : uint8_t {
     THICKNESS,               //!< float,  subsurface shading model only
     SUBSURFACE_POWER,        //!< float,  subsurface shading model only
     SUBSURFACE_COLOR,        //!< float3, subsurface and cloth shading models only
-    SHEEN_COLOR,             //!< float3, cloth shading model only
+    SHEEN_COLOR,             //!< float3, lit shading models only, except subsurface
+    SHEEN_ROUGHNESS,         //!< float3, lit shading models only, except subsurface and cloth
     SPECULAR_COLOR,          //!< float3, specular-glossiness shading model only
     GLOSSINESS,              //!< float,  specular-glossiness shading model only
     EMISSIVE,                //!< float4, all shading models

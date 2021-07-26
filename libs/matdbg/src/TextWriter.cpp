@@ -39,7 +39,7 @@ namespace filament {
 namespace matdbg {
 
 constexpr int alignment = 32;
-constexpr int shortAlignment = 12;
+constexpr int shortAlignment = 15;
 
 static string arraySizeToString(uint64_t size) {
     if (size > 1) {
@@ -249,6 +249,60 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
                 << endl;
     }
 
+    // Subpasses are optional.
+    if (container.hasChunk(ChunkType::MaterialSubpass)) {
+        Unflattener subpasses(
+                container.getChunkStart(ChunkType::MaterialSubpass),
+                container.getChunkEnd(ChunkType::MaterialSubpass));
+
+        CString name;
+        if (!subpasses.read(&name)) {
+            return false;
+        }
+
+        uint64_t subpassCount;
+        subpasses.read(&subpassCount);
+
+        for (uint64_t i = 0; i < subpassCount; i++) {
+            CString fieldName;
+            uint8_t fieldType;
+            uint8_t fieldFormat;
+            uint8_t fieldPrecision;
+            uint8_t attachmentIndex;
+            uint8_t binding;
+
+            if (!subpasses.read(&fieldName)) {
+                return false;
+            }
+
+            if (!subpasses.read(&fieldType)) {
+                return false;
+            }
+
+            if (!subpasses.read(&fieldFormat))
+                return false;
+
+            if (!subpasses.read(&fieldPrecision)) {
+                return false;
+            }
+
+            if (!subpasses.read(&attachmentIndex)) {
+                return false;
+            }
+
+            if (!subpasses.read(&binding)) {
+                return false;
+            }
+
+            text << "    "
+                    << setw(alignment) << fieldName.c_str()
+                    << setw(shortAlignment) << toString(SubpassType(fieldType))
+                    << setw(shortAlignment) << toString(Precision(fieldPrecision))
+                    << toString(SamplerFormat(fieldFormat))
+                    << endl;
+        }
+    }
+
     text << endl;
 
     return true;
@@ -279,7 +333,10 @@ static void printChunks(ostream& text, const ChunkContainer& container) {
     }
 }
 
-static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info) {
+static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info,
+        const ChunkContainer& container) {
+    MaterialDomain domain = MaterialDomain::SURFACE;
+    read(container, ChunkType::MaterialDomain, reinterpret_cast<uint8_t*>(&domain));
     for (uint64_t i = 0; i < info.size(); ++i) {
         const auto& item = info[i];
         text << "    #";
@@ -290,7 +347,10 @@ static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info) {
         text << " ";
         text << "0x" << hex << setfill('0') << setw(2)
              << right << (int) item.variant;
-        text << setfill(' ') << dec << endl;
+        text << setfill(' ') << dec;
+        text << "   ";
+        text << formatVariantString(item.variant, domain);
+        text << endl;
     }
     text << endl;
 }
@@ -302,7 +362,7 @@ static bool printGlslInfo(ostream& text, const ChunkContainer& container) {
         return false;
     }
     text << "GLSL shaders:" << endl;
-    printShaderInfo(text, info);
+    printShaderInfo(text, info, container);
     return true;
 }
 
@@ -313,7 +373,7 @@ static bool printVkInfo(ostream& text, const ChunkContainer& container) {
         return false;
     }
     text << "Vulkan shaders:" << endl;
-    printShaderInfo(text, info);
+    printShaderInfo(text, info, container);
     return true;
 }
 
@@ -324,7 +384,7 @@ static bool printMetalInfo(ostream& text, const ChunkContainer& container) {
         return false;
     }
     text << "Metal shaders:" << endl;
-    printShaderInfo(text, info);
+    printShaderInfo(text, info, container);
     return true;
 }
 

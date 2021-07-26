@@ -6,12 +6,6 @@ mat4 getLightFromWorldMatrix() {
     return frameUniforms.lightFromWorldMatrix[0];
 }
 
-#if defined(HAS_SHADOWING)
-mat4 getSpotLightFromWorldMatrix(uint index) {
-    return shadowUniforms.spotLightFromWorldMatrix[index];
-}
-#endif
-
 /** @public-api */
 mat4 getWorldFromModelMatrix() {
     return objectUniforms.worldFromModelMatrix;
@@ -115,6 +109,15 @@ vec4 getCustom6() { return mesh_custom6; }
 #if defined(HAS_ATTRIBUTE_CUSTOM7)
 vec4 getCustom7() { return mesh_custom7; }
 #endif
+
+/** @public-api */
+int getVertexIndex() {
+#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
+    return gl_VertexIndex;
+#else
+    return gl_VertexID;
+#endif
+}
 
 //------------------------------------------------------------------------------
 // Helpers

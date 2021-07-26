@@ -104,48 +104,6 @@ public class VertexBuffer {
         HALF3,
         HALF4,
     }
-    /**
-     * Specifies the quaternion type for the {@link #populateTangentQuaternions} utility.
-     */
-    public enum QuatType {
-        /** 2 bytes per component as half-floats (8 bytes per quat) */
-        HALF4,
-
-        /** 2 bytes per component as normalized integers (8 bytes per quat) */
-        SHORT4,
-
-        /** 4 bytes per component as floats (16 bytes per quat) */
-        FLOAT4,
-    }
-
-    /**
-     * Specifies the parameters for the {@link #populateTangentQuaternions} utility.
-     */
-    public static class QuatTangentContext {
-        /** desired quaternion type (required) */
-        public QuatType quatType;
-
-        /** number of quaternions (required) */
-        public int quatCount;
-
-        /** pre-allocated output buffer (required) */
-        public Buffer outBuffer;
-
-        /** desired stride in bytes (optional) */
-        public int outStride;
-
-        /** source normals (required) */
-        public Buffer normals;
-
-        /** normals stride in bytes (optional) */
-        public int normalsStride;
-
-        /** source tangents (optional) */
-        public Buffer tangents;
-
-        /** tangents stride in bytes (optional) */
-        public int tangentsStride;
-    }
 
     public static class Builder {
         @SuppressWarnings({"FieldCanBeLocal", "UnusedDeclaration"}) // Keep to finalize native resources
@@ -167,6 +125,21 @@ public class VertexBuffer {
         @NonNull
         public Builder vertexCount(@IntRange(from = 1) int vertexCount) {
             nBuilderVertexCount(mNativeBuilder, vertexCount);
+            return this;
+        }
+
+        /**
+         * Allows buffers to be swapped out and shared using BufferObject.
+         *
+         * If buffer objects mode is enabled, clients must call setBufferObjectAt rather than
+         * setBufferAt. This allows sharing of data between VertexBuffer objects, but it may
+         * slightly increase the memory footprint of Filament's internal bookkeeping.
+         *
+         * @param enabled If true, enables buffer object mode.  False by default.
+         */
+        @NonNull
+        public Builder enableBufferObjects(boolean enabled) {
+            nBuilderEnableBufferObjects(mNativeBuilder, enabled);
             return this;
         }
 
@@ -397,36 +370,21 @@ public class VertexBuffer {
             throw new BufferOverflowException();
         }
     }
+
     /**
-     * Convenience function that consumes normal vectors (and, optionally, tangent vectors) and
-     * produces quaternions that can be passed into a TANGENTS buffer.
+     * Swaps in the given buffer object.
      *
-     * <p>
-     * The given output buffer must be preallocated with at least quatCount * outStride bytes.
-     * <p>
+     * To use this, you must first call enableBufferObjects() on the Builder.
      *
-     * <p>
-     * Normals are required but tangents are optional, in which case this function tries to generate
-     * reasonable tangents. The given normals should be unit length.
-     * </p>
-     *
-     * <p>
-     * If supplied, the tangent vectors should be unit length and should be orthogonal to the
-     * normals. The w component of the tangent is a sign (-1 or +1) indicating handedness of the
-     * basis.
-     * </p>
-     *
-     * @deprecated Instead please use SurfaceOrientation since it has additional capabilities and a
-     * builder-style API.
-     *
-     * @param context an initialized QuatTangentContext object
+     * @param engine Reference to the filament::Engine to associate this VertexBuffer with.
+     * @param bufferIndex Index of the buffer to initialize. Must be between 0
+     *                    and Builder::bufferCount() - 1.
+     * @param bufferObject The handle to the GPU data that will be used in this buffer slot.
      */
-    public static void populateTangentQuaternions(@NonNull QuatTangentContext context) {
-        nPopulateTangentQuaternions(context.quatType.ordinal(), context.quatCount,
-                context.outBuffer, context.outBuffer.remaining(), context.outStride,
-                context.normals, context.normals.remaining(), context.normalsStride,
-                context.tangents, context.tangents != null ? context.tangents.remaining() : 0,
-                context.tangentsStride);
+    public void setBufferObjectAt(@NonNull Engine engine, int bufferIndex,
+            @NonNull BufferObject bufferObject) {
+        nSetBufferObjectAt(getNativeObject(), engine.getNativeObject(), bufferIndex,
+                bufferObject.getNativeObject());
     }
 
     public long getNativeObject() {
@@ -443,6 +401,7 @@ public class VertexBuffer {
     private static native long nCreateBuilder();
     private static native void nDestroyBuilder(long nativeBuilder);
     private static native void nBuilderVertexCount(long nativeBuilder, int vertexCount);
+    private static native void nBuilderEnableBufferObjects(long nativeBuilder, boolean enabled);
     private static native void nBuilderBufferCount(long nativeBuilder, int bufferCount);
     private static native void nBuilderAttribute(long nativeBuilder, int attribute,
             int bufferIndex, int attributeType, int byteOffset, int byteStride);
@@ -455,7 +414,6 @@ public class VertexBuffer {
             int bufferIndex, Buffer buffer, int remaining, int destOffsetInBytes, int count,
             Object handler, Runnable callback);
 
-    private static native void nPopulateTangentQuaternions(int quatType, int quatCount,
-            Buffer outBuffer, int outRemaining, int outStride, Buffer normals, int normalsRemaining,
-            int normalsStride, Buffer tangents, int tangentsRemaining, int tangentsStride);
+    private static native void nSetBufferObjectAt(long nativeVertexBuffer, long nativeEngine,
+            int bufferIndex, long nativeBufferObject);
 }

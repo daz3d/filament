@@ -19,6 +19,7 @@
 #include "DataReshaper.h"
 
 #include <utils/Panic.h>
+#include <utils/debug.h>
 
 namespace filament {
 namespace backend {
@@ -38,8 +39,7 @@ TextureReshaper::TextureReshaper(TextureFormat requestedFormat) noexcept {
             const size_t reshapedSize = p.size / 6 * 8;     // reshaping from 6 to 8 bytes per pixel
             void* reshapeBuffer = malloc(reshapedSize);
             ASSERT_POSTCONDITION(reshapeBuffer, "Could not allocate memory to reshape pixels.");
-            // 0x3c00 is 1.0 in 16 bit floating point.
-            DataReshaper::reshape<uint16_t, 3, 4, 0x3c00>(reshapeBuffer, p.buffer, p.size);
+            DataReshaper::reshape<uint16_t, 3, 4>(reshapeBuffer, p.buffer, p.size);
 
             PixelBufferDescriptor reshaped(reshapeBuffer, reshapedSize,
                     PixelBufferDescriptor::PixelDataFormat::RGBA,
@@ -72,7 +72,7 @@ TextureFormat TextureReshaper::getReshapedFormat() const noexcept {
 }
 
 PixelBufferDescriptor TextureReshaper::reshape(PixelBufferDescriptor& p) const {
-    assert(mReshapeFunction);
+    assert_invariant(mReshapeFunction);
     return mReshapeFunction(p);
 }
 

@@ -22,6 +22,7 @@
 namespace gltfio {
 
 class Animator;
+class FilamentAsset;
 
 /**
  * \class FilamentInstance FilamentInstance.h gltfio/FilamentInstance.h
@@ -34,6 +35,11 @@ class Animator;
  */
 class FilamentInstance {
 public:
+    /**
+     * Gets the owner of this instance.
+     */
+    FilamentAsset* getAsset() const noexcept;
+
     /**
      * Gets the list of entities in this instance, one for each glTF node. All of these have a
      * Transform component. Some of the returned entities may also have a Renderable component or
@@ -51,6 +57,11 @@ public:
 
     /**
      * Lazily creates the animation engine for the instance, or returns it from the cache.
+     *
+     * Note that an animator can be obtained either from an individual instance, or from the
+     * originating FilamentAsset. In the latter case, the animation frame is shared amongst all
+     * instances. If individual control is desired, users must obtain the animator from the
+     * individual instances.
      *
      * The animator is owned by the asset and should not be manually deleted.
      * The first time this is called, it must be called before FilamentAsset::releaseSourceData().

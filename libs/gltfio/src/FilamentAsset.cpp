@@ -19,6 +19,7 @@
 #include <gltfio/Animator.h>
 
 #include <utils/EntityManager.h>
+#include <utils/Log.h>
 #include <utils/NameComponentManager.h>
 
 #include "Wireframe.h"
@@ -40,11 +41,18 @@ FFilamentAsset::~FFilamentAsset() {
 
     delete mAnimator;
     delete mWireframe;
+
     mEngine->destroy(mRoot);
+    mEntityManager->destroy(mRoot);
+
     for (auto entity : mEntities) {
-        // Destroys the entity's renderable, light, transform, and camera components.
+        // Destroy the entity's renderable, light, transform, and camera components.
         mEngine->destroy(entity);
-        // Destroys the actual entity.
+        // Destroy the name component.
+        if (mNameManager) {
+            mNameManager->removeComponent(entity);
+        }
+        // Destroy the actual entity.
         mEntityManager->destroy(entity);
     }
     for (auto mi : mMaterialInstances) {
@@ -52,6 +60,9 @@ FFilamentAsset::~FFilamentAsset() {
     }
     for (auto vb : mVertexBuffers) {
         mEngine->destroy(vb);
+    }
+    for (auto bo : mBufferObjects) {
+        mEngine->destroy(bo);
     }
     for (auto ib : mIndexBuffers) {
         mEngine->destroy(ib);
@@ -61,8 +72,24 @@ FFilamentAsset::~FFilamentAsset() {
     }
 }
 
+const char* FFilamentAsset::getExtras(utils::Entity entity) const noexcept {
+    if (entity.isNull()) {
+        return mAssetExtras.c_str();
+    }
+    const auto iter = mNodeExtras.find(entity);
+    return iter == mNodeExtras.cend() ? nullptr : iter->second.c_str();
+}
+
 Animator* FFilamentAsset::getAnimator() noexcept {
     if (!mAnimator) {
+        if (!mResourcesLoaded) {
+            slog.e << "Cannot create animator before resource loading." << io::endl;
+            return nullptr;
+        }
+        if (!mSourceAsset) {
+            slog.e << "Cannot create animator from frozen asset." << io::endl;
+            return nullptr;
+        }
         mAnimator = new Animator(this, nullptr);
     }
     return mAnimator;
@@ -79,29 +106,16 @@ void FFilamentAsset::releaseSourceData() noexcept {
     // To ensure that all possible memory is freed, we reassign to new containers rather than
     // calling clear(). With many container types (such as robin_map), clearing is a fast
     // operation that merely frees the storage for the items.
+    mMatInstanceCache = {};
+    mMeshCache = {};
     mResourceUris = {};
     mNodeMap = {};
     mPrimitives = {};
     mBufferSlots = {};
     mTextureSlots = {};
-    releaseSourceAsset();
+    mSourceAsset.reset();
     for (FFilamentInstance* instance : mInstances) {
         instance->nodeMap = {};
-    }
-}
-
-void FFilamentAsset::releaseSourceAsset() {
-    if (--mSourceAssetRefCount == 0) {
-        // At this point, all vertex buffers have been uploaded to the GPU and we can finally
-        // release all remaining CPU-side source data, such as aggregated GLB buffers and Draco
-        // meshes. Note that sidecar bin data is already released, because external resources
-        // are released eagerly via BufferDescriptor callbacks.
-        mDracoCache = {};
-        mGlbData = {};
-        if (!mSharedSourceAsset) {
-            cgltf_free((cgltf_data*) mSourceAsset);
-        }
-        mSourceAsset = nullptr;
     }
 }
 
@@ -250,6 +264,10 @@ size_t FilamentAsset::getEntitiesByName(const char* name, Entity* entities,
 size_t FilamentAsset::getEntitiesByPrefix(const char* prefix, Entity* entities,
         size_t maxCount) const noexcept {
     return upcast(this)->getEntitiesByPrefix(prefix, entities, maxCount);
+}
+
+const char* FilamentAsset::getExtras(Entity entity) const noexcept {
+    return upcast(this)->getExtras(entity);
 }
 
 Animator* FilamentAsset::getAnimator() noexcept {

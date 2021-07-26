@@ -19,9 +19,8 @@
 #include "components/LightManager.h"
 #include "components/RenderableManager.h"
 
-#include <private/filament/UibGenerator.h>
+#include <private/filament/UibStructs.h>
 
-#include "details/Culler.h"
 #include "details/Engine.h"
 #include "details/IndirectLight.h"
 #include "details/Skybox.h"
@@ -29,6 +28,7 @@
 #include <utils/compiler.h>
 #include <utils/EntityManager.h>
 #include <utils/Range.h>
+#include <utils/Systrace.h>
 #include <utils/Zip2Iterator.h>
 
 #include <algorithm>
@@ -47,9 +47,11 @@ FScene::FScene(FEngine& engine) :
 FScene::~FScene() noexcept = default;
 
 
-void FScene::prepare(const mat4f& worldOriginTransform) {
+void FScene::prepare(const mat4f& worldOriginTransform, bool shadowReceiversAreCasters) noexcept {
     // TODO: can we skip this in most cases? Since we rely on indices staying the same,
     //       we could only skip, if nothing changed in the RCM.
+
+    SYSTRACE_CALL();
 
     FEngine& engine = mEngine;
     EntityManager& em = engine.getEntityManager();
@@ -117,12 +119,23 @@ void FScene::prepare(const mat4f& worldOriginTransform) {
             // compute the world AABB so we can perform culling
             const Box worldAABB = rigidTransform(rcm.getAABB(ri), worldTransform);
 
+            auto visibility = rcm.getVisibility(ri);
+            if (shadowReceiversAreCasters && visibility.receiveShadows) {
+                visibility.castShadows = true;
+            }
+
+            // FIXME: We compute and store the local scale because it's needed for glTF but
+            //        we need a better way to handle this
+            const mat4f& transform = tcm.getTransform(ti);
+            float scale = (length(transform[0].xyz) + length(transform[1].xyz) +
+                    length(transform[2].xyz)) / 3.0f;
+
             // we know there is enough space in the array
             sceneData.push_back_unsafe(
                     ri,                       // RENDERABLE_INSTANCE
                     worldTransform,           // WORLD_TRANSFORM
                     reversedWindingOrder,     // REVERSED_WINDING_ORDER
-                    rcm.getVisibility(ri),    // VISIBILITY_STATE
+                    visibility,               // VISIBILITY_STATE
                     rcm.getBonesUbh(ri),      // BONES_UBH
                     worldAABB.center,         // WORLD_AABB_CENTER
                     0,                        // VISIBLE_MASK
@@ -130,7 +143,8 @@ void FScene::prepare(const mat4f& worldOriginTransform) {
                     rcm.getLayerMask(ri),     // LAYERS
                     worldAABB.halfExtent,     // WORLD_AABB_EXTENT
                     {},                       // PRIMITIVES
-                    0                         // SUMMED_PRIMITIVE_COUNT
+                    0,                        // SUMMED_PRIMITIVE_COUNT
+                    scale                     // USER_DATA
             );
         }
 
@@ -165,8 +179,18 @@ void FScene::prepare(const mat4f& worldOriginTransform) {
     // some elements past the end of the array will be accessed by SIMD code, we need to make
     // sure the data is valid enough as not to produce errors such as divide-by-zero
     // (e.g. in computeLightRanges())
-    for (size_t i = lightData.size(), e = (lightData.size() + 3u) & ~3u; i < e; i++) {
+    for (size_t i = lightData.size(), e = lightDataCapacity; i < e; i++) {
         new(lightData.data<POSITION_RADIUS>() + i) float4{ 0, 0, 0, 1 };
+    }
+
+    // Purely for the benefit of MSAN, we can avoid uninitialized reads by zeroing out the
+    // unused scene elements between the end of the array and the rounded-up count.
+    if (UTILS_HAS_SANITIZE_MEMORY) {
+        for (size_t i = sceneData.size(), e = renderableDataCapacity; i < e; i++) {
+            sceneData.data<LAYERS>()[i] = 0;
+            sceneData.data<VISIBLE_MASK>()[i] = 0;
+            sceneData.data<VISIBILITY_STATE>()[i] = {};
+        }
     }
 }
 
@@ -200,10 +224,17 @@ void FScene::updateUBOs(utils::Range<uint32_t> visibleRenderables, backend::Hand
         mat3f m = mat3f::getTransformForNormals(model.upperLeft());
         m *= mat3f(1.0f / std::sqrt(max(float3{length2(m[0]), length2(m[1]), length2(m[2])})));
 
+        // The shading normal must be flipped for mirror transformations.
+        // Basically we're shading the other side of the polygon and therefore need to negate the
+        // normal, similar to what we already do to support double-sided lighting.
+        if (sceneData.elementAt<REVERSED_WINDING_ORDER>(i)) {
+            m = -m;
+        }
+
         UniformBuffer::setUniform(buffer,
                 offset + offsetof(PerRenderableUib, worldFromModelNormalMatrix), m);
 
-        // Note that we cast bools to uint32. Booleans are byte-sized in C++, but we need to
+        // Note that we cast bool to uint32_t. Booleans are byte-sized in C++, but we need to
         // initialize all 32 bits in the UBO field.
 
         FRenderableManager::Visibility visibility = sceneData.elementAt<VISIBILITY_STATE>(i);
@@ -223,6 +254,10 @@ void FScene::updateUBOs(utils::Range<uint32_t> visibleRenderables, backend::Hand
         UniformBuffer::setUniform(buffer,
                 offset + offsetof(PerRenderableUib, morphWeights),
                 sceneData.elementAt<MORPH_WEIGHTS>(i));
+
+        // TODO: We need to find a better way to provide the scale information per object
+        UniformBuffer::setUniform(buffer,
+                offset + offsetof(PerRenderableUib, userData), sceneData.elementAt<USER_DATA>(i));
     }
 
     // TODO: handle static objects separately
@@ -240,42 +275,22 @@ void FScene::terminate(FEngine& engine) {
     mRenderableViewUbh.clear();
 }
 
-void FScene::prepareDynamicLights(const CameraInfo& camera, ArenaScope& rootArena, backend::Handle<backend::HwUniformBuffer> lightUbh) noexcept {
+void FScene::prepareDynamicLights(const CameraInfo& camera, ArenaScope& rootArena,
+        backend::Handle<backend::HwUniformBuffer> lightUbh) noexcept {
     FEngine::DriverApi& driver = mEngine.getDriverApi();
     FLightManager& lcm = mEngine.getLightManager();
     FScene::LightSoa& lightData = getLightData();
 
     /*
-     * Here we copy our lights data into the GPU buffer, some lights might be left out if there
-     * are more than the GPU buffer allows (i.e. 256).
-     *
-     * We always sort lights by distance to the camera plane so that:
-     * - we can build light trees
-     * - lights farther from the camera are dropped when in excess
-     *   (note this doesn't work well, e.g. for search-lights)
+     * Here we copy our lights data into the GPU buffer.
      */
 
-    ArenaScope arena(rootArena.getAllocator());
     size_t const size = lightData.size();
-
-    // always allocate at least 4 entries, because the vectorized loops below rely on that
-    float* const UTILS_RESTRICT distances = arena.allocate<float>((size + 3u) & 3u, CACHELINE_SIZE);
-
-    // pre-compute the lights' distance to the camera plane, for sorting below
-    // - we don't skip the directional light, because we don't care, it's ignored during sorting
-    float4 const* const UTILS_RESTRICT spheres = lightData.data<FScene::POSITION_RADIUS>();
-    computeLightCameraPlaneDistances(distances, camera, spheres, size);
-
-    // skip directional light
-    Zip2Iterator<FScene::LightSoa::iterator, float*> b = { lightData.begin(), distances };
-    std::sort(b + DIRECTIONAL_LIGHTS_COUNT, b + size,
-            [](auto const& lhs, auto const& rhs) { return lhs.second < rhs.second; });
-
-    // drop excess lights
-    lightData.resize(std::min(size, CONFIG_MAX_LIGHT_COUNT + DIRECTIONAL_LIGHTS_COUNT));
-
     // number of point/spot lights
     size_t positionalLightCount = size - DIRECTIONAL_LIGHTS_COUNT;
+    assert_invariant(positionalLightCount);
+
+    float4 const* const UTILS_RESTRICT spheres = lightData.data<FScene::POSITION_RADIUS>();
 
     // compute the light ranges (needed when building light trees)
     float2* const zrange = lightData.data<FScene::SCREEN_SPACE_Z_RANGE>();
@@ -298,26 +313,6 @@ void FScene::prepareDynamicLights(const CameraInfo& camera, ArenaScope& rootAren
     }
 
     driver.loadUniformBuffer(lightUbh, { lp, positionalLightCount * sizeof(LightsUib) });
-}
-
-// These methods need to exist so clang honors the __restrict__ keyword, which in turn
-// produces much better vectorization. The ALWAYS_INLINE keyword makes sure we actually don't
-// pay the price of the call!
-UTILS_ALWAYS_INLINE
-inline void FScene::computeLightCameraPlaneDistances(
-        float* UTILS_RESTRICT const distances,
-        CameraInfo const& UTILS_RESTRICT camera,
-        float4 const* UTILS_RESTRICT const spheres, size_t count) noexcept {
-
-    // without this, the vectorization is less efficient
-    // we're guaranteed to have a multiple of 4 lights (at least)
-    count = uint32_t(count + 3u) & ~3u;
-
-    for (size_t i = 0 ; i < count; i++) {
-        const float4 sphere = spheres[i];
-        const float4 center = camera.view * sphere.xyz; // camera points towards the -z axis
-        distances[i] = -center.z > 0.0f ? -center.z : 0.0f; // std::max() prevents vectorization (???)
-    }
 }
 
 // These methods need to exist so clang honors the __restrict__ keyword, which in turn
@@ -364,6 +359,12 @@ void FScene::remove(Entity entity) {
     mEntities.erase(entity);
 }
 
+void FScene::removeEntities(const Entity* entities, size_t count) {
+    for (size_t i = 0; i < count; ++i, ++entities) {
+        remove(*entities);
+    }
+}
+
 size_t FScene::getRenderableCount() const noexcept {
     FEngine& engine = mEngine;
     EntityManager& em = engine.getEntityManager();
@@ -407,8 +408,8 @@ bool FScene::hasContactShadows() const noexcept {
     // TODO: cache the the result of this Loop in the LightManager
     bool hasContactShadows = false;
     auto& lcm = mEngine.getLightManager();
-    auto pFirst = mLightData.begin<LIGHT_INSTANCE>();
-    auto pLast = mLightData.end<LIGHT_INSTANCE>();
+    const auto *pFirst = mLightData.begin<LIGHT_INSTANCE>();
+    const auto *pLast = mLightData.end<LIGHT_INSTANCE>();
     while (pFirst != pLast && !hasContactShadows) {
         if (pFirst->isValid()) {
             auto const& shadowOptions = lcm.getShadowOptions(*pFirst);
@@ -430,6 +431,14 @@ void Scene::setSkybox(Skybox* skybox) noexcept {
     upcast(this)->setSkybox(upcast(skybox));
 }
 
+Skybox* Scene::getSkybox() noexcept {
+    return upcast(this)->getSkybox();
+}
+
+Skybox const* Scene::getSkybox() const noexcept {
+    return upcast(this)->getSkybox();
+}
+
 void Scene::setIndirectLight(IndirectLight const* ibl) noexcept {
     upcast(this)->setIndirectLight(upcast(ibl));
 }
@@ -444,6 +453,10 @@ void Scene::addEntities(const Entity* entities, size_t count) {
 
 void Scene::remove(Entity entity) {
     upcast(this)->remove(entity);
+}
+
+void Scene::removeEntities(const Entity* entities, size_t count) {
+    upcast(this)->removeEntities(entities, count);
 }
 
 size_t Scene::getRenderableCount() const noexcept {

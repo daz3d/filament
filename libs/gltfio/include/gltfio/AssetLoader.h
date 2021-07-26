@@ -111,6 +111,7 @@ struct AssetConfiguration {
  *      }
  * } while (!quit);
  *
+ * scene->removeEntities(asset->getEntities(), asset->getEntityCount());
  * loader->destroyAsset(asset);
  * materials->destroyMaterials();
  * delete materials;
@@ -152,45 +153,60 @@ public:
     FilamentAsset* createAssetFromBinary(const uint8_t* bytes, uint32_t nbytes);
 
     /**
-     * Consumes the contents of a glTF 2.0 file and produces a master asset with one or more
-     * instances.
+     * Consumes the contents of a glTF 2.0 file and produces a primary asset with one or more
+     * instances. The primary asset has ownership over the instances.
      *
      * The returned instances share their textures, material instances, and vertex buffers with the
-     * master asset. However each instance has its own unique set of entities, transform components,
-     * and renderable components. Instances are automatically freed when the master asset is freed.
+     * primary asset. However each instance has its own unique set of entities, transform
+     * components, and renderable components. Instances are freed when the primary asset is freed.
      *
-     * Light components are not instanced, they belong only to the master asset.
+     * Light components are not instanced, they belong only to the primary asset.
      *
-     * Clients must use ResourceLoader to load resources on the master asset.
+     * Clients must use ResourceLoader to load resources on the primary asset.
      *
-     * The entity accessors and renderable stack in the returned FilamentAsset represent the union
-     * of all entities across all instances. Use the individual FilamentInstance objects to access
-     * each partition of entities.  Similarly, the Animator in the master asset controls all
+     * The entity accessor and renderable stack API in the primary asset can be used to control the
+     * union of all instances. The individual FilamentInstance objects can be used to access each
+     * instance's partition of entities.  Similarly, the Animator in the primary asset controls all
      * instances. To animate instances individually, use FilamentInstance::getAnimator().
      *
      * @param bytes the contents of a glTF 2.0 file (JSON or GLB)
      * @param numBytes the number of bytes in "bytes"
      * @param instances destination pointer, to be populated by the requested number of instances
      * @param numInstances requested number of instances
-     * @return the master asset that has ownership over all instances
+     * @return the primary asset that has ownership over all instances
      */
     FilamentAsset* createInstancedAsset(const uint8_t* bytes, uint32_t numBytes,
             FilamentInstance** instances, size_t numInstances);
 
     /**
-     * Takes a pointer to an opaque pipeline object and returns a bundle of Filament objects.
+     * Adds a new instance to an instanced asset.
      *
-     * This exists solely for interop with AssetPipeline, which is optional according to the build
-     * configuration.
+     * Use this with caution. It is more efficient to pre-allocate a max number of instances, and
+     * gradually add them to the scene as needed. Instances can also be "recycled" by removing and
+     * re-adding them to the scene.
+     *
+     * NOTE: destroyInstance() does not exist because gltfio favors flat arrays for storage of
+     * entity lists and instance lists, which would be slow to shift. We also wish to discourage
+     * create/destroy churn, as noted above.
+     *
+     * This cannot be called after FilamentAsset::releaseSourceData().
+     * This cannot be called on a non-instanced asset.
+     * See also AssetLoader::createInstancedAsset().
      */
-    FilamentAsset* createAssetFromHandle(const void* cgltf);
+    FilamentInstance* createInstance(FilamentAsset* primary);
 
     /**
      * Allows clients to enable diagnostic shading on newly-loaded assets.
      */
     void enableDiagnostics(bool enable = true);
 
-    /** Destroys the given asset and all of its associated Filament objects. */
+    /**
+     * Destroys the given asset and all of its associated Filament objects.
+     *
+     * This destroys entities, components, material instances, vertex buffers, index buffers,
+     * and textures. This does not necessarily immediately free all source data, since
+     * texture decoding or GPU uploading might be underway.
+     */
     void destroyAsset(const FilamentAsset* asset);
 
     /**
@@ -205,6 +221,8 @@ public:
     size_t getMaterialsCount() const noexcept;
 
     utils::NameComponentManager* getNames() const noexcept;
+
+    MaterialProvider* getMaterialProvider() const noexcept;
 
     /*! \cond PRIVATE */
 protected:

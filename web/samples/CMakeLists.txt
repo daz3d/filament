@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(websamples)
 
 if (FILAMENT_SKIP_SAMPLES)
@@ -78,7 +78,7 @@ set(ETC_NORMALS_ARGS "--kernel=NORMALS;--linear;--compression=etc_rgb8_normalxyz
 
 add_ktxfiles("assets/models/monkey/albedo.png" "albedo.ktx" "")
 add_ktxfiles("assets/models/monkey/albedo.png" "albedo_astc.ktx" "--compression=astc_fast_ldr_4x4")
-add_ktxfiles("assets/models/monkey/albedo.png" "albedo_s3tc.ktx" "--compression=s3tc_rgb_dxt1")
+add_ktxfiles("assets/models/monkey/albedo.png" "albedo_s3tc_srgb.ktx" "--compression=s3tc_rgb_dxt1")
 add_ktxfiles("assets/models/monkey/normal.png" "normal.ktx" "--kernel=NORMALS;--linear")
 add_ktxfiles("assets/models/monkey/normal.png" "normal_etc.ktx" "${ETC_NORMALS_ARGS}")
 add_ktxfiles("assets/models/monkey/roughness.png" "roughness.ktx" "--grayscale")
@@ -157,8 +157,10 @@ function(add_envmap SOURCE TARGET)
         DEPENDS cmgen)
 endfunction()
 
-add_envmap("third_party/environments/venetian_crossroads_2k.hdr" "venetian_crossroads_2k")
-add_envmap("third_party/environments/pillars_2k.hdr" "pillars_2k")
+# The pillars envmap is used only when building new HTML for the tutorials.
+# add_envmap("third_party/environments/pillars_2k.hdr" "pillars_2k")
+
+add_envmap("third_party/environments/lightroom_14b.hdr" "default_env")
 
 add_custom_target(sample_assets DEPENDS
     ${target_textures}
@@ -180,7 +182,12 @@ add_custom_command(
     DEPENDS filament-js
     COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/../filament-js/filament.wasm ${SERVER_DIR})
 
-add_custom_target(filamentjs_public DEPENDS ${SERVER_DIR}/filament.js ${SERVER_DIR}/filament.wasm)
+add_custom_command(
+    OUTPUT ${SERVER_DIR}/filament-viewer.js
+    DEPENDS ${PROJECT_BINARY_DIR}/../filament-js/filament-viewer.js
+    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/../filament-js/filament-viewer.js ${SERVER_DIR})
+
+add_custom_target(filamentjs_public DEPENDS ${SERVER_DIR}/filament.js ${SERVER_DIR}/filament.wasm ${SERVER_DIR}/filament-viewer.js)
 
 # ==================================================================================================
 # The websamples target depends on all HTML files, assets, and filament.{js,wasm}
@@ -191,8 +198,10 @@ set(HTML_FILES
     helmet.html
     morphing.html
     parquet.html
+    remote.html
     skinning.html
     suzanne.html
+    test-filament-viewer.html
     triangle.html)
 
 set(ASSET_FILES

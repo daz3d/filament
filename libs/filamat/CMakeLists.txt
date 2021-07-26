@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(filamat)
 
 set(TARGET         filamat)
@@ -40,9 +40,11 @@ set(COMMON_SRCS
         src/shaders/CodeGenerator.cpp
         src/shaders/ShaderGenerator.cpp
         src/Enums.cpp
+        src/Includes.cpp
         src/MaterialBuilder.cpp
         src/MaterialVariants.cpp
-        src/Includes.cpp)
+        src/UibGenerator.cpp
+)
 
 # Sources and headers for filamat
 
@@ -52,6 +54,7 @@ set(PRIVATE_HDRS
         src/eiff/DictionarySpirvChunk.h
         src/eiff/MaterialSpirvChunk.h
         src/GLSLPostProcessor.h
+        src/ShaderMinifier.h
         src/sca/ASTHelpers.h
         src/sca/GLSLTools.h
         src/sca/builtinResource.h)
@@ -63,7 +66,8 @@ set(SRCS
         src/eiff/MaterialSpirvChunk.cpp
         src/sca/ASTHelpers.cpp
         src/sca/GLSLTools.cpp
-        src/GLSLPostProcessor.cpp)
+        src/GLSLPostProcessor.cpp
+        src/ShaderMinifier.cpp)
 
 # Sources and headers for filamat lite
 
@@ -114,13 +118,11 @@ target_compile_options(${TARGET} PRIVATE -DAMD_EXTENSIONS -DNV_EXTENSIONS )
 target_compile_options(${TARGET} PRIVATE
 # TODO: use hidden by default and expose what we need (we'll need to do the same in dependencies)
 #        -fvisibility=hidden
-        $<$<PLATFORM_ID:Linux>:-fPIC>
 )
 
 target_compile_options(filamat_lite PRIVATE
 # TODO: use hidden by default and expose what we need (we'll need to do the same in dependencies)
 #        -fvisibility=hidden
-        $<$<PLATFORM_ID:Linux>:-fPIC>
 )
 
 target_compile_definitions(filamat_lite PRIVATE FILAMAT_LITE)

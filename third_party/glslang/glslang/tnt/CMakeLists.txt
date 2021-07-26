@@ -22,6 +22,7 @@ set(SOURCES
         ../MachineIndependent/RemoveTree.cpp
         ../MachineIndependent/Scan.cpp
         ../MachineIndependent/ShaderLang.cpp
+        ../MachineIndependent/SpirvIntrinsics.cpp
         ../MachineIndependent/SymbolTable.cpp
         ../MachineIndependent/Versions.cpp
         ../MachineIndependent/intermOut.cpp
@@ -49,7 +50,6 @@ set(HEADERS
         ../Include/intermediate.h
         ../Include/PoolAlloc.h
         ../Include/ResourceLimits.h
-        ../Include/revision.h
         ../Include/ShHandle.h
         ../Include/Types.h
         ../MachineIndependent/attribute.h
@@ -83,6 +83,8 @@ set(HEADERS
 add_library(glslang STATIC ${BISON_GLSLParser_OUTPUT_SOURCE} ${SOURCES} ${HEADERS})
 set_property(TARGET glslang PROPERTY FOLDER glslang)
 set_property(TARGET glslang PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+glslang_add_build_info_dependency(glslang)
 
 set(PUBLIC_HEADER_FOLDERS
         ../Include

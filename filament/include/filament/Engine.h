@@ -23,11 +23,13 @@
 
 namespace utils {
 class Entity;
+class EntityManager;
 class JobSystem;
 } // namespace utils
 
 namespace filament {
 
+class BufferObject;
 class Camera;
 class ColorGrading;
 class DebugRegistry;
@@ -187,6 +189,66 @@ public:
     static Engine* create(Backend backend = Backend::DEFAULT,
             Platform* platform = nullptr, void* sharedGLContext = nullptr);
 
+#if UTILS_HAS_THREADING
+    /**
+     * A callback used with Engine::createAsync() called once the engine is initialized and it is
+     * safe to call Engine::getEngine(token). This callback is invoked from an arbitrary worker
+     * thread. Engine::getEngine() CANNOT be called from that thread, instead it must be called
+     * from the same thread than Engine::createAsync() was called from.
+     *
+     * @param user   User provided parameter given in createAsync().
+     *
+     * @param token  An opaque token used to call Engine::getEngine().
+     */
+    using CreateCallback = void(void* user, void* token);
+
+    /**
+     * Creates an instance of Engine asynchronously
+     *
+     * @param callback          Callback called once the engine is initialized and it is safe to
+     *                          call Engine::getEngine.
+     *
+     * @param user              A user provided pointer that is given back to callback unmodified.
+     *
+     * @param backend           Which driver backend to use.
+     *
+     * @param platform          A pointer to an object that implements Platform. If this is
+     *                          provided, then this object is used to create the hardware context
+     *                          and expose platform features to it.
+     *
+     *                          If not provided (or nullptr is used), an appropriate Platform
+     *                          is created automatically.
+     *
+     *                          All methods of this interface are called from filament's
+     *                          render thread, which is different from the main thread.
+     *
+     *                          The lifetime of \p platform must exceed the lifetime of
+     *                          the Engine object.
+     *
+     *  @param sharedGLContext  A platform-dependant OpenGL context used as a shared context
+     *                          when creating filament's internal context.
+     *                          Setting this parameter will force filament to use the OpenGL
+     *                          implementation (instead of Vulkan for instance).
+     */
+    static void createAsync(CreateCallback callback, void* user,
+            Backend backend = Backend::DEFAULT,
+            Platform* platform = nullptr, void* sharedGLContext = nullptr);
+
+    /**
+     * Retrieve an Engine* from createAsync(). This must be called from the same thread than
+     * Engine::createAsync() was called from.
+     *
+     * @param token An opaque token given in the createAsync() callback function.
+     *
+     * @return A pointer to the newly created Engine, or nullptr if the Engine couldn't be created.
+     *
+     * @exception utils::PostConditionPanic can be thrown if there isn't enough memory to
+     * allocate the command buffer. If exceptions are disabled, this condition if fatal and
+     * this function will abort.
+     */
+    static Engine* getEngine(void* token);
+#endif
+
     /**
      * Destroy the Engine instance and all associated resources.
      *
@@ -242,10 +304,24 @@ public:
      */
     static void destroy(Engine* engine);
 
+    /**
+     * @return EntityManager used by filament
+     */
+    utils::EntityManager& getEntityManager() noexcept;
+
+    /**
+     * @return RenderableManager reference
+     */
     RenderableManager& getRenderableManager() noexcept;
 
+    /**
+     * @return LightManager reference
+     */
     LightManager& getLightManager() noexcept;
 
+    /**
+     * @return TransformManager reference
+     */
     TransformManager& getTransformManager() noexcept;
 
     /**
@@ -312,7 +388,7 @@ public:
      * @param entity An entity.
      * @return A pointer to the Camera component for this entity or nullptr if the entity didn't
      *         have a Camera component. The pointer is valid until destroyCameraComponent()
-     *         (or destroyCamera()) is called or the entity itself is destroyed.
+     *         is called or the entity itself is destroyed.
      */
     Camera* getCameraComponent(utils::Entity entity) noexcept;
 
@@ -330,6 +406,7 @@ public:
      */
     Fence* createFence() noexcept;
 
+    bool destroy(const BufferObject* p);        //!< Destroys a BufferObject object.
     bool destroy(const VertexBuffer* p);        //!< Destroys an VertexBuffer object.
     bool destroy(const Fence* p);               //!< Destroys a Fence object.
     bool destroy(const IndexBuffer* p);         //!< Destroys an IndexBuffer object.
@@ -383,6 +460,32 @@ public:
     Backend getBackend() const noexcept;
 
     /**
+     * Returns the Platform object that belongs to this Engine.
+     *
+     * When Engine::create is called with no platform argument, Filament creates an appropriate
+     * Platform subclass automatically. The specific subclass created depends on the backend and
+     * OS. For example, when the OpenGL backend is used, the Platform object will be a descendant of
+     * OpenGLPlatform.
+     *
+     * dynamic_cast should be used to cast the returned Platform object into a specific subclass.
+     * Note that RTTI must be available to use dynamic_cast.
+     *
+     * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * Platform* platform = engine->getPlatform();
+     * // static_cast also works, but more dangerous.
+     * SpecificPlatform* specificPlatform = dynamic_cast<SpecificPlatform*>(platform);
+     * specificPlatform->platformSpecificMethod();
+     * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     *
+     * When a custom Platform is passed to Engine::create, Filament will use it instead, and this
+     * method will return it.
+     *
+     * @return A pointer to the Platform object that was provided to Engine::create, or the
+     * Filament-created one.
+     */
+    Platform* getPlatform() const noexcept;
+
+    /**
      * Allocate a small amount of memory directly in the command stream. The allocated memory is
      * guaranteed to be preserved until the current command buffer is executed
      *
@@ -395,36 +498,18 @@ public:
      */
     void* streamAlloc(size_t size, size_t alignment = alignof(double)) noexcept;
 
-
     /**
-     * helper for creating an Entity and Camera component in one call
-     *
-     * @deprecated use createCamera(Entity) instead
-     *
-     * @return A camera component
-     */
-    UTILS_DEPRECATED
-    Camera* createCamera() noexcept;
-
-    /**
-     * helper for destroying the Camera component and its Entity in one call
-     *
-     * @param camera Camera component to destroy. The associated entity is also destroyed.
-     * @deprecated use destroyCameraComponent(Entity) instead
-     */
-    UTILS_DEPRECATED
-    void destroy(const Camera* camera);
-
-   /**
-     * Invokes one iteration of the render loop, used only on single-threaded platforms.
-     *
-     * This should be called every time the windowing system needs to paint (e.g. at 60 Hz).
-     */
+      * Invokes one iteration of the render loop, used only on single-threaded platforms.
+      *
+      * This should be called every time the windowing system needs to paint (e.g. at 60 Hz).
+      */
     void execute();
 
-   /**
-     * Retrieves the job system that the Engine has ownership over.
-     */
+    /**
+      * Retrieves the job system that the Engine has ownership over.
+      *
+      * @return JobSystem used by filament
+      */
     utils::JobSystem& getJobSystem() noexcept;
 
     DebugRegistry& getDebugRegistry() noexcept;

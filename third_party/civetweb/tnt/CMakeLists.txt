@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(civetweb)
 
 set(OUR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -32,3 +32,5 @@ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
 target_link_libraries(${TARGET} ${CMAKE_DL_LIBS})
 
 target_compile_options(${TARGET} PRIVATE $<$<PLATFORM_ID:Linux>:-fPIC>)
+
+install(TARGETS ${TARGET} ARCHIVE DESTINATION lib/${DIST_DIR})

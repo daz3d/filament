@@ -1,7 +1,7 @@
 # ==================================================================================================
 # CMake
 # ==================================================================================================
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 
 # ==================================================================================================
 # Project declaration
@@ -11,17 +11,37 @@ project(TNT)
 # ==================================================================================================
 # Options
 # ==================================================================================================
-option(FILAMENT_ENABLE_JAVA "Compile Java projects, requires a JDK and the JAVA_HOME env var" ON)
-
 option(FILAMENT_USE_EXTERNAL_GLES3 "Experimental: Compile Filament against OpenGL ES 3" OFF)
 
-option(FILAMENT_USE_SWIFTSHADER "Experimental: Compile Filament against SwiftShader" OFF)
-
-option(FILAMENT_GENERATE_JS_DOCS "Build WebGL documentation and tutorials" OFF)
+option(FILAMENT_USE_SWIFTSHADER "Compile Filament against SwiftShader" OFF)
 
 option(FILAMENT_ENABLE_LTO "Enable link-time optimizations if supported by the compiler" OFF)
 
 option(FILAMENT_SKIP_SAMPLES "Don't build samples" OFF)
+
+option(FILAMENT_SUPPORTS_XCB "Include XCB support in Linux builds" ON)
+
+option(FILAMENT_SUPPORTS_XLIB "Include XLIB support in Linux builds" ON)
+
+set(FILAMENT_NDK_VERSION "" CACHE STRING
+    "Android NDK version or version prefix to be used when building for Android."
+)
+
+set(FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB "2" CACHE STRING
+    "Per render pass arena size. Must be roughly 1 MB larger than FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB, default 2."
+)
+
+set(FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB "1" CACHE STRING
+    "Size of the high-level draw commands buffer. Rule of thumb, 1 MB less than FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB, default 1."
+)
+
+set(FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB "1" CACHE STRING
+    "Size of the command-stream buffer. As a rule of thumb use the same value as FILAMENT_PER_FRRAME_COMMANDS_SIZE_IN_MB, default 1."
+)
+
+set(FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB "4" CACHE STRING
+    "Size of the OpenGL handle arena, default 4."
+)
 
 # ==================================================================================================
 # CMake policies
@@ -69,7 +89,17 @@ if (UNIX AND NOT APPLE AND NOT ANDROID AND NOT WEBGL)
     set(LINUX TRUE)
 endif()
 
-if (ANDROID OR WEBGL OR IOS OR FILAMENT_USE_SWIFTSHADER)
+if (LINUX)
+    if (FILAMENT_SUPPORTS_XCB)
+        add_definitions(-DFILAMENT_SUPPORTS_XCB)
+    endif()
+
+    if (FILAMENT_SUPPORTS_XLIB)
+        add_definitions(-DFILAMENT_SUPPORTS_XLIB)
+    endif()
+endif()
+
+if (ANDROID OR WEBGL OR IOS)
     set(IS_MOBILE_TARGET TRUE)
 endif()
 
@@ -197,9 +227,9 @@ endif()
 # ==================================================================================================
 # General compiler flags
 # ==================================================================================================
-set(CXX_STANDARD "-std=c++14")
+set(CXX_STANDARD "-std=c++17")
 if (WIN32)
-    set(CXX_STANDARD "/std:c++14")
+    set(CXX_STANDARD "/std:c++17")
 endif()
 
 if (MSVC)
@@ -214,8 +244,7 @@ if (FILAMENT_USE_EXTERNAL_GLES3)
 endif()
 
 if (FILAMENT_USE_SWIFTSHADER)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSWIFTSHADER")
-    set(EGL TRUE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFILAMENT_USE_SWIFTSHADER")
 endif()
 
 if (WIN32)
@@ -224,12 +253,21 @@ endif()
 
 if (LINUX)
     option(USE_STATIC_LIBCXX "Link against the static runtime libraries." ON)
-    if (${USE_STATIC_LIBCXX}) 
+    if (${USE_STATIC_LIBCXX})
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
         link_libraries("-static-libgcc -static-libstdc++")
         link_libraries(libc++.a)
         link_libraries(libc++abi.a)
     endif()
+
+    # Only linux, clang doesn't want to use a shared library that is not PIC.
+    # /usr/bin/ld: ../bluegl/libbluegl.a(BlueGL.cpp.o): relocation R_X86_64_32S
+    # against `.bss' can not be used when making a shared object; recompile with -fPIC
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+endif()
+
+if (ANDROID)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 endif()
 
 if (CYGWIN)
@@ -263,7 +301,7 @@ endif()
 
 # On Android RELEASE builds, we disable exceptions and RTTI to save some space (about 75 KiB
 # saved by -fno-exception and 10 KiB saved by -fno-rtti).
-if (ANDROID OR WEBGL)
+if (ANDROID OR IOS OR WEBGL)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-rtti")
 endif()
 
@@ -329,9 +367,15 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebIn
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTNT_DEV")
 endif()
 
+# By default, build with support for OpenGL on all platforms.
+option(FILAMENT_SUPPORTS_OPENGL "Include the OpenGL backend" ON)
+if (FILAMENT_SUPPORTS_OPENGL)
+    add_definitions(-DFILAMENT_SUPPORTS_OPENGL)
+endif()
+
 # By default, build with Vulkan support on desktop platforms, although clients must request to use
 # it at run time.
-if (WIN32 OR WEBGL OR IOS OR FILAMENT_USE_SWIFTSHADER)
+if (WIN32 OR WEBGL OR IOS)
     option(FILAMENT_SUPPORTS_VULKAN "Include the Vulkan backend" OFF)
 else()
     option(FILAMENT_SUPPORTS_VULKAN "Include the Vulkan backend" ON)
@@ -364,6 +408,13 @@ else()
     option(FILAMENT_ENABLE_MATDBG "Enable the material debugger" OFF)
 endif()
 
+# Only optimize materials in Release mode (so error message lines match the source code)
+if (CMAKE_BUILD_TYPE MATCHES Release)
+    option(FILAMENT_DISABLE_MATOPT "Disable material optimizations" OFF)
+else()
+    option(FILAMENT_DISABLE_MATOPT "Disable material optimizations" ON)
+endif()
+
 # ==================================================================================================
 # Material compilation flags
 # ==================================================================================================
@@ -377,9 +428,9 @@ endif()
 
 set(MATC_API_FLAGS )
 
-# TODO: Add a flag to build Filament without support for OpenGL.
-set(MATC_API_FLAGS ${MATC_API_FLAGS} -a opengl)
-
+if (FILAMENT_SUPPORTS_OPENGL)
+    set(MATC_API_FLAGS ${MATC_API_FLAGS} -a opengl)
+endif()
 if (FILAMENT_SUPPORTS_VULKAN)
     set(MATC_API_FLAGS ${MATC_API_FLAGS} -a vulkan)
 endif()
@@ -387,8 +438,7 @@ if (FILAMENT_SUPPORTS_METAL)
     set(MATC_API_FLAGS ${MATC_API_FLAGS} -a metal)
 endif()
 
-# Only optimize materials in Release mode (so error message lines match the source code)
-if (NOT CMAKE_BUILD_TYPE MATCHES Release)
+if (FILAMENT_DISABLE_MATOPT)
     set(MATC_OPT_FLAGS -g)
 endif()
 
@@ -399,8 +449,23 @@ set(MATC_BASE_FLAGS ${MATC_API_FLAGS} -p ${MATC_TARGET} ${MATC_OPT_FLAGS})
 # ==================================================================================================
 # choose where to put the objects in the dist folder
 if (NOT DIST_ARCH)
-    set(DIST_ARCH x86_64)
+    # On Apple silicon, the value of CMAKE_HOST_SYSTEM_PROCESSOR varies based on the CMake process's
+    # own architecture. Because of this, running a x86_64 CMake binary on Apple silicon will cause
+    # DIST_ARCH to be set incorrectly.
+    set(DIST_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+
+    if (CMAKE_OSX_ARCHITECTURES MATCHES ".*;.*")
+        set(DIST_ARCH "universal")
+    else()
+        if (NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "")
+            set(DIST_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+        endif()
+    endif()
+
 endif()
+# On Windows machines, the host processor is set to 'AMD64', which we'll interpret as x86_64.
+string(TOLOWER "${DIST_ARCH}" DIST_ARCH)
+string(REPLACE "amd64" "x86_64" DIST_ARCH "${DIST_ARCH}")
 if (NOT DIST_DIR)
     set(DIST_DIR "${DIST_ARCH}")
 endif()
@@ -464,20 +529,20 @@ endif()
 # "bluevk" and "samples" targets.
 # ==================================================================================================
 
-if (FILAMENT_SUPPORTS_VULKAN AND APPLE)
+if (FILAMENT_USE_SWIFTSHADER)
+    if (NOT FILAMENT_SUPPORTS_VULKAN)
+        message(ERROR "SwiftShader is only useful when Vulkan is enabled.")
+    endif()
+    find_library(SWIFTSHADER_VK NAMES vk_swiftshader HINTS "$ENV{SWIFTSHADER_LD_LIBRARY_PATH}")
+    message(STATUS "Found SwiftShader VK library in: ${SWIFTSHADER_VK}.")
+    add_definitions(-DFILAMENT_VKLIBRARY_PATH=\"${SWIFTSHADER_VK}\")
+elseif (FILAMENT_SUPPORTS_VULKAN AND APPLE)
     find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/macOS/lib")
     if (Vulkan_LIBRARY)
         set(Vulkan_FOUND ON)
         message(STATUS "Found Vulkan library in SDK: ${Vulkan_LIBRARY}.")
         add_definitions(-DFILAMENT_VKLIBRARY_PATH=\"${Vulkan_LIBRARY}\")
     endif()
-endif()
-
-if (FILAMENT_USE_SWIFTSHADER)
-    find_library(SWIFTSHADER_EGL NAMES EGL HINTS "$ENV{SWIFTSHADER_LD_LIBRARY_PATH}")
-    find_library(SWIFTSHADER_GLES NAMES GLESv3 GLESv2 HINTS "$ENV{SWIFTSHADER_LD_LIBRARY_PATH}")
-    message(STATUS "Found SwiftShader EGL library in: ${SWIFTSHADER_EGL}.")
-    message(STATUS "Found SwiftShader GLES library in: ${SWIFTSHADER_GLES}.")
 endif()
 
 # ==================================================================================================
@@ -525,23 +590,29 @@ add_subdirectory(${EXTERNAL}/libgtest/tnt)
 add_subdirectory(${LIBRARIES}/camutils)
 add_subdirectory(${LIBRARIES}/filabridge)
 add_subdirectory(${LIBRARIES}/filaflat)
+add_subdirectory(${LIBRARIES}/filagui)
 add_subdirectory(${LIBRARIES}/filameshio)
 add_subdirectory(${LIBRARIES}/geometry)
 add_subdirectory(${LIBRARIES}/gltfio)
 add_subdirectory(${LIBRARIES}/ibl)
+add_subdirectory(${LIBRARIES}/iblprefilter)
 add_subdirectory(${LIBRARIES}/image)
 add_subdirectory(${LIBRARIES}/math)
 add_subdirectory(${LIBRARIES}/mathio)
 add_subdirectory(${LIBRARIES}/utils)
+add_subdirectory(${LIBRARIES}/viewer)
 add_subdirectory(${FILAMENT}/filament)
 add_subdirectory(${FILAMENT}/shaders)
+add_subdirectory(${EXTERNAL}/civetweb/tnt)
 add_subdirectory(${EXTERNAL}/hat-trie/tnt)
+add_subdirectory(${EXTERNAL}/imgui/tnt)
 add_subdirectory(${EXTERNAL}/robin-map/tnt)
 add_subdirectory(${EXTERNAL}/smol-v/tnt)
 add_subdirectory(${EXTERNAL}/benchmark/tnt)
 add_subdirectory(${EXTERNAL}/meshoptimizer)
 add_subdirectory(${EXTERNAL}/cgltf/tnt)
 add_subdirectory(${EXTERNAL}/draco/tnt)
+add_subdirectory(${EXTERNAL}/jsmn/tnt)
 add_subdirectory(${EXTERNAL}/stb/tnt)
 add_subdirectory(${EXTERNAL}/getopt)
 
@@ -555,7 +626,6 @@ if (FILAMENT_BUILD_FILAMAT OR IS_HOST_PLATFORM)
 
     # the material debugger requires filamat
     if (FILAMENT_ENABLE_MATDBG OR IS_HOST_PLATFORM)
-        add_subdirectory(${EXTERNAL}/civetweb/tnt)
         add_subdirectory(${LIBRARIES}/matdbg)
     endif()
 endif()
@@ -574,29 +644,19 @@ set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
 if (WEBGL)
     add_subdirectory(web/filament-js)
     add_subdirectory(web/samples)
-
-    if (FILAMENT_GENERATE_JS_DOCS)
-        add_subdirectory(web/docs)
-    endif()
-
-    add_subdirectory(${EXTERNAL}/imgui/tnt)
 endif()
 
 if (IS_HOST_PLATFORM)
-    add_subdirectory(${LIBRARIES}/bluegl)
+    if (FILAMENT_SUPPORTS_OPENGL)
+        add_subdirectory(${LIBRARIES}/bluegl)
+    endif()
     add_subdirectory(${LIBRARIES}/filamentapp)
-    add_subdirectory(${LIBRARIES}/filagui)
     add_subdirectory(${LIBRARIES}/imageio)
-
-    add_subdirectory(${FILAMENT}/java/filamat)
-    add_subdirectory(${FILAMENT}/java/filament)
-    add_subdirectory(${FILAMENT}/java/gltfio)
 
     add_subdirectory(${FILAMENT}/samples)
 
     add_subdirectory(${EXTERNAL}/astcenc/tnt)
     add_subdirectory(${EXTERNAL}/etc2comp)
-    add_subdirectory(${EXTERNAL}/imgui/tnt)
     add_subdirectory(${EXTERNAL}/libassimp/tnt)
     add_subdirectory(${EXTERNAL}/libpng/tnt)
     add_subdirectory(${EXTERNAL}/libsdl2/tnt)
@@ -614,10 +674,6 @@ if (IS_HOST_PLATFORM)
     add_subdirectory(${TOOLS}/resgen)
     add_subdirectory(${TOOLS}/roughness-prefilter)
     add_subdirectory(${TOOLS}/specular-color)
-endif()
-
-if (FILAMENT_USE_SWIFTSHADER)
-    add_subdirectory(${EXTERNAL}/swiftshader/tnt)
 endif()
 
 # Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)

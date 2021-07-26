@@ -2,9 +2,7 @@
 // Attributes and uniforms
 //------------------------------------------------------------------------------
 
-#if !defined(DEPTH_PREPASS)
 LAYOUT_LOCATION(4) in highp vec3 vertex_worldPosition;
-#endif
 
 #if defined(HAS_ATTRIBUTE_TANGENTS)
 LAYOUT_LOCATION(5) SHADING_INTERPOLATION in mediump vec3 vertex_worldNormal;
@@ -29,8 +27,4 @@ LAYOUT_LOCATION(10) in highp vec4 vertex_uv01;
 LAYOUT_LOCATION(11) in highp vec4 vertex_lightSpacePosition;
 #endif
 
-#if defined(HAS_SHADOWING) && defined(HAS_DYNAMIC_LIGHTING)
-LAYOUT_LOCATION(12) in highp vec4 vertex_spotLightSpacePosition[MAX_SHADOW_CASTING_SPOTS];
-#endif
-
-layout(location = 0) out vec4 fragColor;
+// Note that fragColor is an output and is not declared here; see main.fs and depth_main.fs

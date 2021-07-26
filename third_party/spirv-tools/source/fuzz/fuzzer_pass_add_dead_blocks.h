@@ -24,11 +24,10 @@ namespace fuzz {
 // passes can then manipulate such blocks.
 class FuzzerPassAddDeadBlocks : public FuzzerPass {
  public:
-  FuzzerPassAddDeadBlocks(opt::IRContext* ir_context, FactManager* fact_manager,
+  FuzzerPassAddDeadBlocks(opt::IRContext* ir_context,
+                          TransformationContext* transformation_context,
                           FuzzerContext* fuzzer_context,
                           protobufs::TransformationSequence* transformations);
-
-  ~FuzzerPassAddDeadBlocks();
 
   void Apply() override;
 };

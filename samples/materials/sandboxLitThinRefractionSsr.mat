@@ -1,5 +1,5 @@
 material {
-    name : ThinRefraction,
+    name : ThinRefractionScreenSpace,
     shadingModel : lit,
     refractionType : thin,
     refractionMode : screenspace,
@@ -19,6 +19,14 @@ material {
         {
             type : float,
             name : metallic
+        },
+        {
+            type : float3,
+            name : sheenColor
+        },
+        {
+            type : float,
+            name : sheenRoughness
         },
         {
             type : float,
@@ -63,6 +71,8 @@ fragment {
         material.baseColor.a = materialParams.alpha;
         material.roughness = materialParams.roughness;
         material.metallic = materialParams.metallic;
+        material.sheenColor = materialParams.sheenColor;
+        material.sheenRoughness = materialParams.sheenRoughness;
         material.clearCoat = materialParams.clearCoat;
         material.clearCoatRoughness = materialParams.clearCoatRoughness;
         material.anisotropy = materialParams.anisotropy;

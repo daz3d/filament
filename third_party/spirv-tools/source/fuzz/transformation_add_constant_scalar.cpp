@@ -20,27 +20,28 @@ namespace spvtools {
 namespace fuzz {
 
 TransformationAddConstantScalar::TransformationAddConstantScalar(
-    const spvtools::fuzz::protobufs::TransformationAddConstantScalar& message)
-    : message_(message) {}
+    spvtools::fuzz::protobufs::TransformationAddConstantScalar message)
+    : message_(std::move(message)) {}
 
 TransformationAddConstantScalar::TransformationAddConstantScalar(
-    uint32_t fresh_id, uint32_t type_id, std::vector<uint32_t> words) {
+    uint32_t fresh_id, uint32_t type_id, const std::vector<uint32_t>& words,
+    bool is_irrelevant) {
   message_.set_fresh_id(fresh_id);
   message_.set_type_id(type_id);
+  message_.set_is_irrelevant(is_irrelevant);
   for (auto word : words) {
     message_.add_word(word);
   }
 }
 
 bool TransformationAddConstantScalar::IsApplicable(
-    opt::IRContext* context,
-    const spvtools::fuzz::FactManager& /*unused*/) const {
+    opt::IRContext* ir_context, const TransformationContext& /*unused*/) const {
   // The id needs to be fresh.
-  if (!fuzzerutil::IsFreshId(context, message_.fresh_id())) {
+  if (!fuzzerutil::IsFreshId(ir_context, message_.fresh_id())) {
     return false;
   }
   // The type id for the scalar must exist and be a type.
-  auto type = context->get_type_mgr()->GetType(message_.type_id());
+  auto type = ir_context->get_type_mgr()->GetType(message_.type_id());
   if (!type) {
     return false;
   }
@@ -61,26 +62,39 @@ bool TransformationAddConstantScalar::IsApplicable(
 }
 
 void TransformationAddConstantScalar::Apply(
-    opt::IRContext* context, spvtools::fuzz::FactManager* /*unused*/) const {
-  opt::Instruction::OperandList operand_list;
-  for (auto word : message_.word()) {
-    operand_list.push_back({SPV_OPERAND_TYPE_LITERAL_INTEGER, {word}});
+    opt::IRContext* ir_context,
+    TransformationContext* transformation_context) const {
+  auto new_instruction = MakeUnique<opt::Instruction>(
+      ir_context, SpvOpConstant, message_.type_id(), message_.fresh_id(),
+      opt::Instruction::OperandList(
+          {{SPV_OPERAND_TYPE_LITERAL_INTEGER,
+            std::vector<uint32_t>(message_.word().begin(),
+                                  message_.word().end())}}));
+  auto new_instruction_ptr = new_instruction.get();
+  ir_context->module()->AddGlobalValue(std::move(new_instruction));
+
+  fuzzerutil::UpdateModuleIdBound(ir_context, message_.fresh_id());
+
+  // Inform the def-use manager about the new instruction. Invalidate the
+  // constant manager as we have added a new constant.
+  ir_context->get_def_use_mgr()->AnalyzeInstDef(new_instruction_ptr);
+  ir_context->InvalidateAnalyses(opt::IRContext::kAnalysisConstants);
+
+  if (message_.is_irrelevant()) {
+    transformation_context->GetFactManager()->AddFactIdIsIrrelevant(
+        message_.fresh_id());
   }
-  context->module()->AddGlobalValue(
-      MakeUnique<opt::Instruction>(context, SpvOpConstant, message_.type_id(),
-                                   message_.fresh_id(), operand_list));
-
-  fuzzerutil::UpdateModuleIdBound(context, message_.fresh_id());
-
-  // We have added an instruction to the module, so need to be careful about the
-  // validity of existing analyses.
-  context->InvalidateAnalysesExceptFor(opt::IRContext::Analysis::kAnalysisNone);
 }
 
 protobufs::Transformation TransformationAddConstantScalar::ToMessage() const {
   protobufs::Transformation result;
   *result.mutable_add_constant_scalar() = message_;
   return result;
+}
+
+std::unordered_set<uint32_t> TransformationAddConstantScalar::GetFreshIds()
+    const {
+  return {message_.fresh_id()};
 }
 
 }  // namespace fuzz

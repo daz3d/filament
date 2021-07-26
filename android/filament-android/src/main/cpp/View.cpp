@@ -67,9 +67,9 @@ Java_com_google_android_filament_View_nSetVisibleLayers(JNIEnv*, jclass, jlong n
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_View_nSetShadowsEnabled(JNIEnv*, jclass, jlong nativeView, jboolean enabled) {
+Java_com_google_android_filament_View_nSetShadowingEnabled(JNIEnv*, jclass, jlong nativeView, jboolean enabled) {
     View* view = (View*) nativeView;
-    view->setShadowsEnabled(enabled);
+    view->setShadowingEnabled(enabled);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -130,6 +130,26 @@ Java_com_google_android_filament_View_nSetDynamicResolutionOptions(JNIEnv*, jcla
     view->setDynamicResolutionOptions(options);
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetShadowType(JNIEnv*, jclass, jlong nativeView, jint type) {
+    View* view = (View*) nativeView;
+    view->setShadowType((View::ShadowType) type);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetVsmShadowOptions(JNIEnv*, jclass, jlong nativeView,
+        jint anisotropy, jboolean mipmapping, jfloat exponent, jfloat minVarianceScale,
+        jfloat lightBleedReduction) {
+    View* view = (View*) nativeView;
+    View::VsmShadowOptions options;
+    options.anisotropy = (uint8_t)anisotropy;
+    options.mipmapping = (bool)mipmapping;
+    options.exponent = exponent;
+    options.minVarianceScale = minVarianceScale;
+    options.lightBleedReduction = lightBleedReduction;
+    view->setVsmShadowOptions(options);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetRenderQuality(JNIEnv*, jclass,
@@ -178,29 +198,59 @@ Java_com_google_android_filament_View_nIsFrontFaceWindingInverted(JNIEnv*,
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetAmbientOcclusion(JNIEnv*, jclass, jlong nativeView, jint ordinal) {
     View* view = (View*) nativeView;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     view->setAmbientOcclusion((View::AmbientOcclusion) ordinal);
+#pragma clang diagnostic pop
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_google_android_filament_View_nGetAmbientOcclusion(JNIEnv*, jclass, jlong nativeView) {
     View* view = (View*) nativeView;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     return (jint)view->getAmbientOcclusion();
+#pragma clang diagnostic pop
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetAmbientOcclusionOptions(JNIEnv*, jclass,
     jlong nativeView, jfloat radius, jfloat bias, jfloat power, jfloat resolution, jfloat intensity,
-    jint quality, jint upsampling) {
+    jint quality, jint lowPassFilter, jint upsampling, jboolean enabled, jfloat minHorizonAngleRad) {
     View* view = (View*) nativeView;
-    View::AmbientOcclusionOptions options = {
-            .radius = radius,
-            .power = power,
-            .bias = bias,
-            .resolution = resolution,
-            .intensity = intensity,
-            .quality = (View::QualityLevel)quality,
-            .upsampling = (View::QualityLevel)upsampling
-    };
+    View::AmbientOcclusionOptions options = view->getAmbientOcclusionOptions();
+    options.radius = radius;
+    options.power = power;
+    options.bias = bias;
+    options.resolution = resolution;
+    options.intensity = intensity;
+    options.quality = (View::QualityLevel)quality;
+    options.lowPassFilter = (View::QualityLevel)lowPassFilter;
+    options.upsampling = (View::QualityLevel)upsampling;
+    options.enabled = (bool)enabled;
+    options.minHorizonAngleRad = minHorizonAngleRad;
+    view->setAmbientOcclusionOptions(options);
+}
+
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetSSCTOptions(JNIEnv *, jclass, jlong nativeView,
+        jfloat ssctLightConeRad, jfloat ssctStartTraceDistance, jfloat ssctContactDistanceMax,
+        jfloat ssctIntensity, jfloat ssctLightDirX, jfloat ssctLightDirY, jfloat ssctLightDirZ,
+        jfloat ssctDepthBias, jfloat ssctDepthSlopeBias, jint ssctSampleCount,
+        jint ssctRayCount, jboolean ssctEnabled) {
+    View* view = (View*) nativeView;
+    View::AmbientOcclusionOptions options = view->getAmbientOcclusionOptions();
+    options.ssct.lightConeRad = ssctLightConeRad;
+    options.ssct.shadowDistance = ssctStartTraceDistance;
+    options.ssct.contactDistanceMax = ssctContactDistanceMax;
+    options.ssct.intensity = ssctIntensity;
+    options.ssct.lightDirection = math::float3{ ssctLightDirX, ssctLightDirY, ssctLightDirZ };
+    options.ssct.depthBias = ssctDepthBias;
+    options.ssct.depthSlopeBias = ssctDepthSlopeBias;
+    options.ssct.sampleCount = (uint8_t)ssctSampleCount;
+    options.ssct.rayCount = (uint8_t)ssctRayCount;
+    options.ssct.enabled = (bool)ssctEnabled;
     view->setAmbientOcclusionOptions(options);
 }
 
@@ -208,7 +258,10 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetBloomOptions(JNIEnv*, jclass,
         jlong nativeView, jlong nativeTexture,
         jfloat dirtStrength, jfloat strength, jint resolution, jfloat anamorphism, jint levels,
-        jint blendMode, jboolean threshold, jboolean enabled) {
+        jint blendMode, jboolean threshold, jboolean enabled, jfloat highlight,
+        jboolean lensFlare, jboolean starburst, jfloat chromaticAberration, jint ghostCount,
+        jfloat ghostSpacing, jfloat ghostThreshold, jfloat haloThickness, jfloat haloRadius,
+        jfloat haloThreshold) {
     View* view = (View*) nativeView;
     Texture* dirt = (Texture*) nativeTexture;
     View::BloomOptions options = {
@@ -220,7 +273,17 @@ Java_com_google_android_filament_View_nSetBloomOptions(JNIEnv*, jclass,
             .levels = (uint8_t)levels,
             .blendMode = (View::BloomOptions::BlendMode)blendMode,
             .threshold = (bool)threshold,
-            .enabled = (bool)enabled
+            .enabled = (bool)enabled,
+            .highlight = highlight,
+            .lensFlare = (bool)lensFlare,
+            .starburst = (bool)starburst,
+            .chromaticAberration = chromaticAberration,
+            .ghostCount = (uint8_t)ghostCount,
+            .ghostSpacing = ghostSpacing,
+            .ghostThreshold = ghostThreshold,
+            .haloThickness = haloThickness,
+            .haloRadius = haloRadius,
+            .haloThreshold = haloThreshold
     };
     view->setBloomOptions(options);
 }
@@ -254,10 +317,24 @@ Java_com_google_android_filament_View_nSetBlendMode(JNIEnv *, jclass , jlong nat
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetDepthOfFieldOptions(JNIEnv *, jclass ,
-        jlong nativeView, jfloat focusDistance, jfloat blurScale, jfloat maxApertureDiameter, jboolean enabled) {
+        jlong nativeView, jfloat focusDistance, jfloat cocScale, jfloat maxApertureDiameter, jboolean enabled, jint filter,
+        jboolean nativeResolution, jint foregroundRingCount, jint backgroundRingCount, jint fastGatherRingCount,
+        jint maxForegroundCOC, jint maxBackgroundCOC) {
     View* view = (View*) nativeView;
-    view->setDepthOfFieldOptions({.focusDistance = focusDistance, .blurScale = blurScale,
-            .maxApertureDiameter = maxApertureDiameter, .enabled = (bool)enabled});
+    View::DepthOfFieldOptions::Filter eFilter{};
+    if (filter == 1) {
+        // View::DepthOfFieldOptions::Filter::MEDIAN value is actually 2
+        eFilter = View::DepthOfFieldOptions::Filter::MEDIAN;
+    }
+    view->setDepthOfFieldOptions({.cocScale = cocScale,
+            .maxApertureDiameter = maxApertureDiameter, .enabled = (bool)enabled, .filter = eFilter,
+            .nativeResolution = (bool)nativeResolution,
+            .foregroundRingCount = (uint8_t)foregroundRingCount,
+            .backgroundRingCount = (uint8_t)backgroundRingCount,
+            .fastGatherRingCount = (uint8_t)fastGatherRingCount,
+            .maxForegroundCOC = (uint8_t)maxForegroundCOC,
+            .maxBackgroundCOC = (uint8_t)maxBackgroundCOC,
+    });
 }
 
 extern "C"
@@ -267,4 +344,36 @@ Java_com_google_android_filament_View_nSetVignetteOptions(JNIEnv*, jclass, jlong
     View* view = (View*) nativeView;
     view->setVignetteOptions({.midPoint = midPoint, .roundness = roundness, .feather = feather,
             .color = LinearColorA{r, g, b, a}, .enabled = (bool)enabled});
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetTemporalAntiAliasingOptions(JNIEnv *, jclass,
+        jlong nativeView, jfloat feedback, jfloat filterWidth, jboolean enabled) {
+    View* view = (View*) nativeView;
+    view->setTemporalAntiAliasingOptions({
+            .filterWidth = filterWidth, .feedback = feedback, .enabled = (bool) enabled});
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_View_nIsShadowingEnabled(JNIEnv *, jclass, jlong nativeView) {
+    View* view = (View*) nativeView;
+    return (jboolean)view->isShadowingEnabled();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetScreenSpaceRefractionEnabled(JNIEnv *, jclass,
+        jlong nativeView, jboolean enabled) {
+    View* view = (View*) nativeView;
+    view->setScreenSpaceRefractionEnabled((bool)enabled);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_View_nIsScreenSpaceRefractionEnabled(JNIEnv *, jclass,
+        jlong nativeView) {
+    View* view = (View*) nativeView;
+    return (jboolean)view->isScreenSpaceRefractionEnabled();
 }

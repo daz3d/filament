@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.19)
 project(filaflat)
 
 set(TARGET         filaflat)
@@ -36,7 +36,6 @@ endif()
 if (NOT WIN32)
     target_compile_options(${TARGET} PRIVATE
         -fvisibility=hidden
-        $<$<PLATFORM_ID:Linux>:-fPIC>
     )
 endif()
 

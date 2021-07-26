@@ -22,7 +22,8 @@
 #include "upcast.h"
 
 #include "FrameInfo.h"
-#include "UniformBuffer.h"
+#include "FrameHistory.h"
+#include "TypedUniformBuffer.h"
 
 #include "details/Allocators.h"
 #include "details/Camera.h"
@@ -51,7 +52,7 @@ namespace utils {
 class JobSystem;
 } // namespace utils;
 
-// Avoid warnings for using the ToneMapping API, which has been publically deprecated.
+// Avoid warnings for using the ToneMapping API, which has been publicly deprecated.
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -70,27 +71,31 @@ class FScene;
 // The value of the 'VISIBLE_MASK' after culling. Each bit represents visibility in a frustum
 // (either camera or light).
 //
-// bits                          7 6 5 4 3 2 1 0
-// +-------------------------------------------+
-// VISIBLE_RENDERABLE                          X
-// VISIBLE_DIR_SHADOW_CASTER                 X
-// VISIBLE_SPOT_SHADOW_CASTER_0            X
-// VISIBLE_SPOT_SHADOW_CASTER_1          X
+// bits                               7 6 5 4 3 2 1 0
+// +------------------------------------------------+
+// VISIBLE_RENDERABLE                               X
+// VISIBLE_DIR_SHADOW_RENDERABLE                  X
+// VISIBLE_SPOT_SHADOW_RENDERABLE_0             X
+// VISIBLE_SPOT_SHADOW_RENDERABLE_1           X
 // ...
 
+// A "shadow renderable" is a renderable rendered to the shadow map during a shadow pass:
+// PCF shadows: only shadow casters
+// VSM shadows: both shadow casters and shadow receivers
+
 static constexpr size_t VISIBLE_RENDERABLE_BIT = 0u;
-static constexpr size_t VISIBLE_DIR_SHADOW_CASTER_BIT = 1u;
-static constexpr size_t VISIBLE_SPOT_SHADOW_CASTER_N_BIT(size_t n) { return n + 2; }
+static constexpr size_t VISIBLE_DIR_SHADOW_RENDERABLE_BIT = 1u;
+static constexpr size_t VISIBLE_SPOT_SHADOW_RENDERABLE_N_BIT(size_t n) { return n + 2; }
 
 static constexpr uint8_t VISIBLE_RENDERABLE = 1u << VISIBLE_RENDERABLE_BIT;
-static constexpr uint8_t VISIBLE_DIR_SHADOW_CASTER = 1u << VISIBLE_DIR_SHADOW_CASTER_BIT;
-static constexpr uint8_t VISIBLE_SPOT_SHADOW_CASTER_N(size_t n) {
-    return 1u << VISIBLE_SPOT_SHADOW_CASTER_N_BIT(n);
+static constexpr uint8_t VISIBLE_DIR_SHADOW_RENDERABLE = 1u << VISIBLE_DIR_SHADOW_RENDERABLE_BIT;
+static constexpr uint8_t VISIBLE_SPOT_SHADOW_RENDERABLE_N(size_t n) {
+    return 1u << VISIBLE_SPOT_SHADOW_RENDERABLE_N_BIT(n);
 }
 
-// ORing of all the VISIBLE_SPOT_SHADOW_CASTER bits
-static constexpr uint8_t VISIBLE_SPOT_SHADOW_CASTER =
-        (0xFF >> (sizeof(uint8_t) * 8u - CONFIG_MAX_SHADOW_CASTING_SPOTS)) << 2u;
+// ORing of all the VISIBLE_SPOT_SHADOW_RENDERABLE bits
+static constexpr uint8_t VISIBLE_SPOT_SHADOW_RENDERABLE =
+        (0xFFu >> (sizeof(uint8_t) * 8u - CONFIG_MAX_SHADOW_CASTING_SPOTS)) << 2u;
 
 // Because we're using a uint8_t for the visibility mask, we're limited to 6 spot light shadows.
 // (2 of the bits are used for visible renderables + directional light shadow casters).
@@ -158,9 +163,13 @@ public:
             FScene::RenderableSoa& renderableData, FScene::LightSoa& lightData) noexcept;
     void prepareLighting(FEngine& engine, FEngine::DriverApi& driver,
             ArenaScope& arena, Viewport const& viewport) noexcept;
+
     void prepareSSAO(backend::Handle<backend::HwTexture> ssao) const noexcept;
     void prepareSSR(backend::Handle<backend::HwTexture> ssr, float refractionLodOffset) const noexcept;
     void prepareStructure(backend::Handle<backend::HwTexture> structure) const noexcept;
+    void prepareShadow(backend::Handle<backend::HwTexture> structure) const noexcept;
+    void prepareShadowMap() const noexcept;
+
     void cleanupRenderPasses() const noexcept;
     void froxelize(FEngine& engine) const noexcept;
     void commitUniforms(backend::DriverApi& driver) const noexcept;
@@ -169,15 +178,24 @@ public:
     bool hasDirectionalLight() const noexcept { return mHasDirectionalLight; }
     bool hasDynamicLighting() const noexcept { return mHasDynamicLighting; }
     bool hasShadowing() const noexcept { return mHasShadowing; }
+    bool needsShadowMap() const noexcept { return mNeedsShadowMap; }
     bool hasFog() const noexcept { return mFogOptions.enabled && mFogOptions.density > 0.0f; }
+    bool hasVsm() const noexcept { return mShadowType == ShadowType::VSM; }
 
-    void renderShadowMaps(FEngine& engine, FEngine::DriverApi& driver, RenderPass& pass) noexcept;
+    void renderShadowMaps(FrameGraph& fg, FEngine& engine, FEngine::DriverApi& driver,
+            RenderPass const& pass) noexcept;
 
     void updatePrimitivesLod(
             FEngine& engine, const CameraInfo& camera,
             FScene::RenderableSoa& renderableData, Range visible) noexcept;
 
-    void setShadowsEnabled(bool enabled) noexcept { mShadowingEnabled = enabled; }
+    void setShadowingEnabled(bool enabled) noexcept { mShadowingEnabled = enabled; }
+
+    bool isShadowingEnabled() const noexcept { return mShadowingEnabled; }
+
+    void setScreenSpaceRefractionEnabled(bool enabled) noexcept { mScreenSpaceRefractionEnabled = enabled; }
+
+    bool isScreenSpaceRefractionEnabled() const noexcept { return mScreenSpaceRefractionEnabled; }
 
     FCamera const* getDirectionalLightCamera() const noexcept {
         return &mShadowMapManager.getCascadeShadowMap(0)->getDebugCamera();
@@ -205,6 +223,16 @@ public:
 
     AntiAliasing getAntiAliasing() const noexcept {
         return mAntiAliasing;
+    }
+
+    void setTemporalAntiAliasingOptions(TemporalAntiAliasingOptions options) noexcept {
+        options.feedback = math::clamp(options.feedback, 0.0f, 1.0f);
+        options.filterWidth = std::max(0.2f, options.filterWidth); // below 0.2 causes issues
+        mTemporalAntiAliasingOptions = options;
+    }
+
+    const TemporalAntiAliasingOptions& getTemporalAntiAliasingOptions() const noexcept {
+        return mTemporalAntiAliasingOptions;
     }
 
     void setToneMapping(ToneMapping type) noexcept {
@@ -258,22 +286,48 @@ public:
     }
 
     void setAmbientOcclusion(AmbientOcclusion ambientOcclusion) noexcept {
-        mAmbientOcclusion = ambientOcclusion;
+        mAmbientOcclusionOptions.enabled = ambientOcclusion == AmbientOcclusion::SSAO;
     }
 
     AmbientOcclusion getAmbientOcclusion() const noexcept {
-        return mAmbientOcclusion;
+        return mAmbientOcclusionOptions.enabled ? AmbientOcclusion::SSAO : AmbientOcclusion::NONE;
     }
 
     void setAmbientOcclusionOptions(AmbientOcclusionOptions options) noexcept {
         options.radius = math::max(0.0f, options.radius);
-        options.bias = math::clamp(0.0f, 0.1f, options.bias);
+        options.bias = math::clamp(options.bias, 0.0f, 0.1f);
         options.power = std::max(0.0f, options.power);
         // snap to the closer of 0.5 or 1.0
         options.resolution = std::floor(
-                math::clamp(1.0f, 2.0f, options.resolution * 2.0f) + 0.5f) * 0.5f;
+                math::clamp(options.resolution * 2.0f, 1.0f, 2.0f) + 0.5f) * 0.5f;
         options.intensity = std::max(0.0f, options.intensity);
+        options.minHorizonAngleRad = math::clamp(options.minHorizonAngleRad, 0.0f, math::f::PI_2);
+        options.ssct.lightConeRad = math::clamp(options.ssct.lightConeRad, 0.0f, math::f::PI_2);
+        options.ssct.shadowDistance = std::max(0.0f, options.ssct.shadowDistance);
+        options.ssct.contactDistanceMax = std::max(0.0f, options.ssct.contactDistanceMax);
+        options.ssct.intensity = std::max(0.0f, options.ssct.intensity);
+        options.ssct.lightDirection = normalize(options.ssct.lightDirection);
+        options.ssct.depthBias = std::max(0.0f, options.ssct.depthBias);
+        options.ssct.depthSlopeBias = std::max(0.0f, options.ssct.depthSlopeBias);
+        options.ssct.sampleCount = math::clamp((unsigned)options.ssct.sampleCount, 1u, 255u);
+        options.ssct.rayCount = math::clamp((unsigned)options.ssct.rayCount, 1u, 255u);
         mAmbientOcclusionOptions = options;
+    }
+
+    ShadowType getShadowType() const noexcept {
+        return mShadowType;
+    }
+
+    void setShadowType(ShadowType shadow) noexcept {
+        mShadowType = shadow;
+    }
+
+    void setVsmShadowOptions(VsmShadowOptions const& options) noexcept {
+        mVsmShadowOptions = options;
+    }
+
+    VsmShadowOptions getVsmShadowOptions() const noexcept {
+        return mVsmShadowOptions;
     }
 
     AmbientOcclusionOptions const& getAmbientOcclusionOptions() const noexcept {
@@ -282,7 +336,10 @@ public:
 
     void setBloomOptions(BloomOptions options) noexcept {
         options.dirtStrength = math::saturate(options.dirtStrength);
-        options.levels = math::clamp(options.levels, uint8_t(3), uint8_t(12));
+        options.levels = math::clamp(options.levels, uint8_t(3), uint8_t(11));
+        options.resolution = math::clamp(options.resolution, 1u << options.levels, 2048u);
+        options.anamorphism = math::clamp(options.anamorphism, 1.0f/32.0f, 32.0f);
+        options.highlight = std::max(10.0f, options.highlight);
         mBloomOptions = options;
     }
 
@@ -305,8 +362,7 @@ public:
     }
 
     void setDepthOfFieldOptions(DepthOfFieldOptions options) noexcept {
-        options.focusDistance = std::max(0.0f, options.focusDistance);
-        options.blurScale = std::max(0.0f, options.blurScale);
+        options.cocScale = std::max(0.0f, options.cocScale);
         options.maxApertureDiameter = std::max(0.0f, options.maxApertureDiameter);
         mDepthOfFieldOptions = options;
     }
@@ -355,37 +411,65 @@ public:
         return mRenderTarget == nullptr ? kEmptyHandle : mRenderTarget->getHwHandle();
     }
 
+    backend::TargetBufferFlags getRenderTargetAttachmentMask() const noexcept {
+        if (mRenderTarget == nullptr) {
+            return backend::TargetBufferFlags::NONE;
+        } else {
+            return mRenderTarget->getAttachmentMask();
+        }
+    }
+
     static void cullRenderables(utils::JobSystem& js, FScene::RenderableSoa& renderableData,
             Frustum const& frustum, size_t bit) noexcept;
 
-    UniformBuffer& getViewUniforms() const { return mPerViewUb; }
+    auto& getViewUniforms() const { return mPerViewUb; }
+    auto& getShadowUniforms() const { return mShadowUb; }
     backend::SamplerGroup& getViewSamplers() const { return mPerViewSb; }
-    UniformBuffer& getShadowUniforms() const { return mShadowUb; }
+
+    // Returns the frame history FIFO. This is typically used by the FrameGraph to access
+    // previous frame data.
+    FrameHistory& getFrameHistory() noexcept { return mFrameHistory; }
+    FrameHistory const& getFrameHistory() const noexcept { return mFrameHistory; }
+
+    // Clean-up the oldest frame and save the current frame information.
+    // This is typically called after all operations for this View's rendering are complete.
+    // (e.g.: after the FrameFraph execution).
+    void commitFrameHistory(FEngine& engine) noexcept;
 
 private:
     void prepareVisibleRenderables(utils::JobSystem& js,
             Frustum const& frustum, FScene::RenderableSoa& renderableData) const noexcept;
 
-    static void prepareVisibleLights(
-            FLightManager const& lcm, utils::JobSystem& js, Frustum const& frustum,
+    static void prepareVisibleLights(FLightManager const& lcm, ArenaScope& rootArena,
+            const CameraInfo& camera, Frustum const& frustum,
             FScene::LightSoa& lightData) noexcept;
+
+    static inline void computeLightCameraDistances(float* distances,
+            const CameraInfo& camera, const math::float4* spheres, size_t count) noexcept;
 
     static void computeVisibilityMasks(
             uint8_t visibleLayers, uint8_t const* layers,
             FRenderableManager::Visibility const* visibility, uint8_t* visibleMask,
-            size_t count) ;
+            size_t count, bool hasVsm);
 
     void bindPerViewUniformsAndSamplers(FEngine::DriverApi& driver) const noexcept {
         driver.bindUniformBuffer(BindingPoints::PER_VIEW, mPerViewUbh);
         driver.bindUniformBuffer(BindingPoints::LIGHTS, mLightUbh);
         driver.bindUniformBuffer(BindingPoints::SHADOW, mShadowUbh);
+        driver.bindUniformBuffer(BindingPoints::FROXEL_RECORDS, mFroxelizer.getRecordBuffer());
         driver.bindSamplers(BindingPoints::PER_VIEW, mPerViewSbh);
     }
+
+    // Clean-up the whole history, free all resources. This is typically called when the View is
+    // being terminated.
+    void drainFrameHistory(FEngine& engine) noexcept;
 
     // we don't inline this one, because the function is quite large and there is not much to
     // gain from inlining.
     static FScene::RenderableSoa::iterator partition(
-            FScene::RenderableSoa::iterator begin, FScene::RenderableSoa::iterator end, uint8_t mask) noexcept;
+            FScene::RenderableSoa::iterator begin,
+            FScene::RenderableSoa::iterator end,
+            uint8_t mask) noexcept;
 
     // these are accessed in the render loop, keep together
     backend::Handle<backend::HwSamplerGroup> mPerViewSbh;
@@ -415,16 +499,20 @@ private:
     ToneMapping mToneMapping = ToneMapping::ACES;
     Dithering mDithering = Dithering::TEMPORAL;
     bool mShadowingEnabled = true;
+    bool mScreenSpaceRefractionEnabled = true;
     bool mHasPostProcessPass = true;
-    AmbientOcclusion mAmbientOcclusion = AmbientOcclusion::NONE;
     AmbientOcclusionOptions mAmbientOcclusionOptions{};
+    ShadowType mShadowType = ShadowType::PCF;
+    VsmShadowOptions mVsmShadowOptions = {}; // FIXME: this should probably be per-light
     BloomOptions mBloomOptions;
     FogOptions mFogOptions;
     DepthOfFieldOptions mDepthOfFieldOptions;
     VignetteOptions mVignetteOptions;
+    TemporalAntiAliasingOptions mTemporalAntiAliasingOptions;
     BlendMode mBlendMode = BlendMode::OPAQUE;
     const FColorGrading* mColorGrading = nullptr;
     const FColorGrading* mDefaultColorGrading = nullptr;
+    math::float2 mClipControl{};
 
     DynamicResolutionOptions mDynamicResolution;
     math::float2 mScale = 1.0f;
@@ -432,9 +520,11 @@ private:
 
     RenderQuality mRenderQuality;
 
-    mutable UniformBuffer mPerViewUb;
-    mutable UniformBuffer mShadowUb;
+    mutable TypedUniformBuffer<PerViewUib> mPerViewUb;
+    mutable TypedUniformBuffer<ShadowUib> mShadowUb;
     mutable backend::SamplerGroup mPerViewSb;
+
+    mutable FrameHistory mFrameHistory{};
 
     utils::CString mName;
 
@@ -446,6 +536,7 @@ private:
     mutable bool mHasDirectionalLight = false;
     mutable bool mHasDynamicLighting = false;
     mutable bool mHasShadowing = false;
+    mutable bool mNeedsShadowMap = false;
 
     ShadowMapManager mShadowMapManager;
 };

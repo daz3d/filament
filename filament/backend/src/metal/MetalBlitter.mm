@@ -119,8 +119,8 @@ MetalBlitter::MetalBlitter(MetalContext& context) noexcept : mContext(context) {
 #define MTLSizeEqual(a, b) (a.width == b.width && a.height == b.height && a.depth == b.depth)
 
 void MetalBlitter::blit(id<MTLCommandBuffer> cmdBuffer, const BlitArgs& args) {
-    bool blitColor = args.source.color != nil && args.destination.color != nil;
-    bool blitDepth = args.source.depth != nil && args.destination.depth != nil;
+    bool blitColor = args.blitColor();
+    bool blitDepth = args.blitDepth();
 
     // Determine if the blit for color or depth are eligible to use a MTLBlitCommandEncoder.
     // blitColor and / or blitDepth are set to false upon success, to indicate that no more work is
@@ -163,6 +163,10 @@ void MetalBlitter::blit(id<MTLCommandBuffer> cmdBuffer, const BlitArgs& args) {
         .vertexDescription = {},
         .colorAttachmentPixelFormat = {
             blitColor ? args.destination.color.pixelFormat : MTLPixelFormatInvalid,
+            MTLPixelFormatInvalid,
+            MTLPixelFormatInvalid,
+            MTLPixelFormatInvalid,
+            MTLPixelFormatInvalid,
             MTLPixelFormatInvalid,
             MTLPixelFormatInvalid,
             MTLPixelFormatInvalid

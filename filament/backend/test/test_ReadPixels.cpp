@@ -23,6 +23,16 @@
 
 #include <fstream>
 
+using namespace filament;
+using namespace filament::backend;
+
+#ifndef IOS
+#include <imageio/ImageEncoder.h>
+#include <image/ColorTransform.h>
+
+using namespace image;
+#endif
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,10 +62,12 @@ void main() {
 
 namespace test {
 
-using namespace filament;
-using namespace filament::backend;
+class ReadPixelsTest : public BackendTest {
+public:
+    bool readPixelsFinished = false;
+};
 
-TEST_F(BackendTest, ReadPixels) {
+TEST_F(ReadPixelsTest, ReadPixels) {
     // These test scenarios use a known hash of the result pixel buffer to decide pass / fail,
     // asserting an exact pixel-for-pixel match. So far, rendering on macOS and iPhone have had
     // deterministic results. Take this test with a grain of salt, however, as other platform / GPU
@@ -115,6 +127,23 @@ TEST_F(BackendTest, ReadPixels) {
 
         size_t getPixelBufferStride() const {
             return bufferDimension;
+        }
+
+        void exportScreenshot(void* pixelData) const {
+            #ifndef IOS
+            const size_t width = readRect.width, height = readRect.height;
+            LinearImage image(width, height, 4);
+            if (format == PixelDataFormat::RGBA && type == PixelDataType::UBYTE) {
+                image = toLinearWithAlpha<uint8_t>(width, height, width * 4, (uint8_t*) pixelData);
+            }
+            if (format == PixelDataFormat::RGBA && type == PixelDataType::FLOAT) {
+                memcpy(image.getPixelRef(), pixelData, width * height * sizeof(math::float4));
+            }
+            std::string png = std::string(testName) + ".png";
+            std::ofstream outputStream(png.c_str(), std::ios::binary | std::ios::trunc);
+            ImageEncoder::encode(outputStream, ImageEncoder::Format::PNG, image, "",
+                    png.c_str());
+            #endif
         }
 
         PixelDataFormat format = PixelDataFormat::RGBA;
@@ -214,7 +243,7 @@ TEST_F(BackendTest, ReadPixels) {
         params.viewport.width = t.getRenderTargetSize();
 
         getDriverApi().makeCurrent(swapChain, swapChain);
-        getDriverApi().beginFrame(0, 0, nullptr, nullptr);
+        getDriverApi().beginFrame(0, 0);
 
         // Render a white triangle over blue.
         getDriverApi().beginRenderPass(renderTarget, params);
@@ -254,7 +283,9 @@ TEST_F(BackendTest, ReadPixels) {
                 t.alignment, t.left, t.top, t.getPixelBufferStride(), [](void* buffer, size_t size,
                     void* user) {
                     const TestCase* test = (const TestCase*) user;
-                    assert(test);
+                    assert_invariant(test);
+
+                    test->exportScreenshot(buffer);
 
                     // Hash the contents of the buffer and check that they match.
                     uint32_t hash = utils::hash::murmur3((const uint32_t*) buffer, size / 4, 0);
@@ -264,6 +295,7 @@ TEST_F(BackendTest, ReadPixels) {
 
                     free(buffer);
                 }, (void*) &t);
+
         getDriverApi().readPixels(renderTarget, t.readRect.x, t.readRect.y, t.readRect.width,
                 t.readRect.height, std::move(descriptor));
 
@@ -289,6 +321,102 @@ TEST_F(BackendTest, ReadPixels) {
     executeCommands();
 
     getDriver().purge();
+}
+
+TEST_F(ReadPixelsTest, ReadPixelsPerformance) {
+    const size_t renderTargetSize = 2000;
+    const int iterationCount = 100;
+
+    // Create a platform-specific SwapChain and make it current.
+    auto swapChain = getDriverApi().createSwapChainHeadless(renderTargetSize, renderTargetSize, 0);
+    getDriverApi().makeCurrent(swapChain, swapChain);
+
+    // Create a program.
+    ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform);
+    Program p = shaderGen.getProgram();
+    auto program = getDriverApi().createProgram(std::move(p));
+
+    // Create a Texture and RenderTarget to render into.
+    auto usage = TextureUsage::COLOR_ATTACHMENT | TextureUsage::SAMPLEABLE;
+    Handle<HwTexture> texture = getDriverApi().createTexture(
+                SamplerType::SAMPLER_2D,            // target
+                1,                                  // levels
+                TextureFormat::RGBA8,               // format
+                1,                                  // samples
+                renderTargetSize,                   // width
+                renderTargetSize,                   // height
+                1,                                  // depth
+                usage);                             // usage
+
+    Handle<HwRenderTarget> renderTarget = getDriverApi().createRenderTarget(
+            TargetBufferFlags::COLOR,
+            renderTargetSize,                          // width
+            renderTargetSize,                          // height
+            1,                                         // samples
+            TargetBufferInfo(texture, 0),              // color
+            {},                                        // depth
+            {});                                       // stencil
+
+    TrianglePrimitive triangle(getDriverApi());
+
+    RenderPassParams params = {};
+    fullViewport(params);
+    params.flags.clear = TargetBufferFlags::COLOR;
+    params.clearColor = {0.f, 0.f, 1.f, 1.f};
+    params.flags.discardStart = TargetBufferFlags::ALL;
+    params.flags.discardEnd = TargetBufferFlags::NONE;
+    params.viewport.height = renderTargetSize;
+    params.viewport.width = renderTargetSize;
+
+    void* buffer = calloc(1, renderTargetSize * renderTargetSize * 4);
+
+    PipelineState state;
+    state.program = program;
+    state.rasterState.colorWrite = true;
+    state.rasterState.depthWrite = false;
+    state.rasterState.depthFunc = RasterState::DepthFunc::A;
+    state.rasterState.culling = CullingMode::NONE;
+
+    for (int iteration = 0; iteration < iterationCount; ++iteration) {
+        readPixelsFinished = false;
+
+        if (0 == iteration % 10) {
+            printf("Executing test %d / %d\n", iteration, iterationCount);
+        }
+
+        getDriverApi().makeCurrent(swapChain, swapChain);
+        getDriverApi().beginFrame(0, 0);
+
+        // Render some content, just so we don't read back uninitialized data.
+        getDriverApi().beginRenderPass(renderTarget, params);
+        getDriverApi().draw(state, triangle.getRenderPrimitive());
+        getDriverApi().endRenderPass();
+
+        PixelBufferDescriptor descriptor(buffer, renderTargetSize * renderTargetSize * 4,
+                PixelDataFormat::RGBA, PixelDataType::UBYTE, 1, 0, 0, renderTargetSize,
+                [](void* buffer, size_t size, void* user) {
+                    ReadPixelsTest* test = (ReadPixelsTest*) user;
+                    test->readPixelsFinished = true;
+                }, this);
+
+        getDriverApi().readPixels(renderTarget, 0, 0, renderTargetSize, renderTargetSize, std::move(descriptor));
+        getDriverApi().commit(swapChain);
+        getDriverApi().endFrame(0);
+
+        flushAndWait();
+        getDriver().purge();
+
+        ASSERT_TRUE(readPixelsFinished);
+    }
+
+    free(buffer);
+
+    getDriverApi().destroyProgram(program);
+    getDriverApi().destroySwapChain(swapChain);
+    getDriverApi().destroyRenderTarget(renderTarget);
+    getDriverApi().destroyTexture(texture);
+    getDriverApi().finish();
+    executeCommands();
 }
 
 } // namespace test

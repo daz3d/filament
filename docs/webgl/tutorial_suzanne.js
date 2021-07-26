@@ -1,4 +1,4 @@
-const albedo_suffix = Filament.getSupportedFormatSuffix('astc s3tc');
+const albedo_suffix = Filament.getSupportedFormatSuffix('astc s3tc_srgb');
 const texture_suffix = Filament.getSupportedFormatSuffix('etc');
 const environ = 'venetian_crossroads_2k'
 const ibl_url = `${environ}/${environ}_ibl.ktx`;
@@ -55,7 +55,8 @@ class App {
     });
     this.swapChain = this.engine.createSwapChain();
     this.renderer = this.engine.createRenderer();
-    this.camera = this.engine.createCamera();
+    this.camera = this.engine.createCamera(Filament.EntityManager.get()
+      .create());
     this.view = this.engine.createView();
     this.view.setCamera(this.camera);
     this.view.setScene(this.scene);

@@ -46,7 +46,6 @@
 
 #include "disassemble.h"
 #include "doc.h"
-#include "SpvTools.h"
 
 namespace spv {
     extern "C" {
@@ -481,9 +480,11 @@ void SpirvStream::disassembleInstruction(Id resultId, Id /*typeId*/, Op opCode, 
             if (opCode == OpExtInst) {
                 ExtInstSet extInstSet = GLSL450Inst;
                 const char* name = idDescriptor[stream[word - 2]].c_str();
-                if (0 == memcmp("OpenCL", name, 6)) {
+                if (strcmp("OpenCL.std", name) == 0) {
                     extInstSet = OpenCLExtInst;
-                } else if (0 == memcmp("NonSemantic.DebugPrintf", name, 23)) {
+                } else if (strcmp("OpenCL.DebugInfo.100", name) == 0) {
+                    extInstSet = OpenCLExtInst;
+                } else if (strcmp("NonSemantic.DebugPrintf", name) == 0) {
                     extInstSet = NonSemanticDebugPrintfExtInst;
                 } else if (strcmp(spv::E_SPV_AMD_shader_ballot, name) == 0 ||
                            strcmp(spv::E_SPV_AMD_shader_trinary_minmax, name) == 0 ||
@@ -517,6 +518,10 @@ void SpirvStream::disassembleInstruction(Id resultId, Id /*typeId*/, Op opCode, 
         case OperandLiteralString:
             numOperands -= disassembleString();
             break;
+        case OperandVariableLiteralStrings:
+            while (numOperands > 0)
+                numOperands -= disassembleString();
+            return;
         case OperandMemoryAccess:
             outputMask(OperandMemoryAccess, stream[word++]);
             --numOperands;

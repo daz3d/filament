@@ -25,6 +25,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <utils/Allocator.h>
 #include <utils/compiler.h>
@@ -181,7 +182,7 @@ public:
         Iterator(Iterator const& rhs) noexcept = default;
         Iterator& operator=(Iterator const& rhs) = default;
 
-        const reference operator*() const { return { soa, index }; }
+        reference operator*() const { return { soa, index }; }
         reference operator*() { return { soa, index }; }
         reference operator[](size_t n) { return *(*this + n); }
 
@@ -220,7 +221,7 @@ public:
         setCapacity(capacity);
     }
 
-    // not copiable for now
+    // not copyable for now
     StructureOfArraysBase(StructureOfArraysBase const& rhs) = delete;
     StructureOfArraysBase& operator=(StructureOfArraysBase const& rhs) = delete;
 

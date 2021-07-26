@@ -24,10 +24,21 @@
 #include <Metal/Metal.h>
 #include <QuartzCore/QuartzCore.h>
 
+#include <array>
+#include <stack>
+
+#if defined(FILAMENT_METAL_PROFILING)
+#include <os/log.h>
+#include <os/signpost.h>
+#endif
+
+#include <tsl/robin_set.h>
+
 namespace filament {
 namespace backend {
 namespace metal {
 
+class MetalDriver;
 class MetalBlitter;
 class MetalBufferPool;
 class MetalRenderTarget;
@@ -38,21 +49,22 @@ struct MetalIndexBuffer;
 struct MetalSamplerGroup;
 struct MetalVertexBuffer;
 
+constexpr static uint8_t MAX_SAMPLE_COUNT = 8;  // Metal devices support at most 8 MSAA samples
+
 struct MetalContext {
+    MetalDriver* driver;
     id<MTLDevice> device = nullptr;
     id<MTLCommandQueue> commandQueue = nullptr;
 
     id<MTLCommandBuffer> pendingCommandBuffer = nullptr;
     id<MTLRenderCommandEncoder> currentRenderPassEncoder = nullptr;
 
-    // These two fields store a callback and user data to notify the client that a frame is ready
-    // for presentation.
-    // If frameFinishedCallback is nullptr, then the Metal backend automatically calls
-    // presentDrawable when the frame is commited.
-    // Otherwise, the Metal backend will not automatically present the frame. Instead, clients bear
-    // the responsibility of presenting the frame by calling the PresentCallable object.
-    backend::FrameFinishedCallback frameFinishedCallback = nullptr;
-    void* frameFinishedUserData = nullptr;
+    // Supported features.
+    bool supportsTextureSwizzling = false;
+    uint8_t maxColorRenderTargets = 4;
+
+    // sampleCountLookup[requestedSamples] gives a <= sample count supported by the device.
+    std::array<uint8_t, MAX_SAMPLE_COUNT + 1> sampleCountLookup;
 
     // Tracks resources used by command buffers.
     MetalResourceTracker resourceTracker;
@@ -65,6 +77,7 @@ struct MetalContext {
     DepthStencilStateTracker depthStencilState;
     UniformBufferState uniformState[VERTEX_BUFFER_START];
     CullModeStateTracker cullModeState;
+    WindingStateTracker windingState;
 
     // State caches.
     DepthStencilStateCache depthStencilStateCache;
@@ -73,13 +86,13 @@ struct MetalContext {
 
     MetalSamplerGroup* samplerBindings[SAMPLER_BINDING_COUNT] = {};
 
+    // Keeps track of all alive sampler groups.
+    tsl::robin_set<MetalSamplerGroup*> samplerGroups;
+
     MetalBufferPool* bufferPool;
 
-    // Surface-related properties.
-    MetalSwapChain* currentSurface = nullptr;
-    id<CAMetalDrawable> currentDrawable = nil;
-    id<MTLTexture> currentDepthTexture = nil;
-    id<MTLTexture> headlessDrawable = nil;
+    MetalSwapChain* currentDrawSwapChain = nil;
+    MetalSwapChain* currentReadSwapChain = nil;
 
     // External textures.
     CVMetalTextureCacheRef textureCache = nullptr;
@@ -96,15 +109,15 @@ struct MetalContext {
     uint64_t signalId = 1;
 
     TimerQueryInterface* timerQueryImpl;
+
+    std::stack<const char*> groupMarkers;
+
+#if defined(FILAMENT_METAL_PROFILING)
+    // Logging and profiling.
+    os_log_t log;
+    os_signpost_id_t signpostId;
+#endif
 };
-
-// Acquire the current surface's CAMetalDrawable for the current frame if it has not already been
-// acquired. This method stores it in the context's currentDrawable field and returns the
-// drawable's texture.
-// For headless swapchains a new texture is created.
-id<MTLTexture> acquireDrawable(MetalContext* context);
-
-id<MTLTexture> acquireDepthTexture(MetalContext* context);
 
 id<MTLCommandBuffer> getPendingCommandBuffer(MetalContext* context);
 

@@ -21,6 +21,10 @@
 #include "DriverBase.h"
 #include "OpenGLContext.h"
 
+#include "private/backend/HandleAllocator.h"
+
+#include "backend/TargetBufferInfo.h"
+
 #include <utils/compiler.h>
 #include <utils/Allocator.h>
 
@@ -30,8 +34,9 @@
 
 #include <set>
 
-#include <assert.h>
-
+#ifndef FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB
+#    define FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB 4
+#endif
 
 namespace filament {
 
@@ -69,6 +74,14 @@ public:
         uint32_t base = 0;
         uint32_t size = 0;
         backend::BufferUsage usage = {};
+    };
+
+    struct GLBufferObject : public backend::HwBufferObject {
+        using HwBufferObject::HwBufferObject;
+        GLBufferObject(uint32_t size) noexcept : HwBufferObject(size) {}
+        struct {
+            GLuint id = 0;
+        } gl;
     };
 
     struct GLVertexBuffer : public backend::HwVertexBuffer {
@@ -110,7 +123,6 @@ public:
         using HwTexture::HwTexture;
         struct {
             GLuint id = 0;          // texture or renderbuffer id
-            mutable GLuint rb = 0;  // multi-sample sidecar renderbuffer
             GLenum target = 0;
             GLenum internalFormat = 0;
             mutable GLsync fence = nullptr;
@@ -183,10 +195,11 @@ public:
         struct GL {
             struct RenderBuffer {
                 GLTexture* texture = nullptr;
+                mutable GLuint rb = 0;  // multi-sample sidecar renderbuffer
                 uint8_t level = 0; // level when attached to a texture
             };
             // field ordering to optimize size on 64-bits
-            RenderBuffer color[4];
+            RenderBuffer color[backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT];
             RenderBuffer depth;
             RenderBuffer stencil;
             GLuint fbo = 0;
@@ -237,74 +250,41 @@ private:
 
 #include "private/backend/DriverAPI.inc"
 
-
     // Memory management...
 
-    class HandleAllocator {
-        utils::PoolAllocator< 16, 16>   mPool0;
-        utils::PoolAllocator< 64, 32>   mPool1;
-        utils::PoolAllocator<208, 32>   mPool2;
-    public:
-        static constexpr size_t MIN_ALIGNMENT_SHIFT = 4;
-        explicit HandleAllocator(const utils::HeapArea& area);
-        void* alloc(size_t size, size_t alignment, size_t extra = 0) noexcept;
-        void free(void* p, size_t size) noexcept;
-    };
-
-    // the arenas for handle allocation needs to be thread-safe
-#ifndef NDEBUG
-    using HandleArena = utils::Arena<HandleAllocator,
-            utils::LockingPolicy::SpinLock,
-            utils::TrackingPolicy::Debug>;
-#else
-    using HandleArena = utils::Arena<HandleAllocator,
-            utils::LockingPolicy::SpinLock>;
-#endif
-
-    HandleArena mHandleArena;
-
-    backend::HandleBase::HandleId allocateHandle(size_t size) noexcept;
+    backend::HandleAllocator mHandleAllocator;
 
     template<typename D, typename ... ARGS>
-    backend::Handle<D> initHandle(ARGS&& ... args) noexcept;
+    backend::Handle<D> initHandle(ARGS&& ... args) noexcept {
+        return mHandleAllocator.allocate<D>(std::forward<ARGS>(args) ...);
+    }
 
     template<typename D, typename B, typename ... ARGS>
     typename std::enable_if<std::is_base_of<B, D>::value, D>::type*
-            construct(backend::Handle<B> const& handle, ARGS&& ... args) noexcept;
+    construct(backend::Handle<B> const& handle, ARGS&& ... args) noexcept {
+        return mHandleAllocator.construct<D, B>(handle, std::forward<ARGS>(args) ...);
+    }
 
     template<typename B, typename D,
             typename = typename std::enable_if<std::is_base_of<B, D>::value, D>::type>
-    void destruct(backend::Handle<B>& handle, D const* p) noexcept;
-
-
-    /*
-     * handle_cast
-     *
-     * casts a Handle<> to a pointer to the data it refers to.
-     */
-
-    template<typename Dp, typename B>
-    inline
-    typename std::enable_if<
-            std::is_pointer<Dp>::value &&
-            std::is_base_of<B, typename std::remove_pointer<Dp>::type>::value, Dp>::type
-    handle_cast(backend::Handle<B>& handle) noexcept {
-        assert(handle);
-        if (!handle) return nullptr; // better to get a NPE than random behavior/corruption
-        char* const base = (char *)mHandleArena.getArea().begin();
-        size_t offset = handle.getId() << HandleAllocator::MIN_ALIGNMENT_SHIFT;
-        // assert that this handle is even a valid one
-        assert(base + offset + sizeof(typename std::remove_pointer<Dp>::type) <= (char *)mHandleArena.getArea().end());
-        return static_cast<Dp>(static_cast<void *>(base + offset));
+    void destruct(backend::Handle<B>& handle, D const* p) noexcept {
+        return mHandleAllocator.deallocate(handle, p);
     }
 
     template<typename Dp, typename B>
-    inline
-    typename std::enable_if<
-            std::is_pointer<Dp>::value &&
-            std::is_base_of<B, typename std::remove_pointer<Dp>::type>::value, Dp>::type
+    typename std::enable_if_t<
+            std::is_pointer_v<Dp> &&
+            std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
+    handle_cast(backend::Handle<B>& handle) noexcept {
+        return mHandleAllocator.handle_cast<Dp, B>(handle);
+    }
+
+    template<typename Dp, typename B>
+    inline typename std::enable_if_t<
+            std::is_pointer_v<Dp> &&
+            std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
     handle_cast(backend::Handle<B> const& handle) noexcept {
-        return handle_cast<Dp>(const_cast<backend::Handle<B>&>(handle));
+        return mHandleAllocator.handle_cast<Dp, B>(handle);
     }
 
     friend class OpenGLProgram;
@@ -316,6 +296,8 @@ private:
     GetProcAddressType getProcAddress = nullptr;
 
     /* Misc... */
+
+    void updateVertexArrayObject(GLRenderPrimitive* rp, GLVertexBuffer const* vb);
 
     void framebufferTexture(backend::TargetBufferInfo const& binfo,
             GLRenderTarget const* rt, GLenum attachment) noexcept;
@@ -350,6 +332,7 @@ private:
     /* State tracking GL wrappers... */
 
            void bindTexture(GLuint unit, GLTexture const* t) noexcept;
+           void bindSampler(GLuint unit, backend::SamplerParams params) noexcept;
     inline void useProgram(OpenGLProgram* p) noexcept;
 
     enum class ResolveAction { LOAD, STORE };
@@ -359,9 +342,9 @@ private:
     GLuint getSamplerSlow(backend::SamplerParams sp) const noexcept;
 
     inline GLuint getSampler(backend::SamplerParams sp) const noexcept {
-        assert(!sp.padding0);
-        assert(!sp.padding1);
-        assert(!sp.padding2);
+        assert_invariant(!sp.padding0);
+        assert_invariant(!sp.padding1);
+        assert_invariant(!sp.padding2);
         auto& samplerMap = mSamplerMap;
         auto pos = samplerMap.find(sp.u);
         if (UTILS_UNLIKELY(pos == samplerMap.end())) {
@@ -370,11 +353,12 @@ private:
         return pos->second;
     }
 
-    const std::array<backend::HwSamplerGroup*, backend::Program::SAMPLER_BINDING_COUNT>& getSamplerBindings() const {
+    const std::array<backend::HwSamplerGroup*, backend::Program::BINDING_COUNT>& getSamplerBindings() const {
         return mSamplerBindings;
     }
 
-    static GLsizei getAttachments(std::array<GLenum, 6>& attachments,
+    using AttachmentArray = std::array<GLenum, backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT + 2>;
+    static GLsizei getAttachments(AttachmentArray& attachments,
             GLRenderTarget const* rt, backend::TargetBufferFlags buffers) noexcept;
 
     backend::RasterState mRasterState;
@@ -391,7 +375,7 @@ private:
     void setViewportScissor(backend::Viewport const& viewportScissor) noexcept;
 
     // sampler buffer binding points (nullptr if not used)
-    std::array<backend::HwSamplerGroup*, backend::Program::SAMPLER_BINDING_COUNT> mSamplerBindings = {};   // 8 pointers
+    std::array<backend::HwSamplerGroup*, backend::Program::BINDING_COUNT> mSamplerBindings = {};   // 8 pointers
 
     mutable tsl::robin_map<uint32_t, GLuint> mSamplerMap;
     mutable std::vector<GLTexture*> mExternalStreams;

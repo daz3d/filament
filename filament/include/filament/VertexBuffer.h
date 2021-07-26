@@ -31,6 +31,7 @@ namespace filament {
 
 class FVertexBuffer;
 
+class BufferObject;
 class Engine;
 
 /**
@@ -87,6 +88,17 @@ public:
         Builder& vertexCount(uint32_t vertexCount) noexcept;
 
         /**
+         * Allows buffers to be swapped out and shared using BufferObject.
+         *
+         * If buffer objects mode is enabled, clients must call setBufferObjectAt rather than
+         * setBufferAt. This allows sharing of data between VertexBuffer objects, but it may
+         * slightly increase the memory footprint of Filament's internal bookkeeping.
+         *
+         * @param enabled If true, enables buffer object mode.  False by default.
+         */
+        Builder& enableBufferObjects(bool enabled = true) noexcept;
+
+        /**
          * Sets up an attribute for this vertex buffer set.
          *
          * Using \p byteOffset and \p byteStride, attributes can be interleaved in the same buffer.
@@ -103,6 +115,9 @@ public:
          *
          * @warning VertexAttribute::TANGENTS must be specified as a quaternion and is how normals
          *          are specified.
+         *
+         * @warning Not all backends support 3-component attributes that are not floats. For help
+         *          with conversion, see geometry::Transcoder.
          *
          * @see VertexAttribute
          *
@@ -154,6 +169,8 @@ public:
     /**
      * Asynchronously copy-initializes the specified buffer from the given buffer data.
      *
+     * Do not use this if you called enableBufferObjects() on the Builder.
+     *
      * @param engine Reference to the filament::Engine to associate this VertexBuffer with.
      * @param bufferIndex Index of the buffer to initialize. Must be between 0
      *                    and Builder::bufferCount() - 1.
@@ -167,49 +184,16 @@ public:
             uint32_t byteOffset = 0);
 
     /**
-     * Specifies the quaternion type for the "populateTangentQuaternions" utility.
+     * Swaps in the given buffer object.
+     *
+     * To use this, you must first call enableBufferObjects() on the Builder.
+     *
+     * @param engine Reference to the filament::Engine to associate this VertexBuffer with.
+     * @param bufferIndex Index of the buffer to initialize. Must be between 0
+     *                    and Builder::bufferCount() - 1.
+     * @param bufferObject The handle to the GPU data that will be used in this buffer slot.
      */
-    enum QuatType {
-        HALF4,  //!< 2 bytes per component as half-floats (8 bytes per quat)
-        SHORT4, //!< 2 bytes per component as normalized integers (8 bytes per quat)
-        FLOAT4, //!< 4 bytes per component as floats (16 bytes per quat)
-    };
-
-    /**
-     * Specifies the parameters for the "populateTangentQuaternions" utility.
-     */
-    struct QuatTangentContext {
-        QuatType quatType;                      //!< desired quaternion type (required)
-        size_t quatCount;                       //!< number of quaternions (required)
-        void* outBuffer;                        //!< pre-allocated output buffer (required)
-        size_t outStride;                       //!< desired stride in bytes (optional)
-        const math::float3* normals;  //!< source normals (required)
-        size_t normalsStride;                   //!< normals stride in bytes (optional)
-        const math::float4* tangents; //!< source tangents (optional)
-        size_t tangentsStride;                  //!< tangents stride in bytes (optional)
-    };
-
-    /**
-     * Convenience function that consumes normal vectors (and, optionally, tangent vectors) and
-     * produces quaternions that can be passed into a TANGENTS buffer.
-     *
-     * The given output buffer must be preallocated with at least quatCount * outStride bytes.
-     *
-     * Normals are required but tangents are optional, in which case this function tries to generate
-     * reasonable tangents. The given normals should be unit length.
-     *
-     * If supplied, the tangent vectors should be unit length and should be orthogonal to the
-     * normals. The w component of the tangent is a sign (-1 or +1) indicating handedness of the
-     * basis.
-     *
-     * @param ctx An initialized QuatTangentContext structure.
-     *
-     * @deprecated Instead please use filament::geometry::SurfaceOrientation from libgeometry, it
-     * has additional capabilities and a daisy-chain API. Be sure to explicitly link libgeometry
-     * since its dependency might be removed in future versions of libfilament.
-     */
-    UTILS_DEPRECATED
-    static void populateTangentQuaternions(const QuatTangentContext& ctx);
+    void setBufferObjectAt(Engine& engine, uint8_t bufferIndex, BufferObject const* bufferObject);
 };
 
 } // namespace filament

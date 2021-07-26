@@ -42,6 +42,7 @@ using namespace backend;
 struct PlatformCocoaTouchGLImpl {
     EAGLContext* mGLContext = nullptr;
     CAEAGLLayer* mCurrentGlLayer = nullptr;
+    CGRect mCurrentGlLayerRect;
     GLuint mDefaultFramebuffer = 0;
     GLuint mDefaultColorbuffer = 0;
     GLuint mDefaultDepthbuffer = 0;
@@ -87,7 +88,7 @@ Driver* PlatformCocoaTouchGL::createDriver(void* const sharedGLContext) noexcept
 
     CVReturn success = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, nullptr,
             pImpl->mGLContext, nullptr, &pImpl->mTextureCache);
-    assert(success == kCVReturnSuccess);
+    assert_invariant(success == kCVReturnSuccess);
 
     pImpl->mExternalImageSharedGl = new CocoaTouchExternalImage::SharedGl();
 
@@ -128,8 +129,10 @@ void PlatformCocoaTouchGL::makeCurrent(SwapChain* drawSwapChain, SwapChain* read
 
     [EAGLContext setCurrentContext:pImpl->mGLContext];
 
-    if (pImpl->mCurrentGlLayer != glLayer) {
+    if (pImpl->mCurrentGlLayer != glLayer ||
+                !CGRectEqualToRect(pImpl->mCurrentGlLayerRect, glLayer.bounds)) {
         pImpl->mCurrentGlLayer = glLayer;
+        pImpl->mCurrentGlLayerRect = glLayer.bounds;
 
         glBindFramebuffer(GL_FRAMEBUFFER, pImpl->mDefaultFramebuffer);
 

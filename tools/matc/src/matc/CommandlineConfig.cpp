@@ -63,8 +63,8 @@ static void usage(char* name) {
             "       Reflect the specified metadata as JSON: parameters\n\n"
             "   --variant-filter=<filter>, -V <filter>\n"
             "       Filter out specified comma-separated variants:\n"
-            "           directionalLighting, dynamicLighting, shadowReceiver, skinning\n"
-            "       This variant filter is merged the filter from the material, if any\n\n"
+            "           directionalLighting, dynamicLighting, shadowReceiver, skinning, vsm, fog\n"
+            "       This variant filter is merged with the filter from the material, if any\n\n"
             "   --version, -v\n"
             "       Print the material version number\n\n"
             "Internal use and debugging only:\n"
@@ -72,6 +72,8 @@ static void usage(char* name) {
             "       Disable all shader optimizations, for debugging\n\n"
             "   --preprocessor-only, -E\n"
             "       Optimize shaders by running only the preprocessor\n\n"
+            "   --raw, -w\n"
+            "       Compile a raw GLSL shader into a SPIRV binary chunk\n\n"
             "   --output-format, -f\n"
             "       Specify output format: blob (default) or header\n\n"
             "   --debug, -d\n"
@@ -110,6 +112,10 @@ static uint8_t parseVariantFilter(const std::string& arg) {
             variantFilter |= filament::Variant::SHADOW_RECEIVER;
         } else if (item == "skinning") {
             variantFilter |= filament::Variant::SKINNING_OR_MORPHING;
+        } else if (item == "vsm") {
+            variantFilter |= filament::Variant::VSM;
+        } else if (item == "fog") {
+            variantFilter |= filament::Variant::FOG;
         }
     }
     return variantFilter;
@@ -147,7 +153,7 @@ static void parseDefine(std::string defineString,
 }
 
 bool CommandlineConfig::parse() {
-    static constexpr const char* OPTSTR = "hlxo:f:dm:a:p:D:OSEr:vV:gt";
+    static constexpr const char* OPTSTR = "hlxo:f:dm:a:p:D:OSEr:vV:gtw";
     static const struct option OPTIONS[] = {
             { "help",                    no_argument, nullptr, 'h' },
             { "license",                 no_argument, nullptr, 'l' },
@@ -166,6 +172,7 @@ bool CommandlineConfig::parse() {
             { "reflect",           required_argument, nullptr, 'r' },
             { "print",                   no_argument, nullptr, 't' },
             { "version",                 no_argument, nullptr, 'v' },
+            { "raw",                     no_argument, nullptr, 'w' },
             { nullptr, 0, nullptr, 0 }  // termination of the option list
     };
 
@@ -260,6 +267,9 @@ bool CommandlineConfig::parse() {
                 break;
             case 't':
                 mPrintShaders = true;
+                break;
+            case 'w':
+                mRawShaderMode = true;
                 break;
         }
     }

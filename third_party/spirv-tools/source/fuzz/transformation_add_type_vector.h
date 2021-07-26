@@ -15,9 +15,9 @@
 #ifndef SOURCE_FUZZ_TRANSFORMATION_ADD_TYPE_VECTOR_H_
 #define SOURCE_FUZZ_TRANSFORMATION_ADD_TYPE_VECTOR_H_
 
-#include "source/fuzz/fact_manager.h"
 #include "source/fuzz/protobufs/spirvfuzz_protobufs.h"
 #include "source/fuzz/transformation.h"
+#include "source/fuzz/transformation_context.h"
 #include "source/opt/ir_context.h"
 
 namespace spvtools {
@@ -26,20 +26,24 @@ namespace fuzz {
 class TransformationAddTypeVector : public Transformation {
  public:
   explicit TransformationAddTypeVector(
-      const protobufs::TransformationAddTypeVector& message);
+      protobufs::TransformationAddTypeVector message);
 
   TransformationAddTypeVector(uint32_t fresh_id, uint32_t component_type_id,
                               uint32_t component_count);
 
   // - |message_.fresh_id| must be a fresh id
   // - |message_.component_type_id| must be the id of a scalar type
-  bool IsApplicable(opt::IRContext* context,
-                    const FactManager& fact_manager) const override;
+  bool IsApplicable(
+      opt::IRContext* ir_context,
+      const TransformationContext& transformation_context) const override;
 
   // Adds an OpTypeVector instruction to the module, with component type
   // |message_.component_type_id| and |message_.component_count| components,
   // with result id |message_.fresh_id|.
-  void Apply(opt::IRContext* context, FactManager* fact_manager) const override;
+  void Apply(opt::IRContext* ir_context,
+             TransformationContext* transformation_context) const override;
+
+  std::unordered_set<uint32_t> GetFreshIds() const override;
 
   protobufs::Transformation ToMessage() const override;
 

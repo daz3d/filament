@@ -29,10 +29,10 @@
 #include "private/backend/SamplerGroup.h"
 
 #include <array>
+#include <memory>
 #include <mutex>
 #include <utility>
 
-#include <assert.h>
 #include <stdint.h>
 
 namespace filament {
@@ -45,9 +45,6 @@ class Dispatcher;
  */
 
 struct HwBase {
-#if !defined(NDEBUG) && UTILS_HAS_RTTI
-    const char* typeId = nullptr;
-#endif
 };
 
 struct HwVertexBuffer : public HwBase {
@@ -55,7 +52,8 @@ struct HwVertexBuffer : public HwBase {
     uint32_t vertexCount{};               //   4
     uint8_t bufferCount{};                //   1
     uint8_t attributeCount{};             //   1
-    uint8_t padding[2]{};                 //   2 -> total struct is 136 bytes
+    bool padding{};                       //   1
+    uint8_t bufferObjectsVersion{};       //   1 -> total struct is 136 bytes
 
     HwVertexBuffer() noexcept = default;
     HwVertexBuffer(uint8_t bufferCount, uint8_t attributeCount, uint32_t elementCount,
@@ -67,13 +65,23 @@ struct HwVertexBuffer : public HwBase {
     }
 };
 
-struct HwIndexBuffer : public HwBase {
-    uint32_t count{};
-    uint8_t elementSize{};
+struct HwBufferObject : public HwBase {
+    uint32_t byteCount{};
 
-    HwIndexBuffer() noexcept = default;
+    HwBufferObject() noexcept = default;
+    HwBufferObject(uint32_t byteCount) noexcept : byteCount(byteCount) {}
+};
+
+struct HwIndexBuffer : public HwBase {
+    uint32_t count : 27;
+    uint32_t elementSize : 5;
+
+    HwIndexBuffer() noexcept : count{}, elementSize{} { }
     HwIndexBuffer(uint8_t elementSize, uint32_t indexCount) noexcept :
             count(indexCount), elementSize(elementSize) {
+        // we could almost store elementSize on 4 bits because it's never > 16 and never 0
+        assert_invariant(elementSize > 0 && elementSize <= 16);
+        assert_invariant(indexCount < (1u << 27));
     }
 };
 
@@ -112,7 +120,7 @@ struct HwTexture : public HwBase {
     uint32_t depth{};
     SamplerType target{};
     uint8_t levels : 4;  // This allows up to 15 levels (max texture size of 32768 x 32768)
-    uint8_t samples : 4; // In practice this is always 1.
+    uint8_t samples : 4; // Sample count per pixel (should always be a power of 2)
     TextureFormat format{};
     TextureUsage usage{};
     HwStream* hwStream = nullptr;
@@ -190,6 +198,9 @@ protected:
     void scheduleDestroySlow(BufferDescriptor&& buffer) noexcept;
 
     void scheduleRelease(AcquiredImage&& image) noexcept;
+
+    void debugCommandBegin(CommandStream* cmds, bool synchronous, const char* methodName) noexcept override;
+    void debugCommandEnd(CommandStream* cmds, bool synchronous, const char* methodName) noexcept override;
 
 private:
     std::mutex mPurgeLock;

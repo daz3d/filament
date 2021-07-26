@@ -19,7 +19,8 @@
 
 #include <math/vec3.h>
 
-#include <functional>
+#include<utils/Slice.h>
+
 #include <vector>
 
 #include <stdint.h>
@@ -40,7 +41,7 @@ class Image;
  */
 class CubemapIBL {
 public:
-    using Progress = std::function<void(size_t, float)>;
+    typedef void (*Progress)(size_t, float, void*);
 
     /**
      * Computes a roughness LOD using prefiltered importance sampling GGX
@@ -52,9 +53,14 @@ public:
      * @param updater           a callback for the caller to track progress
      */
     static void roughnessFilter(
+            utils::JobSystem& js, Cubemap& dst, const utils::Slice<Cubemap>& levels,
+            float linearRoughness, size_t maxNumSamples, math::float3 mirror, bool prefilter,
+            Progress updater = nullptr, void* userdata = nullptr);
+
+    static void roughnessFilter(
             utils::JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
             float linearRoughness, size_t maxNumSamples, math::float3 mirror, bool prefilter,
-            Progress updater = {});
+            Progress updater = nullptr, void* userdata = nullptr);
 
     //! Computes the "DFG" term of the "split-sum" approximation and stores it in a 2D image
     static void DFG(utils::JobSystem& js, Image& dst, bool multiscatter, bool cloth);
@@ -72,7 +78,7 @@ public:
      * @see CubemapSH
      */
     static void diffuseIrradiance(utils::JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
-            size_t maxNumSamples = 1024, Progress updater = {});
+            size_t maxNumSamples = 1024, Progress updater = nullptr, void* userdata = nullptr);
 
     // for debugging. ignore.
     static void brdf(utils::JobSystem& js, Cubemap& dst, float linearRoughness);

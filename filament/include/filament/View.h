@@ -61,8 +61,6 @@ class Viewport;
  */
 class UTILS_PUBLIC View : public FilamentAPI {
 public:
-    using TargetBufferFlags = backend::TargetBufferFlags;
-
     enum class QualityLevel : uint8_t {
         LOW,
         MEDIUM,
@@ -87,10 +85,14 @@ public:
      * factors are set to 1.0.
      *
      * enabled:   enable or disables dynamic resolution on a View
+     *
      * homogeneousScaling: by default the system scales the major axis first. Set this to true
      *                     to force homogeneous scaling.
+     *
      * minScale:  the minimum scale in X and Y this View should use
+     *
      * maxScale:  the maximum scale in X and Y this View should use
+     *
      * quality:   upscaling quality.
      *            LOW: 1 bilinear tap, Medium: 4 bilinear taps, High: 9 bilinear taps (tent)
      *
@@ -114,24 +116,32 @@ public:
      * Options to control the bloom effect
      *
      * enabled:     Enable or disable the bloom post-processing effect. Disabled by default.
+     *
      * levels:      Number of successive blurs to achieve the blur effect, the minimum is 3 and the
      *              maximum is 12. This value together with resolution influences the spread of the
      *              blur effect. This value can be silently reduced to accommodate the original
      *              image size.
+     *
      * resolution:  Resolution of bloom's minor axis. The minimum value is 2^levels and the
      *              the maximum is lower of the original resolution and 4096. This parameter is
      *              silently clamped to the minimum and maximum.
      *              It is highly recommended that this value be smaller than the target resolution
      *              after dynamic resolution is applied (horizontally and vertically).
+     *
      * strength:    how much of the bloom is added to the original image. Between 0 and 1.
+     *
      * blendMode:   Whether the bloom effect is purely additive (false) or mixed with the original
      *              image (true).
+     *
      * anamorphism: Bloom's aspect ratio (x/y), for artistic purposes.
+     *
      * threshold:   When enabled, a threshold at 1.0 is applied on the source image, this is
      *              useful for artistic reasons and is usually needed when a dirt texture is used.
+     *
      * dirt:        A dirt/scratch/smudges texture (that can be RGB), which gets added to the
      *              bloom effect. Smudges are visible where bloom occurs. Threshold must be
      *              enabled for the dirt effect to work properly.
+     *
      * dirtStrength: Strength of the dirt texture.
      */
     struct BloomOptions {
@@ -142,12 +152,23 @@ public:
         Texture* dirt = nullptr;                //!< user provided dirt texture
         float dirtStrength = 0.2f;              //!< strength of the dirt texture
         float strength = 0.10f;                 //!< bloom's strength between 0.0 and 1.0
-        uint32_t resolution = 360;              //!< resolution of minor axis (2^levels to 4096)
+        uint32_t resolution = 360;              //!< resolution of vertical axis (2^levels to 2048)
         float anamorphism = 1.0f;               //!< bloom x/y aspect-ratio (1/32 to 32)
-        uint8_t levels = 6;                     //!< number of blur levels (3 to 12)
+        uint8_t levels = 6;                     //!< number of blur levels (3 to 11)
         BlendMode blendMode = BlendMode::ADD;   //!< how the bloom effect is applied
         bool threshold = true;                  //!< whether to threshold the source
         bool enabled = false;                   //!< enable or disable bloom
+        float highlight = 1000.0f;              //!< limit highlights to this value before bloom [10, +inf]
+
+        bool lensFlare = false;                 //!< enable screen-space lens flare
+        bool starburst = true;                  //!< enable starburst effect on lens flare
+        float chromaticAberration = 0.005f;     //!< amount of chromatic aberration
+        uint8_t ghostCount = 4;                 //!< number of flare "ghosts"
+        float ghostSpacing = 0.6f;              //!< spacing of the ghost in screen units [0, 1[
+        float ghostThreshold = 10.0f;           //!< hdr threshold for the ghosts
+        float haloThickness = 0.1f;             //!< thickness of halo in vertical screen units, 0 to disable
+        float haloRadius = 0.4f;                //!< radius of halo in vertical screen units [0, 0.5]
+        float haloThreshold = 10.0f;            //!< hdr threshold for the halo
     };
 
     /**
@@ -161,19 +182,66 @@ public:
         LinearColor color{0.5f};            //!< fog's color (linear), see fogColorFromIbl
         float density = 0.1f;               //!< fog's density at altitude given by 'height'
         float inScatteringStart = 0.0f;     //!< distance in world units from the camera where in-scattering starts
-        float inScatteringSize = -1.0f;     //!< size of in-scattering (>=0 to activate). Good values are >> 1 (e.g. ~10 - 100).
+        float inScatteringSize = -1.0f;     //!< size of in-scattering (>0 to activate). Good values are >> 1 (e.g. ~10 - 100).
         bool fogColorFromIbl = false;       //!< Fog color will be modulated by the IBL color in the view direction.
         bool enabled = false;               //!< enable or disable fog
     };
 
     /**
      * Options to control Depth of Field (DoF) effect in the scene.
+     *
+     * cocScale can be used to set the depth of field blur independently from the camera
+     * aperture, e.g. for artistic reasons. This can be achieved by setting:
+     *      cocScale = cameraAperture / desiredDoFAperture
+     *
+     * @see Camera
      */
     struct DepthOfFieldOptions {
-        float focusDistance = 10.0f;        //!< focus distance in world units
-        float blurScale = 1.0f;             //!< a scale factor for the amount of blur
+        enum class Filter : uint8_t {
+            NONE = 0,
+            MEDIAN = 2
+        };
+        float cocScale = 1.0f;              //!< circle of confusion scale factor (amount of blur)
         float maxApertureDiameter = 0.01f;  //!< maximum aperture diameter in meters (zero to disable rotation)
         bool enabled = false;               //!< enable or disable depth of field effect
+        Filter filter = Filter::MEDIAN;     //!< filter to use for filling gaps in the kernel
+        bool nativeResolution = false;      //!< perform DoF processing at native resolution
+        /**
+         * Number of of rings used by the gather kernels. The number of rings affects quality
+         * and performance. The actual number of sample per pixel is defined
+         * as (ringCount * 2 - 1)^2. Here are a few commonly used values:
+         *       3 rings :   25 ( 5x 5 grid)
+         *       4 rings :   49 ( 7x 7 grid)
+         *       5 rings :   81 ( 9x 9 grid)
+         *      17 rings : 1089 (33x33 grid)
+         *
+         * With a maximum circle-of-confusion of 32, it is never necessary to use more than 17 rings.
+         *
+         * Usually all three settings below are set to the same value, however, it is often
+         * acceptable to use a lower ring count for the "fast tiles", which improves performance.
+         * Fast tiles are regions of the screen where every pixels have a similar
+         * circle-of-confusion radius.
+         *
+         * A value of 0 means default, which is 5 on desktop and 3 on mobile.
+         *
+         * @{
+         */
+        uint8_t foregroundRingCount = 0; //!< number of kernel rings for foreground tiles
+        uint8_t backgroundRingCount = 0; //!< number of kernel rings for background tiles
+        uint8_t fastGatherRingCount = 0; //!< number of kernel rings for fast tiles
+        /** @}*/
+
+        /**
+         * maximum circle-of-confusion in pixels for the foreground, must be in [0, 32] range.
+         * A value of 0 means default, which is 32 on desktop and 24 on mobile.
+         */
+        uint16_t maxForegroundCOC = 0;
+
+        /**
+         * maximum circle-of-confusion in pixels for the background, must be in [0, 32] range.
+         * A value of 0 means default, which is 32 on desktop and 24 on mobile.
+         */
+        uint16_t maxBackgroundCOC = 0;
     };
 
     /**
@@ -206,8 +274,8 @@ public:
     };
 
     /**
-     * Options for Ambient Occlusion
-     * @see setAmbientOcclusion()
+     * Options for screen space Ambient Occlusion (SSAO) and Screen Space Cone Tracing (SSCT)
+     * @see setAmbientOcclusionOptions()
      */
     struct AmbientOcclusionOptions {
         float radius = 0.3f;    //!< Ambient Occlusion radius in meters, between 0 and ~10.
@@ -216,15 +284,36 @@ public:
         float resolution = 0.5f;//!< How each dimension of the AO buffer is scaled. Must be either 0.5 or 1.0.
         float intensity = 1.0f; //!< Strength of the Ambient Occlusion effect.
         QualityLevel quality = QualityLevel::LOW; //!< affects # of samples used for AO.
-        QualityLevel upsampling = QualityLevel::LOW; //!< affects AO buffer upsampling quality.
+        QualityLevel lowPassFilter = QualityLevel::MEDIUM; //!< affects AO smoothness
+        QualityLevel upsampling = QualityLevel::LOW; //!< affects AO buffer upsampling quality
+        bool enabled = false;    //!< enables or disables screen-space ambient occlusion
+        float minHorizonAngleRad = 0.0f;  //!< min angle in radian to consider
+        /**
+         * Screen Space Cone Tracing (SSCT) options
+         * Ambient shadows from dominant light
+         */
+        struct Ssct {
+            float lightConeRad = 1.0f;          //!< full cone angle in radian, between 0 and pi/2
+            float shadowDistance = 0.3f;        //!< how far shadows can be cast
+            float contactDistanceMax = 1.0f;    //!< max distance for contact
+            float intensity = 0.8f;             //!< intensity
+            math::float3 lightDirection{ 0, -1, 0 };    //!< light direction
+            float depthBias = 0.01f;        //!< depth bias in world units (mitigate self shadowing)
+            float depthSlopeBias = 0.01f;   //!< depth slope bias (mitigate self shadowing)
+            uint8_t sampleCount = 4;        //!< tracing sample count, between 1 and 255
+            uint8_t rayCount = 1;           //!< # of rays to trace, between 1 and 255
+            bool enabled = false;           //!< enables or disables SSCT
+        } ssct;
     };
 
     /**
-     * List of available ambient occlusion techniques
-    */
-    enum class AmbientOcclusion : uint8_t {
-        NONE = 0,       //!< No Ambient Occlusion
-        SSAO = 1        //!< Basic, sampling SSAO
+     * Options for Temporal Anti-aliasing (TAA)
+     * @see setTemporalAntiAliasingOptions()
+     */
+    struct TemporalAntiAliasingOptions {
+        float filterWidth = 1.0f;   //!< reconstruction filter width typically between 0 (sharper, aliased) and 1 (smoother)
+        float feedback = 0.04f;     //!< history feedback, between 0 (maximum temporal AA) and 1 (no temporal AA).
+        bool enabled = false;       //!< enables or disables temporal anti-aliasing
     };
 
     /**
@@ -245,42 +334,50 @@ public:
     };
 
     /**
-     * List of available tone-mapping operators
-     *
-     * @deprecated See ColorGrading
+     * List of available shadow mapping techniques.
+     * @see setShadowType
      */
-    enum class UTILS_DEPRECATED ToneMapping : uint8_t {
-        LINEAR = 0,     //!< Linear tone mapping (i.e. no tone mapping)
-        ACES = 1,       //!< ACES tone mapping
+    enum class ShadowType : uint8_t {
+        PCF,        //!< percentage-closer filtered shadows (default)
+        VSM         //!< variance shadows
     };
 
     /**
-     * Activates or deactivates ambient occlusion.
-     *
-     * @param ambientOcclusion Type of ambient occlusion to use.
+     * View-level options for VSM Shadowing.
+     * @see setVsmShadowOptions()
+     * @warning This API is still experimental and subject to change.
      */
-    void setAmbientOcclusion(AmbientOcclusion ambientOcclusion) noexcept;
+    struct VsmShadowOptions {
+        /**
+         * Sets the number of anisotropic samples to use when sampling a VSM shadow map. If greater
+         * than 0, mipmaps will automatically be generated each frame for all lights.
+         *
+         * The number of anisotropic samples = 2 ^ vsmAnisotropy.
+         */
+        uint8_t anisotropy = 0;
 
-    /**
-     * Queries the type of ambient occlusion active for this View.
-     *
-     * @return ambient occlusion type.
-     */
-    AmbientOcclusion getAmbientOcclusion() const noexcept;
+        /**
+         * Whether to generate mipmaps for all VSM shadow maps.
+         */
+        bool mipmapping = false;
 
-    /**
-     * Sets ambient occlusion options.
-     *
-     * @param options Options for ambient occlusion.
-     */
-    void setAmbientOcclusionOptions(AmbientOcclusionOptions const& options) noexcept;
+        /**
+         * EVSM exponent.
+         * The maximum value permissible is 5.54 for a shadow map in fp16, or 42.0 for a
+         * shadow map in fp32. Currently the shadow map bit depth is always fp16.
+         */
+        float exponent = 5.54f;
 
-    /**
-     * Gets the ambient occlusion options.
-     *
-     * @return ambient occlusion options currently set.
-     */
-    AmbientOcclusionOptions const& getAmbientOcclusionOptions() const noexcept;
+        /**
+         * VSM minimum variance scale, must be positive.
+         */
+        float minVarianceScale = 0.5f;
+
+        /**
+         * VSM light bleeding reduction amount, between 0 and 1.
+         */
+         float lightBleedReduction = 0.15f;
+    };
 
     /**
      * Sets the View's name. Only useful for debugging.
@@ -328,6 +425,45 @@ public:
     }
 
     /**
+     * Specifies an offscreen render target to render into.
+     *
+     * By default, the view's associated render target is nullptr, which corresponds to the
+     * SwapChain associated with the engine.
+     *
+     * A view with a custom render target cannot rely on Renderer::ClearOptions, which only apply
+     * to the SwapChain. Such view can use a Skybox instead.
+     *
+     * @param renderTarget Render target associated with view, or nullptr for the swap chain.
+     */
+    void setRenderTarget(RenderTarget* renderTarget) noexcept;
+
+    /**
+     * Gets the offscreen render target associated with this view.
+     *
+     * Returns nullptr if the render target is the swap chain (which is default).
+     *
+     * @see setRenderTarget
+     */
+    RenderTarget* getRenderTarget() const noexcept;
+
+    /**
+     * Sets the rectangular region to render to.
+     *
+     * The viewport specifies where the content of the View (i.e. the Scene) is rendered in
+     * the render target. The Render target is automatically clipped to the Viewport.
+     *
+     * @param viewport  The Viewport to render the Scene into. The Viewport is a value-type, it is
+     *                  therefore copied. The parameter can be discarded after this call returns.
+     */
+    void setViewport(Viewport const& viewport) noexcept;
+
+    /**
+     * Returns the rectangular region that gets rendered to.
+     * @return A constant reference to View's viewport.
+     */
+    Viewport const& getViewport() const noexcept;
+
+    /**
      * Sets this View's Camera.
      *
      * @param camera    Associate the specified Camera to this View. A Camera can be associated to
@@ -358,23 +494,6 @@ public:
     }
 
     /**
-     * Sets the rectangular region to render to.
-     *
-     * The viewport specifies where the content of the View (i.e. the Scene) is rendered in
-     * the render target. The Render target is automatically clipped to the Viewport.
-     *
-     * @param viewport  The Viewport to render the Scene into. The Viewport is a value-type, it is
-     *                  therefore copied. The parameter can be discarded after this call returns.
-     */
-    void setViewport(Viewport const& viewport) noexcept;
-
-    /**
-     * Returns the rectangular region that gets rendered to.
-     * @return A constant reference to View's viewport.
-     */
-    Viewport const& getViewport() const noexcept;
-
-    /**
      * Sets the blending mode used to draw the view into the SwapChain.
      *
      * @param blendMode either BlendMode::OPAQUE or BlendMode::TRANSLUCENT
@@ -382,11 +501,11 @@ public:
      */
     void setBlendMode(BlendMode blendMode) noexcept;
 
-     /**
-      *
-      * @return blending mode set by setBlendMode
-      * @see setBlendMode
-      */
+    /**
+     *
+     * @return blending mode set by setBlendMode
+     * @see setBlendMode
+     */
     BlendMode getBlendMode() const noexcept;
 
     /**
@@ -424,26 +543,24 @@ public:
      *      RenderableManager::Builder::receiveShadows(),
      *      RenderableManager::Builder::castShadows(),
      */
-    void setShadowsEnabled(bool enabled) noexcept;
+    void setShadowingEnabled(bool enabled) noexcept;
 
     /**
-     * Specifies an offscreen render target to render into.
-     *
-     * By default, the view's associated render target is nullptr, which corresponds to the
-     * SwapChain associated with the engine.
-     *
-     * @param renderTarget Render target associated with view, or nullptr for the swap chain.
+     * @return whether shadowing is enabled
      */
-    void setRenderTarget(RenderTarget* renderTarget) noexcept;
+    bool isShadowingEnabled() const noexcept;
 
     /**
-     * Gets the offscreen render target associated with this view.
+     * Enables or disables screen space refraction. Enabled by default.
      *
-     * Returns nullptr if the render target is the swap chain (which is default).
-     *
-     * @see setRenderTarget
+     * @param enabled true enables screen space refraction, false disables it.
      */
-    RenderTarget* getRenderTarget() const noexcept;
+    void setScreenSpaceRefractionEnabled(bool enabled) noexcept;
+
+    /**
+     * @return whether screen space refraction is enabled
+     */
+    bool isScreenSpaceRefractionEnabled() const noexcept;
 
     /**
      * Sets how many samples are to be used for MSAA in the post-process stage.
@@ -491,25 +608,18 @@ public:
     AntiAliasing getAntiAliasing() const noexcept;
 
     /**
-     * Enables or disables tone-mapping in the post-processing stage. Enabled by default.
+     * Enables or disable temporal anti-aliasing (TAA). Disabled by default.
      *
-     * @param type Tone-mapping function.
-     *
-     * @deprecated Use setColorGrading instead
-     * @see setColorGrading
+     * @param options temporal anti-aliasing options
      */
-    UTILS_DEPRECATED
-    void setToneMapping(ToneMapping type) noexcept;
+    void setTemporalAntiAliasingOptions(TemporalAntiAliasingOptions options) noexcept;
 
     /**
-     * Returns the tone-mapping function.
-     * @return tone-mapping function.
+     * Returns temporal anti-aliasing options.
      *
-     * @deprecated Use getColorGrading instead
-     * @see getColorGrading
+     * @return temporal anti-aliasing options
      */
-    UTILS_DEPRECATED
-    ToneMapping getToneMapping() const noexcept;
+    TemporalAntiAliasingOptions const& getTemporalAntiAliasingOptions() const noexcept;
 
     /**
      * Sets this View's color grading transforms.
@@ -533,6 +643,20 @@ public:
      * @return A pointer to the ColorGrading associated to this View.
      */
     const ColorGrading* getColorGrading() const noexcept;
+
+    /**
+     * Sets ambient occlusion options.
+     *
+     * @param options Options for ambient occlusion.
+     */
+    void setAmbientOcclusionOptions(AmbientOcclusionOptions const& options) noexcept;
+
+    /**
+     * Gets the ambient occlusion options.
+     *
+     * @return ambient occlusion options currently set.
+     */
+    AmbientOcclusionOptions const& getAmbientOcclusionOptions() const noexcept;
 
     /**
      * Enables or disables bloom in the post-processing stage. Disabled by default.
@@ -654,6 +778,43 @@ public:
      */
     void setDynamicLightingOptions(float zLightNear, float zLightFar) noexcept;
 
+    /*
+     * Set the shadow mapping technique this View uses.
+     *
+     * The ShadowType affects all the shadows seen within the View.
+     *
+     * ShadowType::VSM imposes a restriction on marking renderables as only shadow receivers (but
+     * not casters). To ensure correct shadowing with VSM, all shadow participant renderables should
+     * be marked as both receivers and casters. Objects that are guaranteed to not cast shadows on
+     * themselves or other objects (such as flat ground planes) can be set to not cast shadows,
+     * which might improve shadow quality.
+     *
+     * @warning This API is still experimental and subject to change.
+     */
+    void setShadowType(ShadowType shadow) noexcept;
+
+    /**
+     * Sets VSM shadowing options that apply across the entire View.
+     *
+     * Additional light-specific VSM options can be set with LightManager::setShadowOptions.
+     *
+     * Only applicable when shadow type is set to ShadowType::VSM.
+     *
+     * @param options Options for shadowing.
+     *
+     * @see setShadowType
+     *
+     * @warning This API is still experimental and subject to change.
+     */
+    void setVsmShadowOptions(VsmShadowOptions const& options) noexcept;
+
+    /**
+     * Returns the VSM shadowing options associated with this View.
+     *
+     * @return value set by setVsmShadowOptions().
+     */
+    VsmShadowOptions getVsmShadowOptions() const noexcept;
+
     /**
      * Enables or disables post processing. Enabled by default.
      *
@@ -711,6 +872,67 @@ public:
 
     //! debugging: returns a Camera from the point of view of *the* dominant directional light used for shadowing.
     Camera const* getDirectionalLightCamera() const noexcept;
+
+
+    /**
+     * List of available tone-mapping operators
+     *
+     * @deprecated See ColorGrading
+     */
+    enum class UTILS_DEPRECATED ToneMapping : uint8_t {
+        LINEAR = 0,     //!< Linear tone mapping (i.e. no tone mapping)
+        ACES = 1,       //!< ACES tone mapping
+    };
+
+    /**
+     * List of available ambient occlusion techniques
+     * @deprecated use AmbientOcclusionOptions::enabled instead
+     */
+    enum class UTILS_DEPRECATED AmbientOcclusion : uint8_t {
+        NONE = 0,       //!< No Ambient Occlusion
+        SSAO = 1        //!< Basic, sampling SSAO
+    };
+
+    /**
+      * Enables or disables tone-mapping in the post-processing stage. Enabled by default.
+      *
+      * @param type Tone-mapping function.
+      *
+      * @deprecated Use setColorGrading instead
+      * @see setColorGrading
+      */
+    UTILS_DEPRECATED
+    void setToneMapping(ToneMapping type) noexcept;
+
+    /**
+     * Returns the tone-mapping function.
+     * @return tone-mapping function.
+     *
+     * @deprecated Use getColorGrading instead
+     * @see getColorGrading
+     */
+    UTILS_DEPRECATED
+    ToneMapping getToneMapping() const noexcept;
+
+    /**
+     * Activates or deactivates ambient occlusion.
+     * @deprecated use setAmbientOcclusionOptions() instead
+     * @see setAmbientOcclusionOptions
+     *
+     * @param ambientOcclusion Type of ambient occlusion to use.
+     */
+    UTILS_DEPRECATED
+    void setAmbientOcclusion(AmbientOcclusion ambientOcclusion) noexcept;
+
+    /**
+     * Queries the type of ambient occlusion active for this View.
+     * @deprecated use getAmbientOcclusionOptions() instead
+     * @see getAmbientOcclusionOptions
+     *
+     * @return ambient occlusion type.
+     */
+    UTILS_DEPRECATED
+    AmbientOcclusion getAmbientOcclusion() const noexcept;
 };
 
 

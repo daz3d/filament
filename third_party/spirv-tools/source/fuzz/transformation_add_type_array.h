@@ -15,9 +15,9 @@
 #ifndef SOURCE_FUZZ_TRANSFORMATION_ADD_TYPE_ARRAY_H_
 #define SOURCE_FUZZ_TRANSFORMATION_ADD_TYPE_ARRAY_H_
 
-#include "source/fuzz/fact_manager.h"
 #include "source/fuzz/protobufs/spirvfuzz_protobufs.h"
 #include "source/fuzz/transformation.h"
+#include "source/fuzz/transformation_context.h"
 #include "source/opt/ir_context.h"
 
 namespace spvtools {
@@ -26,22 +26,28 @@ namespace fuzz {
 class TransformationAddTypeArray : public Transformation {
  public:
   explicit TransformationAddTypeArray(
-      const protobufs::TransformationAddTypeArray& message);
+      protobufs::TransformationAddTypeArray message);
 
   TransformationAddTypeArray(uint32_t fresh_id, uint32_t element_type_id,
                              uint32_t size_id);
 
   // - |message_.fresh_id| must be fresh
   // - |message_.element_type_id| must be the id of a non-function type
+  // - |message_.member_type_id| must not be the result id of an OpTypeStruct
+  //   instruction that has the Block or BufferBlock decoration
   // - |message_.size_id| must be the id of a 32-bit integer constant that is
-  //   positive when interpreted as signed.
-  bool IsApplicable(opt::IRContext* context,
-                    const FactManager& fact_manager) const override;
+  //   positive when interpreted as signed
+  bool IsApplicable(
+      opt::IRContext* ir_context,
+      const TransformationContext& transformation_context) const override;
 
   // Adds an OpTypeArray instruction to the module, with element type given by
   // |message_.element_type_id| and size given by |message_.size_id|.  The
   // result id of the instruction is |message_.fresh_id|.
-  void Apply(opt::IRContext* context, FactManager* fact_manager) const override;
+  void Apply(opt::IRContext* ir_context,
+             TransformationContext* transformation_context) const override;
+
+  std::unordered_set<uint32_t> GetFreshIds() const override;
 
   protobufs::Transformation ToMessage() const override;
 

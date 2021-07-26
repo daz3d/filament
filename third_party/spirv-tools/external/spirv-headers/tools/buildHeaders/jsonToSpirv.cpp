@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2019 The Khronos Group Inc.
+// Copyright (c) 2014-2020 The Khronos Group Inc.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and/or associated documentation files (the "Materials"),
@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <string.h>
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -61,6 +62,10 @@ EnumValues ImageChannelDataTypeParams;
 EnumValues ImageOperandsParams;
 EnumValues FPFastMathParams;
 EnumValues FPRoundingModeParams;
+EnumValues FPDenormModeParams;
+EnumValues FPOperationModeParams;
+EnumValues QuantizationModesParams;
+EnumValues OverflowModesParams;
 EnumValues LinkageTypeParams;
 EnumValues DecorationParams;
 EnumValues BuiltInParams;
@@ -77,6 +82,12 @@ EnumValues ScopeParams;
 EnumValues KernelEnqueueFlagsParams;
 EnumValues KernelProfilingInfoParams;
 EnumValues CapabilityParams;
+EnumValues RayFlagsParams;
+EnumValues RayQueryIntersectionParams;
+EnumValues RayQueryCommittedIntersectionTypeParams;
+EnumValues RayQueryCandidateIntersectionTypeParams;
+EnumValues FragmentShadingRateParams;
+EnumValues PackedVectorFormatParams;
 
 std::pair<bool, std::string> ReadFile(const std::string& path)
 {
@@ -146,7 +157,7 @@ ClassOptionality ToOperandClassAndOptionality(const std::string& operandKind, co
         } else if (operandKind == "LiteralSpecConstantOpInteger") {
             type = OperandLiteralNumber;
         } else if (operandKind == "LiteralContextDependentNumber") {
-            type = OperandVariableLiterals;
+            type = OperandAnySizeLiteralNumber;
         } else if (operandKind == "SourceLanguage") {
             type = OperandSource;
         } else if (operandKind == "ExecutionModel") {
@@ -173,6 +184,14 @@ ClassOptionality ToOperandClassAndOptionality(const std::string& operandKind, co
             type = OperandImageChannelDataType;
         } else if (operandKind == "FPRoundingMode") {
             type = OperandFPRoundingMode;
+        } else if (operandKind == "FPDenormMode") {
+            type = OperandFPDenormMode;
+        } else if (operandKind == "FPOperationMode") {
+            type = OperandFPOperationMode;
+        } else if (operandKind == "QuantizationModes") {
+            type = OperandQuantizationModes;
+        } else if (operandKind == "OverflowModes") {
+            type = OperandOverflowModes;
         } else if (operandKind == "LinkageType") {
             type = OperandLinkageType;
         } else if (operandKind == "AccessQualifier") {
@@ -203,6 +222,18 @@ ClassOptionality ToOperandClassAndOptionality(const std::string& operandKind, co
             type = OperandFunction;
         } else if (operandKind == "MemoryAccess") {
             type = OperandMemoryOperands;
+        } else if (operandKind == "RayFlags") {
+            type = OperandRayFlags;
+        } else if (operandKind == "RayQueryIntersection") {
+            type = OperandRayQueryIntersection;
+        } else if (operandKind == "RayQueryCommittedIntersectionType") {
+            type = OperandRayQueryCommittedIntersectionType;
+        } else if (operandKind == "RayQueryCandidateIntersectionType") {
+            type = OperandRayQueryCandidateIntersectionType;
+        } else if (operandKind == "FragmentShadingRate") {
+            type = OperandFragmentShadingRate;
+        } else if (operandKind == "PackedVectorFormat") {
+            type = OperandPackedVectorFormat;
         }
 
         if (type == OperandNone) {
@@ -305,6 +336,8 @@ void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders)
 
     // process the instructions
     const Json::Value insts = root["instructions"];
+    unsigned maxOpcode = 0;
+    bool firstOpcode = true;
     for (const auto& inst : insts) {
         const auto printingClass = inst["class"].asString();
         if (printingClass.size() == 0) {
@@ -320,6 +353,19 @@ void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders)
         }
         const auto opcode = inst["opcode"].asUInt();
         const std::string name = inst["opname"].asString();
+        if (firstOpcode) {
+          maxOpcode = opcode;
+          firstOpcode = false;
+        } else {
+          if (maxOpcode > opcode) {
+            std::cerr << "Error: " << name
+                      << " is out of order. It follows the instruction with opcode " << maxOpcode
+                      << std::endl;
+            std::exit(1);
+          } else {
+            maxOpcode = opcode;
+          }
+        }
         EnumCaps caps = getCaps(inst);
         std::string version = inst["version"].asString();
         std::string lastVersion = inst["lastVersion"].asString();
@@ -363,12 +409,27 @@ void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders)
             return result;
         };
 
+        unsigned maxValue = 0;
+        bool firstValue = true;
         for (const auto& enumerant : source["enumerants"]) {
             unsigned value;
             bool skip_zero_in_bitfield;
             std::tie(value, skip_zero_in_bitfield) = getValue(enumerant);
             if (skip_zero_in_bitfield)
                 continue;
+            if (firstValue) {
+              maxValue = value;
+              firstValue = false;
+            } else {
+              if (maxValue > value) {
+                std::cerr << "Error: " << source["kind"] << " enumerant " << enumerant["enumerant"]
+                          << " is out of order. It has value " <<  value
+                          << " but follows the enumerant with value " << maxValue << std::endl;
+                std::exit(1);
+              } else {
+                maxValue = value;
+              }
+            }
             EnumCaps caps(getCaps(enumerant));
             std::string version = enumerant["version"].asString();
             std::string lastVersion = enumerant["lastVersion"].asString();
@@ -437,6 +498,14 @@ void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders)
             establishOperandClass(enumName, OperandFPFastMath, &FPFastMathParams, operandEnum, category);
         } else if (enumName == "FPRoundingMode") {
             establishOperandClass(enumName, OperandFPRoundingMode, &FPRoundingModeParams, operandEnum, category);
+        } else if (enumName == "FPDenormMode") {
+            establishOperandClass(enumName, OperandFPDenormMode, &FPDenormModeParams, operandEnum, category);
+        } else if (enumName == "FPOperationMode") {
+            establishOperandClass(enumName, OperandFPOperationMode, &FPOperationModeParams, operandEnum, category);
+        } else if (enumName == "QuantizationModes") {
+            establishOperandClass(enumName, OperandQuantizationModes, &QuantizationModesParams, operandEnum, category);
+        } else if (enumName == "OverflowModes") {
+            establishOperandClass(enumName, OperandOverflowModes, &OverflowModesParams, operandEnum, category);
         } else if (enumName == "LinkageType") {
             establishOperandClass(enumName, OperandLinkageType, &LinkageTypeParams, operandEnum, category);
         } else if (enumName == "FunctionParameterAttribute") {
@@ -463,6 +532,18 @@ void jsonToSpirv(const std::string& jsonPath, bool buildingHeaders)
             establishOperandClass(enumName, OperandKernelEnqueueFlags, &KernelEnqueueFlagsParams, operandEnum, category);
         } else if (enumName == "KernelProfilingInfo") {
             establishOperandClass(enumName, OperandKernelProfilingInfo, &KernelProfilingInfoParams, operandEnum, category);
+        } else if (enumName == "RayFlags") {
+            establishOperandClass(enumName, OperandRayFlags, &RayFlagsParams, operandEnum, category);
+        } else if (enumName == "RayQueryIntersection") {
+            establishOperandClass(enumName, OperandRayQueryIntersection, &RayQueryIntersectionParams, operandEnum, category);
+        } else if (enumName == "RayQueryCommittedIntersectionType") {
+            establishOperandClass(enumName, OperandRayQueryCommittedIntersectionType, &RayQueryCommittedIntersectionTypeParams, operandEnum, category);
+        } else if (enumName == "RayQueryCandidateIntersectionType") {
+            establishOperandClass(enumName, OperandRayQueryCandidateIntersectionType, &RayQueryCandidateIntersectionTypeParams, operandEnum, category);
+        } else if (enumName == "FragmentShadingRate") {
+            establishOperandClass(enumName, OperandFragmentShadingRate, &FragmentShadingRateParams, operandEnum, category);
+        } else if (enumName == "PackedVectorFormat") {
+            establishOperandClass(enumName, OperandPackedVectorFormat, &PackedVectorFormatParams, operandEnum, category);
         }
     }
 }

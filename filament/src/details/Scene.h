@@ -34,6 +34,7 @@
 #include <utils/Slice.h>
 #include <utils/StructureOfArrays.h>
 #include <utils/Range.h>
+#include <utils/debug.h>
 
 #include <cstddef>
 #include <tsl/robin_set.h>
@@ -64,6 +65,7 @@ public:
     void addEntity(utils::Entity entity);
     void addEntities(const utils::Entity* entities, size_t count);
     void remove(utils::Entity entity);
+    void removeEntities(const utils::Entity* entities, size_t count);
 
     size_t getRenderableCount() const noexcept;
     size_t getLightCount() const noexcept;
@@ -82,8 +84,9 @@ public:
     ~FScene() noexcept;
     void terminate(FEngine& engine);
 
-    void prepare(const math::mat4f& worldOriginTransform);
-    void prepareDynamicLights(const CameraInfo& camera, ArenaScope& arena, backend::Handle<backend::HwUniformBuffer> lightUbh) noexcept;
+    void prepare(const math::mat4f& worldOriginTransform, bool shadowReceiversAreCasters) noexcept;
+    void prepareDynamicLights(const CameraInfo& camera, ArenaScope& arena,
+            backend::Handle<backend::HwUniformBuffer> lightUbh) noexcept;
 
 
     filament::backend::Handle<backend::HwUniformBuffer> getRenderableUBO() const noexcept {
@@ -113,6 +116,9 @@ public:
         // These are temporaries and should be stored out of line
         PRIMITIVES,             //  8 | level-of-detail'ed primitives
         SUMMED_PRIMITIVE_COUNT, //  4 | summed visible primitive counts
+
+        // FIXME: We need a better way to handle this
+        USER_DATA,              //  4 | user data currently used to store the scale
     };
 
     using RenderableSoa = utils::StructureOfArrays<
@@ -127,7 +133,9 @@ public:
             uint8_t,                                    // LAYERS
             math::float3,                               // WORLD_AABB_EXTENT
             utils::Slice<FRenderPrimitive>,             // PRIMITIVES
-            uint32_t                                    // SUMMED_PRIMITIVE_COUNT
+            uint32_t,                                   // SUMMED_PRIMITIVE_COUNT
+            // FIXME: We need a better way to handle this
+            float                                       // USER_DATA
     >;
 
     RenderableSoa const& getRenderableData() const noexcept { return mRenderableData; }
@@ -165,8 +173,8 @@ public:
         //  layer            : 4
         //  -- MSB -------------
         uint32_t pack() const {
-            assert(index < 16);
-            assert(layer < 16);
+            assert_invariant(index < 16);
+            assert_invariant(layer < 16);
             return uint8_t(castsShadows)   << 0u    |
                    uint8_t(contactShadows) << 1u    |
                    index                   << 2u    |
@@ -202,9 +210,6 @@ public:
 private:
     static inline void computeLightRanges(math::float2* zrange,
             CameraInfo const& camera, const math::float4* spheres, size_t count) noexcept;
-
-    static inline void computeLightCameraPlaneDistances(float* distances,
-            const CameraInfo& camera, const math::float4* spheres, size_t count) noexcept;
 
     FEngine& mEngine;
     FSkybox* mSkybox = nullptr;

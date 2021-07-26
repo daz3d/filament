@@ -25,6 +25,7 @@
 
 #include <private/filament/SamplerBindingMap.h>
 #include <private/filament/SamplerInterfaceBlock.h>
+#include <private/filament/SubpassInfo.h>
 #include <private/filament/Variant.h>
 
 #include <filaflat/ShaderBuilder.h>
@@ -127,7 +128,8 @@ public:
 
     size_t getParameterCount() const noexcept {
         return mUniformInterfaceBlock.getUniformInfoList().size() +
-                mSamplerInterfaceBlock.getSamplerInfoList().size();
+                mSamplerInterfaceBlock.getSamplerInfoList().size() +
+                (mSubpassInfo.isValid ? 1 : 0);
     }
     size_t getParameters(ParameterInfo* parameters, size_t count) const noexcept;
 
@@ -149,11 +151,9 @@ public:
             size_t packageSize);
 
     /** Queries the program cache to check which variants are resident. */
-    static void onQueryCallback(void* userdata, uint16_t* variants);
+    static void onQueryCallback(void* userdata, uint64_t* pVariants);
 
     /** @}*/
-
-    static MaterialParser* createParser(backend::Backend backend, const void* data, size_t size);
 
 private:
     backend::Handle<backend::HwProgram> getProgramSlow(uint8_t variantKey) const noexcept;
@@ -193,7 +193,12 @@ private:
     FMaterialInstance mDefaultInstance;
     SamplerInterfaceBlock mSamplerInterfaceBlock;
     UniformInterfaceBlock mUniformInterfaceBlock;
+    SubpassInfo mSubpassInfo;
     SamplerBindingMap mSamplerBindings;
+
+#if FILAMENT_ENABLE_MATDBG
+    matdbg::MaterialKey mDebuggerId;
+#endif
 
     utils::CString mName;
     FEngine& mEngine;

@@ -17,6 +17,8 @@
 #ifndef TNT_FILAMENT_ENGINE_ENUM_H
 #define TNT_FILAMENT_ENGINE_ENUM_H
 
+#include <backend/DriverEnums.h>
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -36,10 +38,13 @@ namespace BindingPoints {
     constexpr uint8_t PER_RENDERABLE_BONES    = 2;    // bones data, per renderable
     constexpr uint8_t LIGHTS                  = 3;    // lights data array
     constexpr uint8_t SHADOW                  = 4;    // punctual shadow data
-    constexpr uint8_t PER_MATERIAL_INSTANCE   = 5;    // uniforms/samplers updates per material
-    constexpr uint8_t COUNT                   = 6;
-    // These are limited by Program::UNIFORM_BINDING_COUNT (currently 6)
+    constexpr uint8_t FROXEL_RECORDS          = 5;
+    constexpr uint8_t PER_MATERIAL_INSTANCE   = 6;    // uniforms/samplers updates per material
+    constexpr uint8_t COUNT                   = 7;
+    // These are limited by Program::UNIFORM_BINDING_COUNT (currently 8)
 }
+
+static_assert(BindingPoints::COUNT <= backend::CONFIG_BINDING_COUNT);
 
 static_assert(BindingPoints::PER_MATERIAL_INSTANCE == BindingPoints::COUNT - 1,
         "Dynamically sized sampler buffer must be the last binding point.");
@@ -50,9 +55,8 @@ constexpr size_t CONFIG_MAX_LIGHT_COUNT = 256;
 constexpr size_t CONFIG_MAX_LIGHT_INDEX = CONFIG_MAX_LIGHT_COUNT - 1;
 
 // The maximum number of spot lights in a scene that can cast shadows.
-// Light space coordinates are computed in the vertex shader and interpolated across fragments.
-// Thus, each additional shadow-casting spot light adds 4 additional varying components. Higher
-// values may cause the number of varyings to exceed the driver limit.
+// There is currently a limit to 6 spot shadow due to how we store the culling result
+// (see View.h).
 constexpr size_t CONFIG_MAX_SHADOW_CASTING_SPOTS = 6;
 
 // The maximum number of shadow cascades that can be used for directional lights.

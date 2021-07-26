@@ -31,6 +31,7 @@ import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
+import android.util.Log;
 
 import com.google.android.filament.Camera;
 import com.google.android.filament.Engine;
@@ -147,7 +148,7 @@ public class MainActivity extends Activity
         mRenderer = mEngine.createRenderer();
         mScene = mEngine.createScene();
         mView = mEngine.createView();
-        mCamera = mEngine.createCamera();
+        mCamera = mEngine.createCamera(mEngine.getEntityManager().create());
 
         mCamera.lookAt(0, 0, 3, 0, 0, 0, 0, 1, 0);
 
@@ -222,9 +223,10 @@ public class MainActivity extends Activity
 
         mEngine.destroyView(mView);
         mEngine.destroyScene(mScene);
-        mEngine.destroyCamera(mCamera);
+        mEngine.destroyCameraComponent(mCamera.getEntity());
 
         EntityManager.get().destroy(mPage.renderable);
+        EntityManager.get().destroy(mCamera.getEntity());
 
         mEngine.destroy();
     }
@@ -275,7 +277,13 @@ public class MainActivity extends Activity
                 .levels(0xff) // tells Filament to figure out the number of mip levels
                 .build(engine);
 
-        TextureHelper.setBitmap(engine, texture, 0, bitmap);
+        android.os.Handler handler = new android.os.Handler();
+        TextureHelper.setBitmap(engine, texture, 0, bitmap, handler, new Runnable() {
+            @Override
+            public void run() {
+                Log.i("page-curl", "Bitmap is released.");
+            }
+        });
         texture.generateMipmaps(engine);
         return texture;
     }

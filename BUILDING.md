@@ -4,29 +4,23 @@
 
 To build Filament, you must first install the following tools:
 
-- CMake 3.10 (or more recent)
+- CMake 3.19 (or more recent)
 - clang 7.0 (or more recent)
-- [ninja 1.8](https://github.com/ninja-build/ninja/wiki/Pre-built-Ninja-packages) (or more recent)
-
-To build the Java based components of the project you can optionally install (recommended):
-
-- OpenJDK 1.8 (or more recent)
+- [ninja 1.10](https://github.com/ninja-build/ninja/wiki/Pre-built-Ninja-packages) (or more recent)
 
 Additional dependencies may be required for your operating system. Please refer to the appropriate
 section below.
 
 To build Filament for Android you must also install the following:
 
-- Android Studio 4.0 or more recent
+- Android Studio 4.2.0 or more recent
 - Android SDK
-- Android NDK "side-by-side" 21 or higher
+- Android NDK "side-by-side" 22.1 or higher
 
 ### Environment variables
 
-Make sure the environment variable `ANDROID_HOME` points to the location of your Android SDK.
-
-By default our build system will attempt to compile the Java bindings. To do so, the environment
-variable `JAVA_HOME` should point to the location of your JDK.
+To build Filament for Android, make sure the environment variable `ANDROID_HOME` points to the
+location of your Android SDK.
 
 When building for WebGL, you'll also need to set `EMSDK`. See [WebAssembly](#webassembly).
 
@@ -65,31 +59,18 @@ To install the libraries and executables in `out/debug/` and `out/release/`, add
 You can force a clean build by adding the `-c` flag. The script offers more features described
 by executing `build.sh -h`.
 
-### Disabling Java builds
-
-By default our build system will attempt to compile the Java bindings. If you wish to skip this
-compilation step simply pass the `-j` flag to `build.sh`:
-
-```
-$ ./build.sh -j release
-```
-
-If you use CMake directly instead of the build script, pass `-DFILAMENT_ENABLE_JAVA=OFF`
-to CMake instead.
-
 ### Filament-specific CMake Options
 
 The following CMake options are boolean options specific to Filament:
 
-- `FILAMENT_ENABLE_JAVA`:          Compile Java projects: requires a JDK and the JAVA_HOME env var
 - `FILAMENT_ENABLE_LTO`:           Enable link-time optimizations if supported by the compiler
 - `FILAMENT_BUILD_FILAMAT`:        Build filamat and JNI buildings
+- `FILAMENT_SUPPORTS_OPENGL`:      Include the OpenGL backend
 - `FILAMENT_SUPPORTS_METAL`:       Include the Metal backend
 - `FILAMENT_SUPPORTS_VULKAN`:      Include the Vulkan backend
-- `FILAMENT_GENERATE_JS_DOCS`:     Build WebGL documentation and tutorials
 - `FILAMENT_INSTALL_BACKEND_TEST`: Install the backend test library so it can be consumed on iOS
 - `FILAMENT_USE_EXTERNAL_GLES3`:   Experimental: Compile Filament against OpenGL ES 3
-- `FILAMENT_USE_SWIFTSHADER`:      Experimental: Compile Filament against SwiftShader
+- `FILAMENT_USE_SWIFTSHADER`:      Compile Filament against SwiftShader
 - `FILAMENT_SKIP_SAMPLES`:         Don't build sample apps
 
 To turn an option on or off:
@@ -163,14 +144,6 @@ make sure the command line tools are setup by running:
 $ xcode-select --install
 ```
 
-After installing Java 1.8 you must also ensure that your `JAVA_HOME` environment variable is
-properly set. If it doesn't already point to the appropriate JDK, you can simply add the following
-to your `.profile`:
-
-```
-export JAVA_HOME="$(/usr/libexec/java_home)"
-```
-
 Then run `cmake` and `ninja` to trigger a build:
 
 ```
@@ -205,9 +178,12 @@ Install the following components:
 The latest Windows SDK can also by installed by opening Visual Studio and selecting _Get Tools and
 Features..._ under the _Tools_ menu.
 
-Open the `x64 Native Tools Command Prompt for VS 2019`.
+By default, Windows treats the file system as case insensitive. Please do not enable case
+sensitivity in your repo, since this does not align with CMake expectations. This can be queried
+using `fsutil.exe file queryCaseSensitiveInfo`.
 
-Create a working directory, and run cmake in it:
+Next, open `x64 Native Tools Command Prompt for VS 2019`, create a working directory, and run
+CMake in it:
 
 ```
 > mkdir out
@@ -224,6 +200,13 @@ For example, build the `material_sandbox` sample and run it from the `out` direc
 
 ```
 > samples\Debug\material_sandbox.exe ..\assets\models\monkey\monkey.obj
+```
+
+You can also use CMake to invoke the build without opening Visual Studio. For example, from the
+`out` folder run the following command.
+
+```
+> cmake --build . --target gltf_viewer --config Release
 ```
 
 ### Android
@@ -366,7 +349,7 @@ same version that our continuous builds use.
 
 ```
 cd <your chosen parent folder for the emscripten SDK>
-curl -L https://github.com/emscripten-core/emsdk/archive/f5e21de.zip > emsdk.zip
+curl -L https://github.com/emscripten-core/emsdk/archive/2.0.23.zip > emsdk.zip
 unzip emsdk.zip ; mv emsdk-* emsdk ; cd emsdk
 python ./emsdk.py install latest
 python ./emsdk.py activate latest
@@ -445,3 +428,33 @@ $ doxygen docs/doxygen/filament.doxygen
 ```
 
 Finally simply open `docs/html/index.html` in your web browser.
+
+## SwiftShader
+
+To try out Filament's Vulkan support with SwiftShader, first build SwiftShader and set the
+`SWIFTSHADER_LD_LIBRARY_PATH` variable to the folder that contains `libvk_swiftshader.dylib`:
+
+```
+git clone https://github.com/google/swiftshader.git
+cd swiftshader/build
+cmake .. &&  make -j
+export SWIFTSHADER_LD_LIBRARY_PATH=`pwd`
+```
+
+Next, go to your Filament repo and use the [easy build](#easy-build) script with `-t`.
+
+## SwiftShader for CI
+
+Continuous testing turnaround can be quite slow if you need to build SwiftShader from scratch, so we
+provide an Ubuntu-based Docker image that has it already built. The Docker image also includes
+everything necessary for building Filament. You can fetch and run the image as follows:
+
+```
+docker pull ghcr.io/filament-assets/swiftshader
+docker run -it ghcr.io/filament-assets/swiftshader
+```
+
+To do more with the container, see the helper script at `build/swiftshader/test.sh`.
+
+If you are a team member, you can update the public image to the latest SwiftShader by
+following the instructions at the top of `build/swiftshader/Dockerfile`.

@@ -18,6 +18,8 @@
 
 #include <filament/Camera.h>
 
+#include <utils/Entity.h>
+
 #include <math/mat4.h>
 
 using namespace filament;
@@ -47,20 +49,31 @@ Java_com_google_android_filament_Camera_nSetLensProjection(JNIEnv*, jclass,
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_Camera_nSetCustomProjection(JNIEnv *env, jclass,
-        jlong nativeCamera, jdoubleArray inMatrix_, jdouble near, jdouble far) {
+        jlong nativeCamera, jdoubleArray inProjection_, jdoubleArray inProjectionForCulling_,
+        jdouble near, jdouble far) {
     Camera *camera = (Camera *) nativeCamera;
-    jdouble *inMatrix = env->GetDoubleArrayElements(inMatrix_, NULL);
-    camera->setCustomProjection(*reinterpret_cast<const filament::math::mat4 *>(inMatrix), near, far);
-    env->ReleaseDoubleArrayElements(inMatrix_, inMatrix, JNI_ABORT);
+    jdouble *inProjection = env->GetDoubleArrayElements(inProjection_, NULL);
+    jdouble *inProjectionForCulling = env->GetDoubleArrayElements(inProjectionForCulling_, NULL);
+    camera->setCustomProjection(
+            *reinterpret_cast<const filament::math::mat4 *>(inProjection),
+            *reinterpret_cast<const filament::math::mat4 *>(inProjectionForCulling),
+            near, far);
+    env->ReleaseDoubleArrayElements(inProjection_, inProjection, JNI_ABORT);
+    env->ReleaseDoubleArrayElements(inProjectionForCulling_, inProjectionForCulling, JNI_ABORT);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_Camera_nSetScaling(JNIEnv* env, jclass,
-        jlong nativeCamera, jdoubleArray inScaling_) {
+        jlong nativeCamera, jdouble x, jdouble y) {
     Camera *camera = (Camera *) nativeCamera;
-    jdouble *inScaling = env->GetDoubleArrayElements(inScaling_, NULL);
-    camera->setScaling(*reinterpret_cast<const filament::math::double4*>(inScaling));
-    env->ReleaseDoubleArrayElements(inScaling_, inScaling, JNI_ABORT);
+    camera->setScaling({(double)x, (double)y});
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_Camera_nSetShift(JNIEnv* env, jclass,
+        jlong nativeCamera, jdouble x, jdouble y) {
+    Camera *camera = (Camera *) nativeCamera;
+    camera->setShift({(double)x, (double)y});
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -99,6 +112,16 @@ Java_com_google_android_filament_Camera_nGetProjectionMatrix(JNIEnv *env, jclass
     Camera *camera = (Camera *) nativeCamera;
     jdouble *out = env->GetDoubleArrayElements(out_, NULL);
     const filament::math::mat4& m = camera->getProjectionMatrix();
+    std::copy_n(&m[0][0], 16, out);
+    env->ReleaseDoubleArrayElements(out_, out, 0);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_Camera_nGetCullingProjectionMatrix(JNIEnv *env, jclass,
+        jlong nativeCamera, jdoubleArray out_) {
+    Camera *camera = (Camera *) nativeCamera;
+    jdouble *out = env->GetDoubleArrayElements(out_, NULL);
+    const filament::math::mat4& m = camera->getCullingProjectionMatrix();
     std::copy_n(&m[0][0], 16, out);
     env->ReleaseDoubleArrayElements(out_, out, 0);
 }
@@ -194,4 +217,37 @@ Java_com_google_android_filament_Camera_nGetSensitivity(JNIEnv*, jclass,
         jlong nativeCamera) {
     Camera *camera = (Camera *) nativeCamera;
     return camera->getSensitivity();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_Camera_nSetFocusDistance(JNIEnv*, jclass,
+        jlong nativeCamera, jfloat focusDistance) {
+    Camera *camera = (Camera *) nativeCamera;
+    camera->setFocusDistance(focusDistance);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_google_android_filament_Camera_nGetFocusDistance(JNIEnv*, jclass,
+        jlong nativeCamera) {
+    Camera *camera = (Camera *) nativeCamera;
+    return camera->getFocusDistance();
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_google_android_filament_Camera_nGetFocalLength(JNIEnv*, jclass,
+        jlong nativeCamera) {
+    Camera *camera = (Camera *) nativeCamera;
+    return camera->getFocalLength();
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_google_android_filament_Camera_nComputeEffectiveFocalLength(JNIEnv*, jclass,
+        jdouble focalLength, jdouble focusDistance) {
+    return Camera::computeEffectiveFocalLength(focalLength, focusDistance);
+}
+
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_google_android_filament_Camera_nComputeEffectiveFov(JNIEnv*, jclass,
+        jdouble fovInDegrees, jdouble focusDistance) {
+    return Camera::computeEffectiveFov(fovInDegrees, focusDistance);
 }

@@ -20,12 +20,11 @@ namespace spvtools {
 namespace fuzz {
 
 FuzzerPassAdjustFunctionControls::FuzzerPassAdjustFunctionControls(
-    opt::IRContext* ir_context, FactManager* fact_manager,
+    opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
     protobufs::TransformationSequence* transformations)
-    : FuzzerPass(ir_context, fact_manager, fuzzer_context, transformations) {}
-
-FuzzerPassAdjustFunctionControls::~FuzzerPassAdjustFunctionControls() = default;
+    : FuzzerPass(ir_context, transformation_context, fuzzer_context,
+                 transformations) {}
 
 void FuzzerPassAdjustFunctionControls::Apply() {
   // Consider every function in the module.
@@ -61,10 +60,7 @@ void FuzzerPassAdjustFunctionControls::Apply() {
       // Create and add a transformation.
       TransformationSetFunctionControl transformation(
           function.DefInst().result_id(), new_function_control_mask);
-      assert(transformation.IsApplicable(GetIRContext(), *GetFactManager()) &&
-             "Transformation should be applicable by construction.");
-      transformation.Apply(GetIRContext(), GetFactManager());
-      *GetTransformations()->add_transformation() = transformation.ToMessage();
+      ApplyTransformation(transformation);
     }
   }
 }

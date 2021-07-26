@@ -24,11 +24,11 @@
 #include <utils/SpinLock.h>
 
 #include <atomic>
+#include <cstddef>
 #include <mutex>
 #include <type_traits>
 
 #include <assert.h>
-#include <stddef.h>
 #include <stdlib.h>
 
 namespace utils {
@@ -163,14 +163,6 @@ public:
     void free(void* p, size_t) noexcept {
         free(p);
     }
-
-    // Allocators can't be copied
-    HeapAllocator(const HeapAllocator& rhs) = delete;
-    HeapAllocator& operator=(const HeapAllocator& rhs) = delete;
-
-    // Allocators can be moved
-    HeapAllocator(HeapAllocator&& rhs) noexcept = default;
-    HeapAllocator& operator=(HeapAllocator&& rhs) noexcept = default;
 
     ~HeapAllocator() noexcept = default;
 
@@ -346,7 +338,7 @@ public:
         mFreeList.push(p);
     }
 
-    size_t getSize() const noexcept { return ELEMENT_SIZE; }
+    constexpr size_t getSize() const noexcept { return ELEMENT_SIZE; }
 
     PoolAllocator(void* begin, void* end) noexcept
         : mFreeList(begin, end, ELEMENT_SIZE, ALIGNMENT, OFFSET) {
@@ -360,6 +352,10 @@ public:
     // Allocators can't be copied
     PoolAllocator(const PoolAllocator& rhs) = delete;
     PoolAllocator& operator=(const PoolAllocator& rhs) = delete;
+
+    // Allocators can be moved
+    PoolAllocator(PoolAllocator&& rhs) = default;
+    PoolAllocator& operator=(PoolAllocator&& rhs) = default;
 
     PoolAllocator() noexcept = default;
     ~PoolAllocator() noexcept = default;
@@ -389,6 +385,39 @@ using ThreadSafeObjectPoolAllocator = PoolAllocator<sizeof(T),
 // Areas
 // ------------------------------------------------------------------------------------------------
 
+namespace AreaPolicy {
+
+class StaticArea {
+public:
+    StaticArea() noexcept = default;
+
+    StaticArea(void* b, void* e) noexcept
+            : mBegin(b), mEnd(e) {
+    }
+
+    ~StaticArea() noexcept = default;
+
+    StaticArea(const StaticArea& rhs) = default;
+    StaticArea& operator=(const StaticArea& rhs) = default;
+    StaticArea(StaticArea&& rhs) noexcept = default;
+    StaticArea& operator=(StaticArea&& rhs) noexcept = default;
+
+    void* data() const noexcept { return mBegin; }
+    void* begin() const noexcept { return mBegin; }
+    void* end() const noexcept { return mEnd; }
+    size_t size() const noexcept { return uintptr_t(mEnd) - uintptr_t(mBegin); }
+
+    friend void swap(StaticArea& lhs, StaticArea& rhs) noexcept {
+        using std::swap;
+        swap(lhs.mBegin, rhs.mBegin);
+        swap(lhs.mEnd, rhs.mEnd);
+    }
+
+private:
+    void* mBegin = nullptr;
+    void* mEnd = nullptr;
+};
+
 class HeapArea {
 public:
     HeapArea() noexcept = default;
@@ -414,13 +443,20 @@ public:
     void* data() const noexcept { return mBegin; }
     void* begin() const noexcept { return mBegin; }
     void* end() const noexcept { return mEnd; }
-    size_t getSize() const noexcept { return uintptr_t(mEnd) - uintptr_t(mBegin); }
+    size_t size() const noexcept { return uintptr_t(mEnd) - uintptr_t(mBegin); }
+
+    friend void swap(HeapArea& lhs, HeapArea& rhs) noexcept {
+        using std::swap;
+        swap(lhs.mBegin, rhs.mBegin);
+        swap(lhs.mEnd, rhs.mEnd);
+    }
 
 private:
     void* mBegin = nullptr;
     void* mEnd = nullptr;
 };
 
+} // namespace AreaPolicy
 
 // ------------------------------------------------------------------------------------------------
 // Policies
@@ -522,7 +558,8 @@ struct DebugAndHighWatermark : protected HighWatermark, protected Debug {
 // ------------------------------------------------------------------------------------------------
 
 template<typename AllocatorPolicy, typename LockingPolicy,
-        typename TrackingPolicy = TrackingPolicy::Untracked>
+        typename TrackingPolicy = TrackingPolicy::Untracked,
+        typename AreaPolicy = AreaPolicy::HeapArea>
 class Arena {
 public:
 
@@ -531,10 +568,18 @@ public:
     // construct an arena with a name and forward argument to its allocator
     template<typename ... ARGS>
     Arena(const char* name, size_t size, ARGS&& ... args)
-            : mArea(size),
+            : mArenaName(name),
+              mArea(size),
               mAllocator(mArea, std::forward<ARGS>(args) ... ),
-              mListener(name, mArea.data(), size),
-              mArenaName(name) {
+              mListener(name, mArea.data(), mArea.size()) {
+    }
+
+    template<typename ... ARGS>
+    Arena(const char* name, AreaPolicy&& area, ARGS&& ... args)
+            : mArenaName(name),
+              mArea(std::forward<AreaPolicy>(area)),
+              mAllocator(mArea, std::forward<ARGS>(args) ... ),
+              mListener(name, mArea.data(), mArea.size()) {
     }
 
     // allocate memory from arena with given size and alignment
@@ -614,8 +659,8 @@ public:
     TrackingPolicy& getListener() noexcept { return mListener; }
     TrackingPolicy const& getListener() const noexcept { return mListener; }
 
-    HeapArea& getArea() noexcept { return mArea; }
-    HeapArea const& getArea() const noexcept { return mArea; }
+    AreaPolicy& getArea() noexcept { return mArea; }
+    AreaPolicy const& getArea() const noexcept { return mArea; }
 
     void setListener(TrackingPolicy listener) noexcept {
         std::swap(mListener, listener);
@@ -631,12 +676,22 @@ public:
     Arena(Arena const& rhs) noexcept = delete;
     Arena& operator=(Arena const& rhs) noexcept = delete;
 
+    friend void swap(Arena& lhs, Arena& rhs) noexcept {
+        using std::swap;
+        swap(lhs.mArea, rhs.mArea);
+        swap(lhs.mAllocator, rhs.mAllocator);
+        swap(lhs.mLock, rhs.mLock);
+        swap(lhs.mListener, rhs.mListener);
+        swap(lhs.mArenaName, rhs.mArenaName);
+    }
+
 private:
-    HeapArea mArea; // We might want to make that a template parameter too eventually.
+    char const* mArenaName = nullptr;
+    AreaPolicy mArea;
+    // note: we should use something like compressed_pair for the members below
     AllocatorPolicy mAllocator;
     LockingPolicy mLock;
     TrackingPolicy mListener;
-    char const* mArenaName = nullptr;
 };
 
 // ------------------------------------------------------------------------------------------------

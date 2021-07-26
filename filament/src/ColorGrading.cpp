@@ -17,6 +17,7 @@
 #include "details/ColorGrading.h"
 
 #include "details/Engine.h"
+#include "details/Texture.h"
 
 #include "FilamentAPI-impl.h"
 
@@ -29,9 +30,13 @@
 #include <math/vec4.h>
 
 #include <utils/JobSystem.h>
+#include <utils/SpinLock.h>
 #include <utils/Systrace.h>
 
 #include <functional>
+
+#include <math.h>
+#include <stdlib.h>
 
 namespace filament {
 
@@ -39,13 +44,13 @@ using namespace utils;
 using namespace math;
 using namespace backend;
 
-static constexpr size_t LUT_DIMENSION = 32u;
-
 //------------------------------------------------------------------------------
 // Builder
 //------------------------------------------------------------------------------
 
 struct ColorGrading::BuilderDetails {
+    ColorGrading::QualityLevel quality = QualityLevel::MEDIUM;
+
     ToneMapping toneMapping = ToneMapping::ACES_LEGACY;
     // White balance
     float2 whiteBalance     = {0.0f, 0.0f};
@@ -79,7 +84,8 @@ struct ColorGrading::BuilderDetails {
 
     bool operator==(const BuilderDetails &rhs) const {
         // Note: Do NOT compare hasAdjustments
-        return toneMapping == rhs.toneMapping &&
+        return quality == rhs.quality &&
+               toneMapping == rhs.toneMapping &&
                whiteBalance == rhs.whiteBalance &&
                outRed == rhs.outRed &&
                outGreen == rhs.outGreen &&
@@ -107,6 +113,11 @@ BuilderType::Builder::Builder(BuilderType::Builder const& rhs) noexcept = defaul
 BuilderType::Builder::Builder(BuilderType::Builder&& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(BuilderType::Builder const& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(BuilderType::Builder&& rhs) noexcept = default;
+
+ColorGrading::Builder& ColorGrading::Builder::quality(ColorGrading::QualityLevel qualityLevel) noexcept {
+    mImpl->quality = qualityLevel;
+    return *this;
+}
 
 ColorGrading::Builder& ColorGrading::Builder::toneMapping(ToneMapping toneMapping) noexcept {
     mImpl->toneMapping = toneMapping;
@@ -248,6 +259,7 @@ mat3f selectColorGradingTransformIn(ColorGrading::ToneMapping toneMapping) {
         case ColorGrading::ToneMapping::ACES:
             return sRGB_to_AP1;
         case ColorGrading::ToneMapping::FILMIC:
+        case ColorGrading::ToneMapping::EVILS:
             return mat3f{}; // stay in sRGB
         default:
             return sRGB_to_REC2020;
@@ -260,6 +272,7 @@ mat3f selectColorGradingTransformOut(ColorGrading::ToneMapping toneMapping) {
         case ColorGrading::ToneMapping::ACES:
             return AP1_to_sRGB;
         case ColorGrading::ToneMapping::FILMIC:
+        case ColorGrading::ToneMapping::EVILS:
             return mat3f{}; // stay in sRGB
         default:
             return REC2020_to_sRGB;
@@ -338,7 +351,7 @@ inline float3 vibrance(float3 v, float vibrance) {
 
 UTILS_ALWAYS_INLINE
 inline float3 curves(float3 v, float3 shadowGamma, float3 midPoint, float3 highlightScale) {
-    // "Practical HDR and Wide Color Techniques in Gran Turismo SPORT", Uchimura 2018
+    // "Practical HDR and Wide Color Techniques in Gran Turismo SPORT", Uchimura 2018
     float3 d = 1.0f / (pow(midPoint, shadowGamma - 1.0f));
     float3 dark = pow(v, shadowGamma) * d;
     float3 light = highlightScale * (v - midPoint) + midPoint;
@@ -348,6 +361,48 @@ inline float3 curves(float3 v, float3 shadowGamma, float3 midPoint, float3 highl
         v.b <= midPoint.b ? dark.b : light.b,
     };
 }
+
+//------------------------------------------------------------------------------
+// Quality
+//------------------------------------------------------------------------------
+
+size_t selectLutDimension(ColorGrading::QualityLevel quality) {
+    switch (quality) {
+        case ColorGrading::QualityLevel::LOW:    return 16u;
+        case ColorGrading::QualityLevel::MEDIUM: return 32u;
+        case ColorGrading::QualityLevel::HIGH:   return 32u;
+        case ColorGrading::QualityLevel::ULTRA:  return 64u;
+    }
+}
+
+void selectLutTextureParams(ColorGrading::QualityLevel quality,
+        TextureFormat& internalFormat, PixelDataFormat& format, PixelDataType& type) {
+    // We use RGBA16F for high quality modes instead of RGB16F because RGB16F
+    // is not supported everywhere
+    switch (quality) {
+        case ColorGrading::QualityLevel::LOW:
+            internalFormat = TextureFormat::RGB10_A2;
+            format = PixelDataFormat::RGBA;
+            type = PixelDataType::UINT_2_10_10_10_REV;
+            break;
+        case ColorGrading::QualityLevel::MEDIUM:
+            internalFormat = TextureFormat::RGB10_A2;
+            format = PixelDataFormat::RGBA;
+            type = PixelDataType::UINT_2_10_10_10_REV;
+            break;
+        case ColorGrading::QualityLevel::HIGH:
+            internalFormat = TextureFormat::RGBA16F;
+            format = PixelDataFormat::RGBA;
+            type = PixelDataType::HALF;
+            break;
+        case ColorGrading::QualityLevel::ULTRA:
+            internalFormat = TextureFormat::RGBA16F;
+            format = PixelDataFormat::RGBA;
+            type = PixelDataType::HALF;
+            break;
+    }
+}
+
 
 //------------------------------------------------------------------------------
 // Tone mapping
@@ -363,8 +418,8 @@ ColorTransform selectToneMapping(ColorGrading::ToneMapping toneMapping) {
             return tonemap::ACES;
         case ColorGrading::ToneMapping::FILMIC:
             return tonemap::Filmic;
-        case ColorGrading::ToneMapping::UCHIMURA:
-            return tonemap::Uchimura;
+        case ColorGrading::ToneMapping::EVILS:
+            return tonemap::EVILS;
         case ColorGrading::ToneMapping::REINHARD:
             return tonemap::Reinhard;
         case ColorGrading::ToneMapping::DISPLAY_RANGE:
@@ -383,25 +438,48 @@ struct Config {
     ColorTransform linearToLogTransform;
     ColorTransform logToLinearTransform;
     ColorTransform toneMapper;
+    size_t lutDimension;
 };
 
+// Inside the FColorGrading constructor, TSAN sporadically detects a data race on the config struct;
+// the Filament thread writes and the Job thread reads. In practice there should be no data race, so
+// we force TSAN off to silence the warning.
+UTILS_NO_SANITIZE_THREAD
 FColorGrading::FColorGrading(FEngine& engine, const Builder& builder) {
     SYSTRACE_CALL();
 
     DriverApi& driver = engine.getDriverApi();
 
-    constexpr size_t lutElementCount = LUT_DIMENSION * LUT_DIMENSION * LUT_DIMENSION;
-    constexpr size_t elementSize = sizeof(half4);
-    void* const data = malloc(lutElementCount * elementSize);
+    Config c;
+    // This lock protects the data inside Config, which is written to by the Filament thread,
+    // and read from multiple Job threads.
+    utils::SpinLock configLock;
+    {
+        std::lock_guard<utils::SpinLock> lock(configLock);
+        c.colorGradingTransformIn  = selectColorGradingTransformIn(builder->toneMapping);
+        c.colorGradingTransformOut = selectColorGradingTransformOut(builder->toneMapping);
+        c.lumaTransform            = selectLumaTransform(builder->toneMapping);
+        c.linearToLogTransform     = selectLinearToLogTransform(builder->toneMapping);
+        c.logToLinearTransform     = selectLogToLinearTransform(builder->toneMapping);
+        c.toneMapper               = selectToneMapping(builder->toneMapping);
+        c.lutDimension             = selectLutDimension(builder->quality);
+    }
 
-    Config config{
-        .colorGradingTransformIn  = selectColorGradingTransformIn(builder->toneMapping),
-        .colorGradingTransformOut = selectColorGradingTransformOut(builder->toneMapping),
-        .lumaTransform            = selectLumaTransform(builder->toneMapping),
-        .linearToLogTransform     = selectLinearToLogTransform(builder->toneMapping),
-        .logToLinearTransform     = selectLogToLinearTransform(builder->toneMapping),
-        .toneMapper               = selectToneMapping(builder->toneMapping)
-    };
+    size_t lutElementCount = c.lutDimension * c.lutDimension * c.lutDimension;
+    size_t elementSize = sizeof(half4);
+    void* data = malloc(lutElementCount * elementSize);
+
+    TextureFormat textureFormat;
+    PixelDataFormat format;
+    PixelDataType type;
+    selectLutTextureParams(builder->quality, textureFormat, format, type);
+    assert_invariant(FTexture::validatePixelFormatAndType(textureFormat, format, type));
+
+    void* converted = nullptr;
+    if (type == PixelDataType::UINT_2_10_10_10_REV) {
+        // convert input to UINT_2_10_10_10_REV if needed
+        converted = malloc(lutElementCount * sizeof(uint32_t));
+    }
 
     //auto now = std::chrono::steady_clock::now();
 
@@ -409,18 +487,24 @@ FColorGrading::FColorGrading(FEngine& engine, const Builder& builder) {
     // Slices are 8 KiB (128 cache lines) apart.
     // This takes about 3-6ms on Android in Release
     JobSystem& js = engine.getJobSystem();
-    auto slices = js.createJob();
-    for (size_t b = 0; b < LUT_DIMENSION; b++) {
-        auto job = js.createJob(slices, [data, b, &config, builder](JobSystem&, JobSystem::Job*) {
-            half4* UTILS_RESTRICT p = (half4*) data + b * LUT_DIMENSION * LUT_DIMENSION;
-            for (size_t g = 0; g < LUT_DIMENSION; g++) {
-                for (size_t r = 0; r < LUT_DIMENSION; r++) {
-                    float3 v = float3{r, g, b} * (1.0f / (LUT_DIMENSION - 1u));
+    auto *slices = js.createJob();
+    for (size_t b = 0; b < c.lutDimension; b++) {
+        auto *job = js.createJob(slices,
+                [data, converted, b, &c, &configLock, builder](JobSystem&, JobSystem::Job*) {
+            Config config;
+            {
+                std::lock_guard<utils::SpinLock> lock(configLock);
+                config = c;
+            }
+            half4* UTILS_RESTRICT p = (half4*) data + b * config.lutDimension * config.lutDimension;
+            for (size_t g = 0; g < config.lutDimension; g++) {
+                for (size_t r = 0; r < config.lutDimension; r++) {
+                    float3 v = float3{ r, g, b } * (1.0f / float(config.lutDimension - 1u));
 
                     // LogC encoding
                     v = LogC_to_linear(v);
 
-                    // TODO: Peformed in sRGB, should be in Rec.2020 or AP1
+                    // TODO: Performed in sRGB, should be in Rec.2020 or AP1
                     if (builder->hasAdjustments) {
                         // White balance
                         v = chromaticAdaptation(v, builder->whiteBalance);
@@ -475,12 +559,33 @@ FColorGrading::FColorGrading(FEngine& engine, const Builder& builder) {
                     // TODO: allow to customize the output color space,
                     v = config.colorGradingTransformOut * v;
 
+                    v = saturate(v);
+
                     // Apply OECF
                     v = OECF_sRGB(v);
 
                     *p++ = half4{v, 0.0f};
                 }
             }
+
+            if (converted) {
+                uint32_t* const UTILS_RESTRICT dst = (uint32_t*) converted +
+                        b * config.lutDimension * config.lutDimension;
+                half4* UTILS_RESTRICT src = (half4*) data +
+                        b * config.lutDimension * config.lutDimension;
+                // we use a vectorize width of 8 because, on ARMv8 it allows the compiler to write eight
+                // 32-bits results in one go.
+                const size_t count = (config.lutDimension * config.lutDimension) & ~0x7u; // tell the compiler that we're a multiple of 8
+                #pragma clang loop vectorize_width(8)
+                for (size_t i = 0; i < count; ++i) {
+                    float4 v{src[i]};
+                    uint32_t r = uint32_t(std::floor(v.x * 1023.0f + 0.5f));
+                    uint32_t g = uint32_t(std::floor(v.y * 1023.0f + 0.5f));
+                    uint32_t b = uint32_t(std::floor(v.z * 1023.0f + 0.5f));
+                    dst[i] = (b << 20u) | (g << 10u) | r;
+                }
+            }
+
         });
         js.run(job);
     }
@@ -492,16 +597,20 @@ FColorGrading::FColorGrading(FEngine& engine, const Builder& builder) {
     //std::chrono::duration<float, std::milli> duration = std::chrono::steady_clock::now() - now;
     //slog.d << "LUT generation time: " << duration.count() << " ms" << io::endl;
 
-    // create the texture, we use RGBA16F because RGB16F is not supported everywhere
-    mLutHandle = driver.createTexture(SamplerType::SAMPLER_3D, 1,
-            TextureFormat::RGBA16F, 0,
-            LUT_DIMENSION, LUT_DIMENSION, LUT_DIMENSION, TextureUsage::DEFAULT);
+    mLutHandle = driver.createTexture(SamplerType::SAMPLER_3D, 1, textureFormat, 1,
+            c.lutDimension, c.lutDimension, c.lutDimension, TextureUsage::DEFAULT);
+
+    if (converted) {
+        free(data);
+        data = converted;
+        elementSize = sizeof(uint32_t);
+    }
 
     driver.update3DImage(mLutHandle, 0,
             0, 0, 0,
-            LUT_DIMENSION, LUT_DIMENSION, LUT_DIMENSION, PixelBufferDescriptor{
-                    data, lutElementCount * elementSize,
-                    PixelDataFormat::RGBA, PixelDataType::HALF,
+            c.lutDimension, c.lutDimension, c.lutDimension,
+            PixelBufferDescriptor{
+                    data, lutElementCount * elementSize,format, type,
                     [](void* buffer, size_t, void*) { free(buffer); }
             }
     );

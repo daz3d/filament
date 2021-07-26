@@ -28,7 +28,6 @@
 #include <backend/PresentCallable.h>
 #include <backend/TargetBufferInfo.h>
 
-#include "private/backend/DriverApi.h"
 #include "private/backend/Program.h"
 #include "private/backend/SamplerGroup.h"
 
@@ -179,7 +178,7 @@ struct CommandType<void (Driver::*)(ARGS...)> {
 
         // placement new declared as "throw" to avoid the compiler's null-check
         inline void* operator new(std::size_t size, void* ptr) {
-            assert(ptr);
+            assert_invariant(ptr);
             return ptr;
         }
     };
@@ -213,37 +212,64 @@ public:
 
 // ------------------------------------------------------------------------------------------------
 
-#if defined(NDEBUG)
-    #define DEBUG_COMMAND(methodName, ...)
-#else
+#if !defined(NDEBUG) || (FILAMENT_DEBUG_COMMANDS >= FILAMENT_DEBUG_COMMANDS_ENABLE)
     // For now, simply pass the method name down as a string and throw away the parameters.
     // This is good enough for certain debugging needs and we can improve this later.
-    #define DEBUG_COMMAND(methodName, ...) mDriver->debugCommand(#methodName)
+    #define DEBUG_COMMAND_BEGIN(methodName, sync, ...) mDriver->debugCommandBegin(this, sync, #methodName)
+    #define DEBUG_COMMAND_END(methodName, sync) mDriver->debugCommandEnd(this, sync, #methodName)
+#else
+    #define DEBUG_COMMAND_BEGIN(methodName, sync, ...)
+    #define DEBUG_COMMAND_END(methodName, sync)
 #endif
 
 class CommandStream {
+    // Dispatcher could be a value (instead of pointer), which saves a load when writing commands
+    // at the expense of a larger CommandStream object (about ~400 bytes)
+    Dispatcher* mDispatcher = nullptr;
+    Driver* mDriver = nullptr;
+    CircularBuffer* UTILS_RESTRICT mCurrentBuffer = nullptr;
+
+#ifndef NDEBUG
+    // just for debugging...
+    std::thread::id mThreadId{};
+#endif
+
+    bool mUsePerformanceCounter = false;
+
+    template<typename T>
+    struct AutoExecute {
+        T closure;
+        inline AutoExecute(T&& closure) : closure(std::forward<T>(closure)) {}
+        inline ~AutoExecute() { closure(); }
+    };
+
 public:
 #define DECL_DRIVER_API(methodName, paramsDecl, params)                                         \
     inline void methodName(paramsDecl) {                                                        \
-        DEBUG_COMMAND(methodName, params);                                                      \
+        DEBUG_COMMAND_BEGIN(methodName, false, params);                                         \
         using Cmd = COMMAND_TYPE(methodName);                                                   \
         void* const p = allocateCommand(CommandBase::align(sizeof(Cmd)));                       \
         new(p) Cmd(mDispatcher->methodName##_, APPLY(std::move, params));                       \
+        DEBUG_COMMAND_END(methodName, false);                                                   \
     }
 
 #define DECL_DRIVER_API_SYNCHRONOUS(RetType, methodName, paramsDecl, params)                    \
     inline RetType methodName(paramsDecl) {                                                     \
-        DEBUG_COMMAND(methodName, params);                                                      \
+        DEBUG_COMMAND_BEGIN(methodName, true, params);                                          \
+        AutoExecute callOnExit([=](){                                                           \
+            DEBUG_COMMAND_END(methodName, true);                                                \
+        });                                                                                     \
         return apply(&Driver::methodName, *mDriver, std::forward_as_tuple(params));             \
     }
 
 #define DECL_DRIVER_API_RETURN(RetType, methodName, paramsDecl, params)                         \
     inline RetType methodName(paramsDecl) {                                                     \
-        DEBUG_COMMAND(methodName, params);                                                      \
+        DEBUG_COMMAND_BEGIN(methodName, false, params);                                         \
         RetType result = mDriver->methodName##S();                                              \
         using Cmd = COMMAND_TYPE(methodName##R);                                                \
         void* const p = allocateCommand(CommandBase::align(sizeof(Cmd)));                       \
         new(p) Cmd(mDispatcher->methodName##_, RetType(result), APPLY(std::move, params));      \
+        DEBUG_COMMAND_END(methodName, false);                                                   \
         return result;                                                                          \
     }
 
@@ -286,28 +312,15 @@ public:
             size_t count = 1, size_t alignment = alignof(PodType)) noexcept;
 
 private:
-    // Dispatcher could be a value (instead of pointer), which saves a load when writing commands
-    // at the expense of a larger CommandStream object (about ~400 bytes)
-    Dispatcher* mDispatcher = nullptr;
-    Driver* mDriver = nullptr;
-    CircularBuffer* UTILS_RESTRICT mCurrentBuffer = nullptr;
-
-#ifndef NDEBUG
-    // just for debugging...
-    std::thread::id mThreadId;
-#endif
-
-    bool mUsePerformanceCounter = false;
-
     inline void* allocateCommand(size_t size) {
-        assert(mThreadId == std::this_thread::get_id());
+        assert_invariant(mThreadId == std::this_thread::get_id());
         return mCurrentBuffer->allocate(size);
     }
 };
 
 void* CommandStream::allocate(size_t size, size_t alignment) noexcept {
     // make sure alignment is a power of two
-    assert(alignment && !(alignment & alignment-1));
+    assert_invariant(alignment && !(alignment & alignment-1));
 
     // pad the requested size to accommodate NoopCommand and alignment
     const size_t s = CustomCommand::align(sizeof(NoopCommand) + size + alignment - 1);
@@ -318,7 +331,7 @@ void* CommandStream::allocate(size_t size, size_t alignment) noexcept {
 
     // calculate the "user" data pointer
     void* data = (void *)((uintptr_t(p) + sizeof(NoopCommand) + alignment - 1) & ~(alignment - 1));
-    assert(data >= p + sizeof(NoopCommand));
+    assert_invariant(data >= p + sizeof(NoopCommand));
     return data;
 }
 

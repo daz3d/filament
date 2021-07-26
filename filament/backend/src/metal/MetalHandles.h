@@ -44,39 +44,89 @@ namespace metal {
 class MetalSwapChain : public HwSwapChain {
 public:
 
-    MetalSwapChain(id<MTLDevice> device, CAMetalLayer* nativeWindow, uint64_t flags);
+    // Instantiate a SwapChain from a CAMetalLayer
+    MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow, uint64_t flags);
+
+    // Instantiate a SwapChain from a CVPixelBuffer
+    MetalSwapChain(MetalContext& context, CVPixelBufferRef pixelBuffer, uint64_t flags);
 
     // Instantiate a headless SwapChain.
-    MetalSwapChain(int32_t width, int32_t height, uint64_t flags);
+    MetalSwapChain(MetalContext& context, int32_t width, int32_t height, uint64_t flags);
 
-    bool isHeadless() const { return layer == nullptr; }
-    CAMetalLayer* getLayer() const { return layer; }
+    ~MetalSwapChain();
 
-    NSUInteger getSurfaceWidth() const {
-        if (isHeadless()) {
-            return headlessWidth;
-        }
-        return (NSUInteger) layer.drawableSize.width;
-    }
+    // Acquires a texture that can be used to render into this SwapChain.
+    // The texture source depends on the type of SwapChain:
+    //   - CAMetalLayer-backed: acquires the CAMetalDrawable and returns its texture.
+    //   - Headless: lazily creates and returns a headless texture.
+    id<MTLTexture> acquireDrawable();
 
-    NSUInteger getSurfaceHeight() const {
-        if (isHeadless()) {
-            return headlessHeight;
-        }
-        return (NSUInteger) layer.drawableSize.height;
-    }
+    id<MTLTexture> acquireDepthTexture();
+
+    void releaseDrawable();
+
+    void setFrameScheduledCallback(FrameScheduledCallback callback, void* user);
+    void setFrameCompletedCallback(FrameCompletedCallback callback, void* user);
+
+    // For CAMetalLayer-backed SwapChains, presents the drawable or schedules a
+    // FrameScheduledCallback.
+    void present();
+
+    NSUInteger getSurfaceWidth() const;
+    NSUInteger getSurfaceHeight() const;
 
 private:
 
+    enum class SwapChainType {
+        CAMETALLAYER,
+        CVPIXELBUFFERREF,
+        HEADLESS
+    };
+    bool isCaMetalLayer() const { return type == SwapChainType::CAMETALLAYER; }
+    bool isHeadless() const { return type == SwapChainType::HEADLESS; }
+    bool isPixelBuffer() const { return type == SwapChainType::CVPIXELBUFFERREF; }
+
+    void scheduleFrameScheduledCallback();
+    void scheduleFrameCompletedCallback();
+
+    MetalContext& context;
+    id<CAMetalDrawable> drawable = nil;
+    id<MTLTexture> depthTexture = nil;
+    id<MTLTexture> headlessDrawable = nil;
     NSUInteger headlessWidth;
     NSUInteger headlessHeight;
     CAMetalLayer* layer = nullptr;
+    MetalExternalImage externalImage;
+    SwapChainType type;
+
+    // These two fields store a callback and user data to notify the client that a frame is ready
+    // for presentation.
+    // If frameScheduledCallback is nullptr, then the Metal backend automatically calls
+    // presentDrawable when the frame is commited.
+    // Otherwise, the Metal backend will not automatically present the frame. Instead, clients bear
+    // the responsibility of presenting the frame by calling the PresentCallable object.
+    FrameScheduledCallback frameScheduledCallback = nullptr;
+    void* frameScheduledUserData = nullptr;
+
+    FrameCompletedCallback frameCompletedCallback = nullptr;
+    void* frameCompletedUserData = nullptr;
+};
+
+class MetalBufferObject : public HwBufferObject {
+public:
+    MetalBufferObject(MetalContext& context, uint32_t byteCount);
+
+    void updateBuffer(void* data, size_t size, uint32_t byteOffset);
+    MetalBuffer* getBuffer() const { return buffer.get(); }
+
+private:
+    std::unique_ptr<MetalBuffer> buffer = nullptr;
+
 };
 
 struct MetalVertexBuffer : public HwVertexBuffer {
     MetalVertexBuffer(MetalContext& context, uint8_t bufferCount, uint8_t attributeCount,
             uint32_t vertexCount, AttributeArray const& attributes);
-    ~MetalVertexBuffer();
 
     std::vector<MetalBuffer*> buffers;
 };
@@ -94,8 +144,7 @@ struct MetalUniformBuffer : public HwUniformBuffer {
 };
 
 struct MetalRenderPrimitive : public HwRenderPrimitive {
-    void setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer,
-            uint32_t enabledAttributes);
+    void setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer);
     // The pointers to MetalVertexBuffer and MetalIndexBuffer are "weak".
     // The MetalVertexBuffer and MetalIndexBuffer must outlive the MetalRenderPrimitive.
 
@@ -104,9 +153,6 @@ struct MetalRenderPrimitive : public HwRenderPrimitive {
 
     // This struct is used to create the pipeline description to describe vertex assembly.
     VertexDescription vertexDescription = {};
-
-    std::vector<MetalBuffer*> buffers;
-    std::vector<NSUInteger> offsets;
 };
 
 struct MetalProgram : public HwProgram {
@@ -115,11 +161,13 @@ struct MetalProgram : public HwProgram {
     id<MTLFunction> vertexFunction;
     id<MTLFunction> fragmentFunction;
     Program::SamplerGroupInfo samplerGroupInfo;
+    bool isValid = false;
 };
 
 struct MetalTexture : public HwTexture {
     MetalTexture(MetalContext& context, SamplerType target, uint8_t levels, TextureFormat format,
-            uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage)
+            uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage,
+            TextureSwizzle r, TextureSwizzle g, TextureSwizzle b, TextureSwizzle a)
             noexcept;
 
     // Constructor for importing an id<MTLTexture> outside of Filament.
@@ -143,6 +191,12 @@ struct MetalTexture : public HwTexture {
     MetalContext& context;
     MetalExternalImage externalImage;
     id<MTLTexture> texture = nil;
+
+    // If non-nil, a swizzled texture view to use instead of "texture".
+    // Filament swizzling only affects texture reads, so this should not be used when the texture is
+    // bound as a render target attachment.
+    id<MTLTexture> swizzledTextureView = nil;
+
     uint8_t bytesPerElement; // The number of bytes per pixel, or block (for compressed texture formats).
     uint8_t blockWidth; // The number of horizontal pixels per block (only for compressed texture formats).
     uint8_t blockHeight; // The number of vertical pixels per block (only for compressed texture formats).
@@ -170,7 +224,7 @@ public:
     };
 
     MetalRenderTarget(MetalContext* context, uint32_t width, uint32_t height, uint8_t samples,
-            Attachment colorAttachments[MRT::TARGET_COUNT], Attachment depthAttachment);
+            Attachment colorAttachments[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT], Attachment depthAttachment);
     explicit MetalRenderTarget(MetalContext* context)
             : HwRenderTarget(0, 0), context(context), defaultRenderTarget(true) {}
 
@@ -179,7 +233,8 @@ public:
     bool isDefaultRenderTarget() const { return defaultRenderTarget; }
     uint8_t getSamples() const { return samples; }
 
-    Attachment getColorAttachment(size_t index);
+    Attachment getDrawColorAttachment(size_t index);
+    Attachment getReadColorAttachment(size_t index);
     Attachment getDepthAttachment();
 
 private:
@@ -193,11 +248,11 @@ private:
     bool defaultRenderTarget = false;
     uint8_t samples = 1;
 
-    Attachment color[MRT::TARGET_COUNT] = {};
+    Attachment color[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT] = {};
     Attachment depth = {};
 
     // "Sidecar" textures used to implement automatic MSAA resolve.
-    id<MTLTexture> multisampledColor[MRT::TARGET_COUNT] = { 0 };
+    id<MTLTexture> multisampledColor[MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT] = { 0 };
     id<MTLTexture> multisampledDepth = nil;
 };
 
