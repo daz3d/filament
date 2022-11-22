@@ -297,9 +297,11 @@ inline MTLPixelFormat getMetalFormat(TextureFormat format) noexcept {
 inline MTLPixelFormat getMetalFormat(PixelDataFormat format, PixelDataType type) {
     if (type == PixelDataType::UINT_2_10_10_10_REV) return MTLPixelFormatRGB10A2Unorm;
     if (type == PixelDataType::UINT_10F_11F_11F_REV) return MTLPixelFormatRG11B10Float;
+#if MAC_OS_X_VERSION_MAX_ALLOWED > 101600  // DAZ Change
     if (@available(macOS 11, *)) {
         if (type == PixelDataType::USHORT_565) return MTLPixelFormatB5G6R5Unorm;
     }
+#endif
 
     #define CONVERT(FORMAT, TYPE, MTL) \
     if (PixelDataFormat::FORMAT == format && PixelDataType::TYPE == type)  return MTLPixelFormat ## MTL;
@@ -353,6 +355,7 @@ inline MTLPixelFormat getMetalFormatLinear(MTLPixelFormat format) {
 #endif
         default: break;
     }
+#if MAC_OS_X_VERSION_MAX_ALLOWED > 101600 // DAZ Change
     if (@available(macOS 11, *)) {
         switch (format) {
             case MTLPixelFormatASTC_4x4_sRGB: return MTLPixelFormatASTC_4x4_LDR;
@@ -381,6 +384,7 @@ inline MTLPixelFormat getMetalFormatLinear(MTLPixelFormat format) {
             default: break;
         }
     }
+#endif
     return format;
 }
 
