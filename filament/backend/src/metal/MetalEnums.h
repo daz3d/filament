@@ -343,8 +343,8 @@ inline MTLPixelFormat getMetalFormat(PixelDataFormat format, PixelDataType type)
 
 inline MTLPixelFormat getMetalFormatLinear(MTLPixelFormat format) {
     switch (format) {
-        case MTLPixelFormatR8Unorm_sRGB: return MTLPixelFormatR8Unorm;
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= 110000 // DAZ Change
+        case MTLPixelFormatR8Unorm_sRGB: return MTLPixelFormatR8Unorm;
         case MTLPixelFormatRG8Unorm_sRGB: return MTLPixelFormatRG8Unorm;
 #endif
         case MTLPixelFormatRGBA8Unorm_sRGB: return MTLPixelFormatRGBA8Unorm;
