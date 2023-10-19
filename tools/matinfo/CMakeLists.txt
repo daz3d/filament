@@ -13,12 +13,14 @@ set(SRCS src/main.cpp)
 # ==================================================================================================
 add_executable(${TARGET} ${SRCS})
 
-target_link_libraries(${TARGET} matdbg filaflat backend_headers utils getopt SPIRV-Tools spirv-cross-glsl)
+target_link_libraries(${TARGET} matdbg filaflat backend_headers getopt)
 
 # glslang contains a copy of the SPIRV headers, so let's just use those. The leading ".." in the
 # following variable refers to the project name that we define in glslang/tnt, and the trailing ".."
 # in the path allows us to do #include <SPIRV/disassemble.h>
 target_include_directories(${TARGET} PRIVATE ${../glslang_SOURCE_DIR}/..)
+
+set_target_properties(${TARGET} PROPERTIES FOLDER Tools)
 
 # =================================================================================================
 # Licenses

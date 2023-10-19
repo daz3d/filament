@@ -13,7 +13,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v2.0.0
+      - uses: actions/checkout@v3.3.0
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
       - name: Run build script
         run: |
           cd build/android && printf "y" | ./build.sh continuous
@@ -27,16 +31,8 @@ jobs:
           path: out/filamat-android-release.aar
       - uses: actions/upload-artifact@v1.0.0
         with:
-          name: filamat-android-lite
-          path: out/filamat-android-lite-release.aar
-      - uses: actions/upload-artifact@v1.0.0
-        with:
           name: gltfio-android-release
           path: out/gltfio-android-release.aar
-      - uses: actions/upload-artifact@v1.0.0
-        with:
-          name: gltfio-android-lite-release
-          path: out/gltfio-android-lite-release.aar
       - uses: actions/upload-artifact@v1.0.0
         with:
           name: filament-utils-android-release

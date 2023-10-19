@@ -18,7 +18,6 @@
 
 #include <utils/Path.h>
 
-#include <filaflat/BlobDictionary.h>
 #include <filaflat/ChunkContainer.h>
 
 #include <matdbg/DebugServer.h>
@@ -48,9 +47,11 @@ using utils::Path;
 
 struct Config {
     bool printGLSL = false;
+    bool printESSL1 = false;
     bool printSPIRV = false;
     bool printMetal = false;
     bool printDictionaryGLSL = false;
+    bool printDictionaryESSL1 = false;
     bool printDictionarySPIRV = false;
     bool printDictionaryMetal = false;
     bool transpile = false;
@@ -64,6 +65,11 @@ static void printUsage(const char* name) {
     std::string execName(utils::Path(name).getName());
     std::string usage(
             "MATINFO prints information about material files compiled with matc\n"
+            "\n"
+            "Caution! MATINFO was designed to operate on trusted inputs. To minimize the risk of\n"
+            "triggering memory corruption vulnerabilities, please make sure that the files passed\n"
+            "to MATINFO come from a trusted source, or run MATINFO in a sandboxed environment.\n"
+            "\n"
             "Usage:\n"
             "    MATINFO [options] <material file>\n"
             "\n"
@@ -72,6 +78,8 @@ static void printUsage(const char* name) {
             "       Print this message\n\n"
             "   --print-glsl=[index], -g\n"
             "       Print GLSL for the nth shader (0 is the first OpenGL shader)\n\n"
+            "   --print-essl1=[index], -G\n"
+            "       Print GLES SL version 1 shader for the nth shader (0 is the first ESSL shader)\n\n"
             "   --print-spirv=[index], -s\n"
             "       Validate and print disasm for the nth shader (0 is the first Vulkan shader)\n\n"
             "   --print-metal=[index], -m\n"
@@ -80,6 +88,8 @@ static void printUsage(const char* name) {
             "       Print the nth Vulkan shader transpiled into GLSL\n\n"
             "   --print-dic-glsl\n"
             "       Print the GLSL dictionary\n\n"
+            "   --print-dic-essl1\n"
+            "       Print the ESSL1 dictionary\n\n"
             "   --print-dic-metal\n"
             "       Print the Metal dictionary\n\n"
             "   --print-dic-vk\n"
@@ -113,21 +123,23 @@ static void license() {
 }
 
 static int handleArguments(int argc, char* argv[], Config* config) {
-    static constexpr const char* OPTSTR = "hla:g:s:v:b:m:b:w:xyz";
+    static constexpr const char* OPTSTR = "hla:g:G:s:v:b:m:b:w:Xxyz";
     static const struct option OPTIONS[] = {
-            { "help",            no_argument,       0, 'h' },
-            { "license",         no_argument,       0, 'l' },
-            { "analyze-spirv",   required_argument, 0, 'a' },
-            { "print-glsl",      required_argument, 0, 'g' },
-            { "print-spirv",     required_argument, 0, 's' },
-            { "print-vkglsl",    required_argument, 0, 'v' },
-            { "print-metal",     required_argument, 0, 'm' },
-            { "print-dic-glsl",  no_argument,       0, 'x' },
-            { "print-dic-metal", no_argument,       0, 'y' },
-            { "print-dic-vk",    no_argument,       0, 'z' },
-            { "dump-binary",     required_argument, 0, 'b' },
-            { "web-server",      required_argument, 0, 'w' },
-            { 0, 0, 0, 0 }  // termination of the option list
+            { "help",            no_argument,       nullptr, 'h' },
+            { "license",         no_argument,       nullptr, 'l' },
+            { "analyze-spirv",   required_argument, nullptr, 'a' },
+            { "print-glsl",      required_argument, nullptr, 'g' },
+            { "print-essl1",      required_argument, nullptr, 'G' },
+            { "print-spirv",     required_argument, nullptr, 's' },
+            { "print-vkglsl",    required_argument, nullptr, 'v' },
+            { "print-metal",     required_argument, nullptr, 'm' },
+            { "print-dic-glsl",  no_argument,       nullptr, 'x' },
+            { "print-dic-essl1", no_argument,       nullptr, 'X' },
+            { "print-dic-metal", no_argument,       nullptr, 'y' },
+            { "print-dic-vk",    no_argument,       nullptr, 'z' },
+            { "dump-binary",     required_argument, nullptr, 'b' },
+            { "web-server",      required_argument, nullptr, 'w' },
+            { nullptr, 0, nullptr, 0 }  // termination of the option list
     };
 
     int opt;
@@ -145,6 +157,10 @@ static int handleArguments(int argc, char* argv[], Config* config) {
                 exit(0);
             case 'g':
                 config->printGLSL = true;
+                config->shaderIndex = static_cast<uint64_t>(std::stoi(arg));
+                break;
+            case 'G':
+                config->printESSL1 = true;
                 config->shaderIndex = static_cast<uint64_t>(std::stoi(arg));
                 break;
             case 's':
@@ -176,6 +192,9 @@ static int handleArguments(int argc, char* argv[], Config* config) {
             case 'x':
                 config->printDictionaryGLSL = true;
                 break;
+            case 'X':
+                config->printDictionaryESSL1 = true;
+                break;
             case 'y':
                 config->printDictionaryMetal = true;
                 break;
@@ -195,7 +214,8 @@ static bool read(const filaflat::ChunkContainer& container, filamat::ChunkType t
         return false;
     }
 
-    filaflat::Unflattener unflattener(container.getChunkStart(type), container.getChunkEnd(type));
+    auto [start, end] = container.getChunkRange(type);
+    filaflat::Unflattener unflattener(start, end);
     return unflattener.read(value);
 }
 
@@ -205,8 +225,9 @@ static std::ifstream::pos_type getFileSize(const char* filename) {
 }
 
 // Consumes SPIRV binary and produces a GLSL-ES string.
-static void transpileSpirv(const std::vector<uint32_t>& spirv) {
-    std::cout << ShaderExtractor::spirvToGLSL(spirv.data(), spirv.size()).c_str();
+static void transpileSpirv(filament::backend::ShaderModel shaderModel,
+        const std::vector<uint32_t>& spirv) {
+    std::cout << ShaderExtractor::spirvToGLSL(shaderModel, spirv.data(), spirv.size()).c_str();
 }
 
 // Consumes SPIRV binary and produces an ordered map from "line number" to "GLSL string" where
@@ -220,7 +241,7 @@ static std::map<int, std::string> transpileSpirvToLines(const std::vector<uint32
     emitOptions.vulkan_semantics = true;
     emitOptions.emit_line_directives = true;
 
-    CompilerGLSL glslCompiler(move(spirv));
+    CompilerGLSL glslCompiler(spirv);
     glslCompiler.set_common_options(emitOptions);
     std::string transpiled = glslCompiler.compile();
 
@@ -370,7 +391,7 @@ static void disassembleSpirv(const std::vector<uint32_t>& spirv, bool analyze) {
     }
 }
 
-static void dumpSpirvBinary(const std::vector<uint32_t>& spirv, std::string filename) {
+static void dumpSpirvBinary(const std::vector<uint32_t>& spirv, const std::string& filename) {
     std::ofstream out(filename, std::ofstream::binary);
     out.write((const char*) spirv.data(), spirv.size() * 4);
     std::cout << "Binary SPIR-V dumped to " << filename << std::endl;
@@ -403,18 +424,18 @@ static bool parseChunks(Config config, void* data, size_t size) {
         return true;
     }
 
-    if (config.printGLSL || config.printSPIRV || config.printMetal) {
-        filaflat::ShaderBuilder builder;
+    if (config.printGLSL || config.printESSL1 || config.printSPIRV || config.printMetal) {
+        filaflat::ShaderContent content;
         std::vector<ShaderInfo> info;
 
         if (config.printGLSL) {
-            ShaderExtractor parser(Backend::OPENGL, data, size);
+            ShaderExtractor parser(filament::backend::ShaderLanguage::ESSL3, data, size);
             if (!parser.parse()) {
                 return false;
             }
 
             info.resize(getShaderCount(container, filamat::ChunkType::MaterialGlsl));
-            if (!getGlShaderInfo(container, info.data())) {
+            if (!getShaderInfo(container, info.data(), filamat::ChunkType::MaterialGlsl)) {
                 std::cerr << "Failed to parse GLSL chunk." << std::endl;
                 return false;
             }
@@ -425,22 +446,48 @@ static bool parseChunks(Config config, void* data, size_t size) {
             }
 
             const auto& item = info[config.shaderIndex];
-            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
+            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
-            // Casted to char* to print as a string rather than hex value.
-            std::cout << (const char*) builder.data();
+            // Cast to char* to print as a string rather than hex value.
+            std::cout << (const char*) content.data();
+
+            return true;
+        }
+
+        if (config.printESSL1) {
+            ShaderExtractor parser(filament::backend::ShaderLanguage::ESSL1, data, size);
+            if (!parser.parse()) {
+                return false;
+            }
+
+            info.resize(getShaderCount(container, filamat::ChunkType::MaterialEssl1));
+            if (!getShaderInfo(container, info.data(), filamat::ChunkType::MaterialEssl1)) {
+                std::cerr << "Failed to parse ESSL1 chunk." << std::endl;
+                return false;
+            }
+
+            if (config.shaderIndex >= info.size()) {
+                std::cerr << "Shader index out of range." << std::endl;
+                return false;
+            }
+
+            const auto& item = info[config.shaderIndex];
+            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
+
+            // Cast to char* to print as a string rather than hex value.
+            std::cout << (const char*) content.data();
 
             return true;
         }
 
         if (config.printSPIRV) {
-            ShaderExtractor parser(Backend::VULKAN, data, size);
+            ShaderExtractor parser(filament::backend::ShaderLanguage::SPIRV, data, size);
             if (!parser.parse()) {
                 return false;
             }
 
             info.resize(getShaderCount(container, filamat::ChunkType::MaterialSpirv));
-            if (!getVkShaderInfo(container, info.data())) {
+            if (!getShaderInfo(container, info.data(), filamat::ChunkType::MaterialSpirv)) {
                 std::cerr << "Failed to parse SPIRV chunk." << std::endl;
                 return false;
             }
@@ -451,15 +498,15 @@ static bool parseChunks(Config config, void* data, size_t size) {
             }
 
             const auto& item = info[config.shaderIndex];
-            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
+            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
             // Build std::vector<uint32_t> since that's what the Khronos libraries consume.
-            uint32_t const* words = reinterpret_cast<uint32_t const*>(builder.data());
-            assert(0 == (builder.size() % 4));
-            const std::vector<uint32_t> spirv(words, words + builder.size() / 4);
+            uint32_t const* words = reinterpret_cast<uint32_t const*>(content.data());
+            assert(0 == (content.size() % 4));
+            const std::vector<uint32_t> spirv(words, words + content.size() / 4);
 
             if (config.transpile) {
-                transpileSpirv(spirv);
+                transpileSpirv(item.shaderModel, spirv);
             } else if (config.binary) {
                 dumpSpirvBinary(spirv, "out.spv");
             } else {
@@ -470,13 +517,13 @@ static bool parseChunks(Config config, void* data, size_t size) {
         }
 
         if (config.printMetal) {
-            ShaderExtractor parser(Backend::METAL, data, size);
+            ShaderExtractor parser(filament::backend::ShaderLanguage::MSL, data, size);
             if (!parser.parse()) {
                 return false;
             }
 
             info.resize(getShaderCount(container, filamat::ChunkType::MaterialMetal));
-            if (!getMetalShaderInfo(container, info.data())) {
+            if (!getShaderInfo(container, info.data(), filamat::ChunkType::MaterialMetal)) {
                 std::cerr << "Failed to parse Metal chunk." << std::endl;
                 return false;
             }
@@ -487,8 +534,8 @@ static bool parseChunks(Config config, void* data, size_t size) {
             }
 
             const auto& item = info[config.shaderIndex];
-            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
-            std::cout << (const char*) builder.data();
+            parser.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
+            std::cout << (const char*) content.data();
 
             return true;
         }
@@ -496,11 +543,12 @@ static bool parseChunks(Config config, void* data, size_t size) {
 
     TextWriter writer;
 
-    if (config.printDictionaryGLSL || config.printDictionarySPIRV || config.printDictionaryMetal) {
+    if (config.printDictionaryGLSL || config.printDictionaryESSL1 || config.printDictionarySPIRV || config.printDictionaryMetal) {
         ShaderExtractor parser(
-                (config.printDictionaryGLSL  ? Backend::OPENGL :
-                (config.printDictionarySPIRV ? Backend::VULKAN :
-                (config.printDictionaryMetal ? Backend::METAL  : Backend::DEFAULT))), data, size);
+            (config.printDictionaryGLSL ? filament::backend::ShaderLanguage::ESSL3 :
+             (config.printDictionaryESSL1 ? filament::backend::ShaderLanguage::ESSL1 :
+              (config.printDictionarySPIRV ? filament::backend::ShaderLanguage::SPIRV :
+               filament::backend::ShaderLanguage::MSL))), data, size);
 
         if (!parser.parse()) {
             return false;
@@ -511,8 +559,8 @@ static bool parseChunks(Config config, void* data, size_t size) {
             return false;
         }
 
-        for (size_t i = 0; i < dictionary.size(); i++) {
-            std::cout << dictionary.getString(i) << std::endl;
+        for (auto const& i : dictionary) {
+            std::cout << (const char*)i.data() << std::endl;
         }
 
         return true;

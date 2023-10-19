@@ -83,6 +83,7 @@ add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS} ${RESGEN_SOURCE})
 target_link_libraries(${TARGET} PUBLIC imgui filament)
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
 
 # ==================================================================================================
 # Compiler flags
@@ -90,6 +91,5 @@ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
 if (NOT MSVC)
     target_compile_options(${TARGET} PRIVATE
             -Wno-deprecated-register
-            $<$<CONFIG:Release>:-ffast-math>
     )
 endif()

@@ -95,6 +95,12 @@ static bool printMaterial(ostream& text, const ChunkContainer& container) {
         text << version << endl;
     }
 
+    uint8_t featureLevel;
+    if (read(container, MaterialFeatureLevel, &featureLevel)) {
+        text << "    " << setw(alignment) << left << "Feature level: ";
+        text << +featureLevel << endl;
+    }
+
     CString name;
     if (read(container, MaterialName, &name)) {
         text << "    " << setw(alignment) << left << "Name: ";
@@ -106,6 +112,7 @@ static bool printMaterial(ostream& text, const ChunkContainer& container) {
     text << "Shading:" << endl;
     printChunk<Shading, uint8_t>(text, container, MaterialShading, "Model: ");
     printChunk<MaterialDomain, uint8_t>(text, container, ChunkType::MaterialDomain, "Material domain: ");
+    printChunk<UserVariantFilterMask, uint32_t>(text, container, ChunkType::MaterialVariantFilterMask, "Material Variant Filter: ");
     printChunk<VertexDomain, uint8_t>(text, container, MaterialVertexDomain, "Vertex domain: ");
     printChunk<Interpolation, uint8_t>(text, container, MaterialInterpolation, "Interpolation: ");
     printChunk<bool, bool>(text, container, MaterialShadowMultiplier, "Shadow multiply: ");
@@ -122,6 +129,7 @@ static bool printMaterial(ostream& text, const ChunkContainer& container) {
     printChunk<bool, bool>(text, container, MaterialColorWrite, "Color write: ");
     printChunk<bool, bool>(text, container, MaterialDepthWrite, "Depth write: ");
     printChunk<bool, bool>(text, container, MaterialDepthTest, "Depth test: ");
+    printChunk<bool, bool>(text, container, MaterialInstanced, "Instanced: ");
     printChunk<bool, bool>(text, container, MaterialDoubleSided, "Double sided: ");
     printChunk<CullingMode, uint8_t>(text, container, MaterialCullingMode, "Culling: ");
     printChunk<TransparencyMode, uint8_t>(text, container, MaterialTransparencyMode, "Transparency: ");
@@ -152,9 +160,8 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
         return true;
     }
 
-    Unflattener uib(
-            container.getChunkStart(ChunkType::MaterialUib),
-            container.getChunkEnd(ChunkType::MaterialUib));
+    auto [startUib, endUib] = container.getChunkRange(ChunkType::MaterialUib);
+    Unflattener uib(startUib, endUib);
 
     CString name;
     if (!uib.read(&name)) {
@@ -166,9 +173,8 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
         return false;
     }
 
-    Unflattener sib(
-            container.getChunkStart(ChunkType::MaterialSib),
-            container.getChunkEnd(ChunkType::MaterialSib));
+    auto [startSib, endSib] = container.getChunkRange(ChunkType::MaterialSib);
+    Unflattener sib(startSib, endSib);
 
     if (!sib.read(&name)) {
         return false;
@@ -249,11 +255,54 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
                 << endl;
     }
 
+    text << endl;
+
+    return true;
+}
+
+static bool printConstantInfo(ostream& text, const ChunkContainer& container) {
+    if (!container.hasChunk(ChunkType::MaterialConstants)) {
+        return true;
+    }
+
+    auto [startConstants, endConstants] = container.getChunkRange(ChunkType::MaterialConstants);
+    Unflattener constants(startConstants, endConstants);
+
+    uint64_t constantsCount;
+    constants.read(&constantsCount);
+
+    text << "Constants:" << endl;
+
+    for (uint64_t i = 0; i < constantsCount; i++) {
+        CString fieldName;
+        uint8_t fieldType;
+
+        if (!constants.read(&fieldName)) {
+            return false;
+        }
+
+        if (!constants.read(&fieldType)) {
+            return false;
+        }
+
+         text << "    "
+         << setw(alignment) << fieldName.c_str()
+         << setw(shortAlignment) << toString(ConstantType(fieldType))
+         << endl;
+    }
+
+    text << endl;
+
+    return true;
+}
+
+static bool printSubpassesInfo(ostream& text, const ChunkContainer& container) {
+
     // Subpasses are optional.
     if (container.hasChunk(ChunkType::MaterialSubpass)) {
-        Unflattener subpasses(
-                container.getChunkStart(ChunkType::MaterialSubpass),
-                container.getChunkEnd(ChunkType::MaterialSubpass));
+        text << "Sub-passes:" << endl;
+        auto [start, end] = container.getChunkRange(ChunkType::MaterialSubpass);
+        Unflattener subpasses(start, end);
 
         CString name;
         if (!subpasses.read(&name)) {
@@ -301,10 +350,8 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
                     << toString(SamplerFormat(fieldFormat))
                     << endl;
         }
+        text << endl;
     }
-
-    text << endl;
-
     return true;
 }
 
@@ -346,7 +393,7 @@ static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info,
         text << setw(2) << left << toString(item.pipelineStage);
         text << " ";
         text << "0x" << hex << setfill('0') << setw(2)
-             << right << (int) item.variant;
+             << right << +item.variant.key;
         text << setfill(' ') << dec;
         text << "   ";
         text << formatVariantString(item.variant, domain);
@@ -355,35 +402,29 @@ static void printShaderInfo(ostream& text, const vector<ShaderInfo>& info,
     text << endl;
 }
 
-static bool printGlslInfo(ostream& text, const ChunkContainer& container) {
+static bool printShaderInfo(ostream& text, const ChunkContainer& container, ChunkType chunkType) {
     vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialGlsl));
-    if (!getGlShaderInfo(container, info.data())) {
+    info.resize(getShaderCount(container, chunkType));
+    if (!getShaderInfo(container, info.data(), chunkType)) {
         return false;
     }
-    text << "GLSL shaders:" << endl;
-    printShaderInfo(text, info, container);
-    return true;
-}
-
-static bool printVkInfo(ostream& text, const ChunkContainer& container) {
-    vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialSpirv));
-    if (!getVkShaderInfo(container, info.data())) {
-        return false;
+    switch (chunkType) {
+        case ChunkType::MaterialGlsl:
+            text << "GLSL shaders:" << endl;
+            break;
+        case ChunkType::MaterialEssl1:
+            text << "ESSL1 shaders:" << endl;
+            break;
+        case ChunkType::MaterialSpirv:
+            text << "Vulkan shaders:" << endl;
+            break;
+        case ChunkType::MaterialMetal:
+            text << "Metal shaders:" << endl;
+            break;
+        default:
+            assert(false && "Invalid shader ChunkType");
+            break;
     }
-    text << "Vulkan shaders:" << endl;
-    printShaderInfo(text, info, container);
-    return true;
-}
-
-static bool printMetalInfo(ostream& text, const ChunkContainer& container) {
-    vector<ShaderInfo> info;
-    info.resize(getShaderCount(container, ChunkType::MaterialMetal));
-    if (!getMetalShaderInfo(container, info.data())) {
-        return false;
-    }
-    text << "Metal shaders:" << endl;
     printShaderInfo(text, info, container);
     return true;
 }
@@ -396,13 +437,22 @@ bool TextWriter::writeMaterialInfo(const filaflat::ChunkContainer& container) {
     if (!printParametersInfo(text, container)) {
         return false;
     }
-    if (!printGlslInfo(text, container)) {
+    if (!printConstantInfo(text, container)) {
         return false;
     }
-    if (!printVkInfo(text, container)) {
+    if (!printSubpassesInfo(text, container)) {
         return false;
     }
-    if (!printMetalInfo(text, container)) {
+    if (!printShaderInfo(text, container, ChunkType::MaterialGlsl)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialEssl1)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialSpirv)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialMetal)) {
         return false;
     }
 

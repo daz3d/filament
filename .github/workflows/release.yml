@@ -1,14 +1,25 @@
 name: Release
 
 # This Workflow can be triggered two ways:
-# 1. A GitHub release is created (using the GitHub web UI). This triggers all of the platforms to build and upload assets.
-# 2. A repository_dispatch API event is sent. This triggers a build for only the platform specified in the dispatch event.
+# 1. A GitHub release is created (using the GitHub web UI). This triggers all of the platforms to
+# build and upload assets.
+# 2. A workflow_dispatch event is triggered from the GitHub web UI. This triggers a build for only
+# the platform specified in the dispatch event.
 
 env:
-  RELEASE_TAG: ${{ github.event.client_payload.release_tag }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag }}
 
 on:
-  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build (desktop, web, android, ios, windows)'
+        required: true
+        default: 'desktop'
+      release_tag:
+        description: 'Release tag to build (e.g., v1.13.0)'
+        required: true
+        default: 'v1.13.0'
   release:
     types: [created]
 
@@ -16,11 +27,11 @@ jobs:
   build-desktop:
     name: build-desktop
     runs-on: ${{ matrix.os }}
-    if: github.event_name == 'release' || github.event.client_payload.platform == 'desktop'
+    if: github.event_name == 'release' || github.event.inputs.platform == 'desktop'
 
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-18.04]
+        os: [macos-latest, ubuntu-22.04]
 
     steps:
       - name: Decide Git ref
@@ -28,30 +39,34 @@ jobs:
         run: |
           REF=${RELEASE_TAG:-${GITHUB_REF}}
           TAG=${REF##*/}
-          echo ::set-output name=ref::${REF}
-          echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v2.0.0
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3.3.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
+        env:
+          TAG: ${{ steps.git_ref.outputs.tag }}
         run: |
           WORKFLOW_OS=`echo \`uname\` | sed "s/Darwin/mac/" | tr [:upper:] [:lower:]`
           cd build/$WORKFLOW_OS && printf "y" | ./build.sh release
-      - name: Upload release assets
-        run: |
-          pip3 install setuptools
-          pip3 install PyGithub
+          cd ../..
           if [ -f out/filament-release-darwin.tgz ]; then mv out/filament-release-darwin.tgz out/filament-${TAG}-mac.tgz; fi;
           if [ -f out/filament-release-linux.tgz ]; then mv out/filament-release-linux.tgz out/filament-${TAG}-linux.tgz; fi;
-          python3 build/common/upload-assets.py ${TAG} out/*.tgz
+      - uses: actions/github-script@v6
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
-          GITHUB_API_KEY: ${{ secrets.GITHUB_API_KEY }}
+        with:
+          script: |
+            const upload = require('./build/common/upload-release-assets');
+            const { TAG } = process.env;
+            const globber = await glob.create('out/*.tgz');
+            await upload({ github, context }, await globber.glob(), TAG);
 
   build-web:
     name: build-web
     runs-on: macos-latest
-    if: github.event_name == 'release' || github.event.client_payload.platform == 'web'
+    if: github.event_name == 'release' || github.event.inputs.platform == 'web'
 
     steps:
       - name: Decide Git ref
@@ -59,28 +74,32 @@ jobs:
         run: |
           REF=${RELEASE_TAG:-${GITHUB_REF}}
           TAG=${REF##*/}
-          echo ::set-output name=ref::${REF}
-          echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v2.0.0
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3.3.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
-        run: |
-          cd build/web && printf "y" | ./build.sh release
-      - name: Upload release assets
-        run: |
-          pip3 install setuptools
-          pip3 install PyGithub
-          mv out/filament-release-web.tgz out/filament-${TAG}-web.tgz
-          python3 build/common/upload-assets.py ${TAG} out/*.tgz
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
-          GITHUB_API_KEY: ${{ secrets.GITHUB_API_KEY }}
+        run: |
+          cd build/web && printf "y" | ./build.sh release
+          cd ../..
+          mv out/filament-release-web.tgz out/filament-${TAG}-web.tgz
+      - uses: actions/github-script@v6
+        env:
+          TAG: ${{ steps.git_ref.outputs.tag }}
+        with:
+          script: |
+            const upload = require('./build/common/upload-release-assets');
+            const { TAG } = process.env;
+            const globber = await glob.create('out/*.tgz');
+            await upload({ github, context }, await globber.glob(), TAG);
 
   build-android:
     name: build-android
     runs-on: macos-latest
-    if: github.event_name == 'release' || github.event.client_payload.platform == 'android'
+    if: github.event_name == 'release' || github.event.inputs.platform == 'android'
 
     steps:
       - name: Decide Git ref
@@ -88,14 +107,25 @@ jobs:
         run: |
           REF=${RELEASE_TAG:-${GITHUB_REF}}
           TAG=${REF##*/}
-          echo ::set-output name=ref::${REF}
-          echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v2.0.0
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3.3.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
       - name: Run build script
+        env:
+          TAG: ${{ steps.git_ref.outputs.tag }}
         run: |
           cd build/android && printf "y" | ./build.sh release
+          cd ../..
+          mv out/filament-android-release.aar out/filament-${TAG}-android.aar
+          mv out/filamat-android-release.aar out/filamat-${TAG}-android.aar
+          mv out/gltfio-android-release.aar out/gltfio-${TAG}-android.aar
+          mv out/filament-utils-android-release.aar out/filament-utils-${TAG}-android.aar
       - name: Sign sample-gltf-viewer
         run: |
           echo "${APK_KEYSTORE_BASE64}" > filament.jks.base64
@@ -110,26 +140,20 @@ jobs:
           TAG: ${{ steps.git_ref.outputs.tag }}
           APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
           APK_KEYSTORE_PASS: ${{ secrets.APK_KEYSTORE_PASS }}
-      - name: Upload release assets
-        run: |
-          pip3 install setuptools
-          pip3 install PyGithub
-          mv out/filament-android-release.aar out/filament-${TAG}-android.aar
-          mv out/filamat-android-release.aar out/filamat-${TAG}-android.aar
-          mv out/filamat-android-lite-release.aar out/filamat-${TAG}-lite-android.aar
-          mv out/gltfio-android-release.aar out/gltfio-${TAG}-android.aar
-          mv out/gltfio-android-lite-release.aar out/gltfio-${TAG}-lite-android.aar
-          mv out/filament-utils-android-release.aar out/filament-utils-${TAG}-android.aar
-          mv out/filament-utils-android-lite-release.aar out/filament-utils-${TAG}-lite-android.aar
-          python3 build/common/upload-assets.py ${TAG} out/*.aar out/*.apk
+      - uses: actions/github-script@v6
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
-          GITHUB_API_KEY: ${{ secrets.GITHUB_API_KEY }}
+        with:
+          script: |
+            const upload = require('./build/common/upload-release-assets');
+            const { TAG } = process.env;
+            const globber = await glob.create(['out/*.aar', 'out/*.apk'].join('\n'));
+            await upload({ github, context }, await globber.glob(), TAG);
 
   build-ios:
     name: build-ios
     runs-on: macos-latest
-    if: github.event_name == 'release' || github.event.client_payload.platform == 'ios'
+    if: github.event_name == 'release' || github.event.inputs.platform == 'ios'
 
     steps:
       - name: Decide Git ref
@@ -137,28 +161,32 @@ jobs:
         run: |
           REF=${RELEASE_TAG:-${GITHUB_REF}}
           TAG=${REF##*/}
-          echo ::set-output name=ref::${REF}
-          echo ::set-output name=tag::${TAG}
-      - uses: actions/checkout@v2.0.0
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v3.3.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
-        run: |
-          cd build/ios && printf "y" | ./build.sh release
-      - name: Upload release assets
-        run: |
-          pip3 install setuptools
-          pip3 install PyGithub
-          mv out/filament-release-ios.tgz out/filament-${TAG}-ios.tgz
-          python3 build/common/upload-assets.py ${TAG} out/*.tgz
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
-          GITHUB_API_KEY: ${{ secrets.GITHUB_API_KEY }}
+        run: |
+          cd build/ios && printf "y" | ./build.sh release
+          cd ../..
+          mv out/filament-release-ios.tgz out/filament-${TAG}-ios.tgz
+      - uses: actions/github-script@v6
+        env:
+          TAG: ${{ steps.git_ref.outputs.tag }}
+        with:
+          script: |
+            const upload = require('./build/common/upload-release-assets');
+            const { TAG } = process.env;
+            const globber = await glob.create('out/*.tgz');
+            await upload({ github, context }, await globber.glob(), TAG);
 
   build-windows:
     name: build-windows
-    runs-on: windows-latest
-    if: github.event_name == 'release' || github.event.client_payload.platform == 'windows'
+    runs-on: windows-2019
+    if: github.event_name == 'release' || github.event.inputs.platform == 'windows'
 
     steps:
       - name: Decide Git ref
@@ -166,22 +194,25 @@ jobs:
         run: |
           REF=${RELEASE_TAG:-${GITHUB_REF}}
           TAG=${REF##*/}
-          echo ::set-output name=ref::${REF}
-          echo ::set-output name=tag::${TAG}
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
         shell: bash
-      - uses: actions/checkout@v2.0.0
+      - uses: actions/checkout@v3.3.0
         with:
           ref: ${{ steps.git_ref.outputs.ref }}
       - name: Run build script
-        run: |
-          build\windows\build-github.bat release
-        shell: cmd
-      - name: Upload release assets
-        run: |
-          pip3 install PyGithub
-          mv out/filament-windows.tgz out/filament-${TAG}-windows.tgz
-          python build/common/upload-assets.py ${TAG} out/*.tgz
-        shell: bash
         env:
           TAG: ${{ steps.git_ref.outputs.tag }}
-          GITHUB_API_KEY: ${{ secrets.GITHUB_API_KEY }}
+        run: |
+          build\windows\build-github.bat release
+          move out\filament-windows.tgz out\filament-$Env:TAG-windows.tgz
+        shell: cmd
+      - uses: actions/github-script@v6
+        env:
+          TAG: ${{ steps.git_ref.outputs.tag }}
+        with:
+          script: |
+            const upload = require('./build/common/upload-release-assets');
+            const { TAG } = process.env;
+            const globber = await glob.create('out/*.tgz');
+            await upload({ github, context }, await globber.glob(), TAG);

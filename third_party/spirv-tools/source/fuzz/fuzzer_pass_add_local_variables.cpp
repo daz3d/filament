@@ -24,16 +24,21 @@ namespace fuzz {
 FuzzerPassAddLocalVariables::FuzzerPassAddLocalVariables(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddLocalVariables::Apply() {
   auto basic_type_ids_and_pointers =
-      GetAvailableBasicTypesAndPointers(SpvStorageClassFunction);
+      GetAvailableBasicTypesAndPointers(spv::StorageClass::Function);
 
   // These are the basic types that are available to this fuzzer pass.
   auto& basic_types = basic_type_ids_and_pointers.first;
+  if (basic_types.empty()) {
+    // The pass cannot do anything if there are no basic types.
+    return;
+  }
 
   // These are the pointers to those basic types that are *initially* available
   // to the fuzzer pass.  The fuzzer pass might add pointer types in cases where
@@ -59,7 +64,7 @@ void FuzzerPassAddLocalVariables::Apply() {
         // use it.
         pointer_type = GetFuzzerContext()->GetFreshId();
         ApplyTransformation(TransformationAddTypePointer(
-            pointer_type, SpvStorageClassFunction, basic_type));
+            pointer_type, spv::StorageClass::Function, basic_type));
         available_pointers_to_basic_type.push_back(pointer_type);
       } else {
         // There is - grab one.

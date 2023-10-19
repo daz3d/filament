@@ -25,9 +25,10 @@ namespace fuzz {
 FuzzerPassAddSynonyms::FuzzerPassAddSynonyms(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddSynonyms::Apply() {
   ForEachInstructionWithInstructionDescriptor(
@@ -43,7 +44,8 @@ void FuzzerPassAddSynonyms::Apply() {
         // Skip |inst_it| if we can't insert anything above it. OpIAdd is just
         // a representative of some instruction that might be produced by the
         // transformation.
-        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(SpvOpIAdd, inst_it)) {
+        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(spv::Op::OpIAdd,
+                                                          inst_it)) {
           return;
         }
 

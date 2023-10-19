@@ -17,43 +17,46 @@
 #ifndef TNT_FILAMENT_DETAILS_ENGINE_H
 #define TNT_FILAMENT_DETAILS_ENGINE_H
 
-#include "upcast.h"
+#include "downcast.h"
+
+#include "Allocators.h"
+#include "DFG.h"
 #include "PostProcessManager.h"
+#include "ResourceList.h"
 
 #include "components/CameraManager.h"
 #include "components/LightManager.h"
 #include "components/TransformManager.h"
 #include "components/RenderableManager.h"
 
-#include "details/Allocators.h"
 #include "details/BufferObject.h"
 #include "details/Camera.h"
+#include "details/ColorGrading.h"
 #include "details/DebugRegistry.h"
 #include "details/Fence.h"
 #include "details/IndexBuffer.h"
+#include "details/InstanceBuffer.h"
 #include "details/RenderTarget.h"
-#include "details/ResourceList.h"
-#include "details/ColorGrading.h"
-#include "details/Skybox.h"
 #include "details/SkinningBuffer.h"
+#include "details/MorphTargetBuffer.h"
+#include "details/Skybox.h"
 
-#include "private/backend/CommandStream.h"
 #include "private/backend/CommandBufferQueue.h"
+#include "private/backend/CommandStream.h"
 #include "private/backend/DriverApi.h"
 
 #include <private/filament/EngineEnums.h>
-#include <private/filament/UniformInterfaceBlock.h>
+#include <private/filament/BufferInterfaceBlock.h>
 
+#include <filament/ColorGrading.h>
 #include <filament/Engine.h>
-#include <filament/VertexBuffer.h>
 #include <filament/IndirectLight.h>
 #include <filament/Material.h>
 #include <filament/MaterialEnums.h>
-#include <filament/Texture.h>
-#include <filament/ColorGrading.h>
 #include <filament/Skybox.h>
-
 #include <filament/Stream.h>
+#include <filament/Texture.h>
+#include <filament/VertexBuffer.h>
 
 #if FILAMENT_ENABLE_MATDBG
 #include <matdbg/DebugServer.h>
@@ -66,8 +69,6 @@ using MaterialKey = uint32_t;
 } // namespace filament
 #endif
 
-#include <filaflat/ShaderBuilder.h>
-
 #include <utils/compiler.h>
 #include <utils/Allocator.h>
 #include <utils/JobSystem.h>
@@ -75,6 +76,7 @@ using MaterialKey = uint32_t;
 
 #include <chrono>
 #include <memory>
+#include <new>
 #include <random>
 #include <unordered_map>
 
@@ -95,7 +97,6 @@ class FScene;
 class FSwapChain;
 class FView;
 
-class DFG;
 class ResourceAllocator;
 
 /*
@@ -105,8 +106,8 @@ class ResourceAllocator;
 class FEngine : public Engine {
 public:
 
-    inline void* operator new(std::size_t count) noexcept {
-        return utils::aligned_alloc(count * sizeof(FEngine), alignof(FEngine));
+    inline void* operator new(std::size_t size) noexcept {
+        return utils::aligned_alloc(size, alignof(FEngine));
     }
 
     inline void operator delete(void* p) noexcept {
@@ -118,26 +119,11 @@ public:
     using Epoch = clock::time_point;
     using duration = clock::duration;
 
-    // TODO: these should come from a configuration object
-    static constexpr float  CONFIG_Z_LIGHT_NEAR            = 5;
-    static constexpr float  CONFIG_Z_LIGHT_FAR             = 100;
-    static constexpr size_t CONFIG_FROXEL_SLICE_COUNT      = 16;
-    static constexpr bool   CONFIG_IBL_USE_IRRADIANCE_MAP  = false;
-
-    static constexpr size_t CONFIG_PER_RENDER_PASS_ARENA_SIZE   = filament::CONFIG_PER_RENDER_PASS_ARENA_SIZE;
-    static constexpr size_t CONFIG_PER_FRAME_COMMANDS_SIZE      = filament::CONFIG_PER_FRAME_COMMANDS_SIZE;
-    static constexpr size_t CONFIG_MIN_COMMAND_BUFFERS_SIZE     = filament::CONFIG_MIN_COMMAND_BUFFERS_SIZE;
-    static constexpr size_t CONFIG_COMMAND_BUFFERS_SIZE         = filament::CONFIG_COMMAND_BUFFERS_SIZE;
-
 public:
-    static FEngine* create(Backend backend = Backend::DEFAULT,
-            Platform* platform = nullptr, void* sharedGLContext = nullptr);
+    static Engine* create(Builder const& builder);
 
 #if UTILS_HAS_THREADING
-    static void createAsync(CreateCallback callback, void* user,
-            Backend backend = Backend::DEFAULT,
-            Platform* platform = nullptr, void* sharedGLContext = nullptr);
-
+    static void create(Builder const& builder, utils::Invocable<void(void* token)>&& callback);
     static FEngine* getEngine(void* token);
 #endif
 
@@ -145,9 +131,13 @@ public:
 
     ~FEngine() noexcept;
 
-    backend::Driver& getDriver() const noexcept { return *mDriver; }
-    DriverApi& getDriverApi() noexcept { return mCommandStream; }
-    DFG* getDFG() const noexcept { return mDFG.get(); }
+    backend::ShaderModel getShaderModel() const noexcept { return getDriver().getShaderModel(); }
+
+    DriverApi& getDriverApi() noexcept {
+        return *std::launder(reinterpret_cast<DriverApi*>(&mDriverApiStorage));
+    }
+
+    DFG const& getDFG() const noexcept { return mDFG; }
 
     // the per-frame Area is used by all Renderer, so they must run in sequence and
     // have freed all allocated memory when done. If this needs to change in the future,
@@ -162,6 +152,7 @@ public:
     const FIndirectLight* getDefaultIndirectLight() const noexcept { return mDefaultIbl; }
     const FTexture* getDummyCubemap() const noexcept { return mDefaultIblTexture; }
     const FColorGrading* getDefaultColorGrading() const noexcept { return mDefaultColorGrading; }
+    FMorphTargetBuffer* getDummyMorphTargetBuffer() const { return mDummyMorphTargetBuffer; }
 
     backend::Handle<backend::HwRenderPrimitive> getFullScreenRenderPrimitive() const noexcept {
         return mFullScreenTriangleRph;
@@ -174,6 +165,24 @@ public:
     FIndexBuffer* getFullScreenIndexBuffer() const noexcept {
         return mFullScreenTriangleIb;
     }
+
+    math::mat4f getUvFromClipMatrix() const noexcept {
+        return mUvFromClipMatrix;
+    }
+
+    FeatureLevel getSupportedFeatureLevel() const noexcept;
+
+    FeatureLevel setActiveFeatureLevel(FeatureLevel featureLevel);
+
+    FeatureLevel getActiveFeatureLevel() const noexcept {
+        return mActiveFeatureLevel;
+    }
+
+    size_t getMaxAutomaticInstances() const noexcept {
+        return CONFIG_MAX_INSTANCES;
+    }
+
+    bool isStereoSupported() const noexcept { return getDriver().isStereoSupported(); }
 
     PostProcessManager const& getPostProcessManager() const noexcept {
         return mPostProcessManager;
@@ -215,6 +224,22 @@ public:
         return mPlatform;
     }
 
+    backend::ShaderLanguage getShaderLanguage() const noexcept {
+        switch (mBackend) {
+            case Backend::DEFAULT:
+            case Backend::NOOP:
+            default:
+                return backend::ShaderLanguage::ESSL3;
+            case Backend::OPENGL:
+                return mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0
+                        ? backend::ShaderLanguage::ESSL1 : backend::ShaderLanguage::ESSL3;
+            case Backend::VULKAN:
+                return backend::ShaderLanguage::SPIRV;
+            case Backend::METAL:
+                return backend::ShaderLanguage::MSL;
+        }
+    }
+
     ResourceAllocator& getResourceAllocator() noexcept {
         assert_invariant(mResourceAllocator);
         return *mResourceAllocator;
@@ -227,6 +252,10 @@ public:
         return clock::now() - getEngineEpoch();
     }
 
+    backend::Handle<backend::HwRenderTarget> getDefaultRenderTarget() const noexcept {
+        return mDefaultRenderTarget;
+    }
+
     template <typename T>
     T* create(ResourceList<T>& list, typename T::Builder const& builder) noexcept;
 
@@ -234,6 +263,8 @@ public:
     FVertexBuffer* createVertexBuffer(const VertexBuffer::Builder& builder) noexcept;
     FIndexBuffer* createIndexBuffer(const IndexBuffer::Builder& builder) noexcept;
     FSkinningBuffer* createSkinningBuffer(const SkinningBuffer::Builder& builder) noexcept;
+    FMorphTargetBuffer* createMorphTargetBuffer(const MorphTargetBuffer::Builder& builder) noexcept;
+    FInstanceBuffer* createInstanceBuffer(const InstanceBuffer::Builder& builder) noexcept;
     FIndirectLight* createIndirectLight(const IndirectLight::Builder& builder) noexcept;
     FMaterial* createMaterial(const Material::Builder& builder) noexcept;
     FTexture* createTexture(const Texture::Builder& builder) noexcept;
@@ -251,7 +282,7 @@ public:
 
     FScene* createScene() noexcept;
     FView* createView() noexcept;
-    FFence* createFence(FFence::Type type) noexcept;
+    FFence* createFence() noexcept;
     FSwapChain* createSwapChain(void* nativeWindow, uint64_t flags) noexcept;
     FSwapChain* createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept;
 
@@ -265,6 +296,7 @@ public:
     bool destroy(const FFence* p);
     bool destroy(const FIndexBuffer* p);
     bool destroy(const FSkinningBuffer* p);
+    bool destroy(const FMorphTargetBuffer* p);
     bool destroy(const FIndirectLight* p);
     bool destroy(const FMaterial* p);
     bool destroy(const FMaterialInstance* p);
@@ -277,6 +309,27 @@ public:
     bool destroy(const FRenderTarget* p);
     bool destroy(const FSwapChain* p);
     bool destroy(const FView* p);
+    bool destroy(const FInstanceBuffer* p);
+
+    bool isValid(const FBufferObject* p);
+    bool isValid(const FVertexBuffer* p);
+    bool isValid(const FFence* p);
+    bool isValid(const FIndexBuffer* p);
+    bool isValid(const FSkinningBuffer* p);
+    bool isValid(const FMorphTargetBuffer* p);
+    bool isValid(const FIndirectLight* p);
+    bool isValid(const FMaterial* p);
+    bool isValid(const FMaterialInstance* p);
+    bool isValid(const FRenderer* p);
+    bool isValid(const FScene* p);
+    bool isValid(const FSkybox* p);
+    bool isValid(const FColorGrading* p);
+    bool isValid(const FSwapChain* p);
+    bool isValid(const FStream* p);
+    bool isValid(const FTexture* p);
+    bool isValid(const FRenderTarget* p);
+    bool isValid(const FView* p);
+    bool isValid(const FInstanceBuffer* p);
 
     void destroy(utils::Entity e);
 
@@ -307,12 +360,14 @@ public:
     void prepare();
     void gc();
 
-    filaflat::ShaderBuilder& getVertexShaderBuilder() const noexcept {
-        return mVertexShaderBuilder;
+    using ShaderContent = utils::FixedCapacityVector<uint8_t>;
+
+    ShaderContent& getVertexShaderContent() const noexcept {
+        return mVertexShaderContent;
     }
 
-    filaflat::ShaderBuilder& getFragmentShaderBuilder() const noexcept {
-        return mFragmentShaderBuilder;
+    ShaderContent& getFragmentShaderContent() const noexcept {
+        return mFragmentShaderContent;
     }
 
     FDebugRegistry& getDebugRegistry() noexcept {
@@ -329,30 +384,80 @@ public:
         return mRandomEngine;
     }
 
+    void pumpMessageQueues() const {
+        getDriver().purge();
+    }
+
+    void setAutomaticInstancingEnabled(bool enable) noexcept {
+        // instancing is not allowed at feature level 0
+        if (hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_1)) {
+            mAutomaticInstancingEnabled = enable;
+        }
+    }
+
+    bool isAutomaticInstancingEnabled() const noexcept {
+        return mAutomaticInstancingEnabled;
+    }
+
+    backend::Handle<backend::HwTexture> getOneTexture() const { return mDummyOneTexture; }
+    backend::Handle<backend::HwTexture> getZeroTexture() const { return mDummyZeroTexture; }
+    backend::Handle<backend::HwTexture> getOneTextureArray() const { return mDummyOneTextureArray; }
+    backend::Handle<backend::HwTexture> getZeroTextureArray() const { return mDummyZeroTextureArray; }
+
+    static constexpr const size_t MiB = 1024u * 1024u;
+    size_t getMinCommandBufferSize() const noexcept { return mConfig.minCommandBufferSizeMB * MiB; }
+    size_t getCommandBufferSize() const noexcept { return mConfig.commandBufferSizeMB * MiB; }
+    size_t getPerFrameCommandsSize() const noexcept { return mConfig.perFrameCommandsSizeMB * MiB; }
+    size_t getPerRenderPassArenaSize() const noexcept { return mConfig.perRenderPassArenaSizeMB * MiB; }
+    size_t getRequestedDriverHandleArenaSize() const noexcept { return mConfig.driverHandleArenaSizeMB * MiB; }
+    Config const& getConfig() const noexcept { return mConfig; }
+
+    bool hasFeatureLevel(backend::FeatureLevel neededFeatureLevel) const noexcept {
+        return FEngine::getActiveFeatureLevel() >= neededFeatureLevel;
+    }
+
+#if defined(__EMSCRIPTEN__)
+    void resetBackendState() noexcept;
+#endif
+
 private:
-    FEngine(Backend backend, Platform* platform, void* sharedGLContext);
+    explicit FEngine(Engine::Builder const& builder);
     void init();
     void shutdown();
 
     int loop();
     void flushCommandBuffer(backend::CommandBufferQueue& commandBufferQueue);
 
-    template<typename T, typename L>
-    bool terminateAndDestroy(const T* p, ResourceList<T, L>& list);
+    backend::Driver& getDriver() const noexcept { return *mDriver; }
 
-    template<typename T, typename L>
-    void cleanupResourceList(ResourceList<T, L>& list);
+    template<typename T>
+    bool isValid(const T* ptr, ResourceList<T>& list);
+
+    template<typename T>
+    bool terminateAndDestroy(const T* p, ResourceList<T>& list);
+
+    template<typename T, typename Lock>
+    bool terminateAndDestroyLocked(Lock& lock, const T* p, ResourceList<T>& list);
+
+    template<typename T>
+    void cleanupResourceList(ResourceList<T>&& list);
+
+    template<typename T, typename Lock>
+    void cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list);
 
     backend::Driver* mDriver = nullptr;
+    backend::Handle<backend::HwRenderTarget> mDefaultRenderTarget;
 
     Backend mBackend;
+    FeatureLevel mActiveFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
     Platform* mPlatform = nullptr;
     bool mOwnPlatform = false;
+    bool mAutomaticInstancingEnabled = false;
     void* mSharedGLContext = nullptr;
-    bool mTerminated = false;
     backend::Handle<backend::HwRenderPrimitive> mFullScreenTriangleRph;
     FVertexBuffer* mFullScreenTriangleVb = nullptr;
     FIndexBuffer* mFullScreenTriangleIb = nullptr;
+    math::mat4f mUvFromClipMatrix;
 
     PostProcessManager mPostProcessManager;
 
@@ -367,11 +472,12 @@ private:
     ResourceList<FRenderer> mRenderers{ "Renderer" };
     ResourceList<FView> mViews{ "View" };
     ResourceList<FScene> mScenes{ "Scene" };
-    ResourceList<FFence, utils::LockingPolicy::SpinLock> mFences{"Fence"};
     ResourceList<FSwapChain> mSwapChains{ "SwapChain" };
     ResourceList<FStream> mStreams{ "Stream" };
     ResourceList<FIndexBuffer> mIndexBuffers{ "IndexBuffer" };
     ResourceList<FSkinningBuffer> mSkinningBuffers{ "SkinningBuffer" };
+    ResourceList<FMorphTargetBuffer> mMorphTargetBuffers{ "MorphTargetBuffer" };
+    ResourceList<FInstanceBuffer> mInstanceBuffers{ "InstanceBuffer" };
     ResourceList<FVertexBuffer> mVertexBuffers{ "VertexBuffer" };
     ResourceList<FIndirectLight> mIndirectLights{ "IndirectLight" };
     ResourceList<FMaterial> mMaterials{ "Material" };
@@ -380,23 +486,29 @@ private:
     ResourceList<FColorGrading> mColorGradings{ "ColorGrading" };
     ResourceList<FRenderTarget> mRenderTargets{ "RenderTarget" };
 
+    // the fence list is accessed from multiple threads
+    utils::SpinLock mFenceListLock;
+    ResourceList<FFence> mFences{"Fence"};
+
     mutable uint32_t mMaterialId = 0;
 
     // FMaterialInstance are handled directly by FMaterial
     std::unordered_map<const FMaterial*, ResourceList<FMaterialInstance>> mMaterialInstances;
 
-    std::unique_ptr<DFG> mDFG;
+    DFG mDFG;
 
     std::thread mDriverThread;
     backend::CommandBufferQueue mCommandBufferQueue;
-    DriverApi mCommandStream;
+    std::aligned_storage<sizeof(DriverApi), alignof(DriverApi)>::type mDriverApiStorage;
+    static_assert( sizeof(mDriverApiStorage) >= sizeof(DriverApi) );
+
     uint32_t mFlushCounter = 0;
 
     LinearAllocatorArena mPerRenderPassAllocator;
     HeapAllocatorArena mHeapAllocator;
 
     utils::JobSystem mJobSystem;
-    static uint32_t getJobSystemThreadPoolSize() noexcept;
+    static uint32_t getJobSystemThreadPoolSize(Engine::Config const& config) noexcept;
 
     std::default_random_engine mRandomEngine;
 
@@ -409,43 +521,55 @@ private:
     mutable FIndirectLight* mDefaultIbl = nullptr;
 
     mutable FColorGrading* mDefaultColorGrading = nullptr;
+    FMorphTargetBuffer* mDummyMorphTargetBuffer = nullptr;
 
     mutable utils::CountDownLatch mDriverBarrier;
 
-    mutable filaflat::ShaderBuilder mVertexShaderBuilder;
-    mutable filaflat::ShaderBuilder mFragmentShaderBuilder;
+    mutable ShaderContent mVertexShaderContent;
+    mutable ShaderContent mFragmentShaderContent;
     FDebugRegistry mDebugRegistry;
 
+    backend::Handle<backend::HwTexture> mDummyOneTexture;
+    backend::Handle<backend::HwTexture> mDummyOneTextureArray;
+    backend::Handle<backend::HwTexture> mDummyZeroTextureArray;
+    backend::Handle<backend::HwTexture> mDummyZeroTexture;
+
     std::thread::id mMainThreadId{};
+
+    // Creation parameters
+    Config mConfig;
 
 public:
     // these are the debug properties used by FDebug. They're accessed directly by modules who need them.
     struct {
         struct {
+            bool debug_directional_shadowmap = false;
             bool far_uses_shadowcasters = true;
             bool focus_shadowcasters = true;
-            bool lispsm = true;
             bool visualize_cascades = false;
             bool tightly_bound_scene = true;
             float dzn = -1.0f;
             float dzf =  1.0f;
         } shadowmap;
         struct {
-            bool enabled = true;
-        } ssao;
-        struct {
             bool camera_at_origin = true;
+            struct {
+                float kp = 0.0f;
+                float ki = 0.0f;
+                float kd = 0.0f;
+            } pid;
         } view;
         struct {
             // When set to true, the backend will attempt to capture the next frame and write the
             // capture to file. At the moment, only supported by the Metal backend.
             bool doFrameCapture = false;
+            bool disable_buffer_padding = false;
         } renderer;
         matdbg::DebugServer* server = nullptr;
     } debug;
 };
 
-FILAMENT_UPCAST(Engine)
+FILAMENT_DOWNCAST(Engine)
 
 } // namespace filament
 

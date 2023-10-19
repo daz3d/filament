@@ -20,7 +20,7 @@
 
 #include <geometry/SurfaceOrientation.h>
 
-using namespace gltfio;
+using namespace filament::gltfio;
 using namespace filament;
 using namespace filament::math;
 
@@ -49,7 +49,7 @@ void TangentsJob::run(Params* params) {
     std::unique_ptr<float3[]> morphDeltas;
 
     // Build a mapping from cgltf_attribute_type to cgltf_accessor.
-    const int NUM_ATTRIBUTES = 8;
+    const int NUM_ATTRIBUTES = cgltf_attribute_type_max_enum;
     const cgltf_accessor* baseAccessors[NUM_ATTRIBUTES] = {};
     const cgltf_accessor* morphTargetAccessors[NUM_ATTRIBUTES] = {};
 

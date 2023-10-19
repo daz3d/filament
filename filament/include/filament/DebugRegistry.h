@@ -16,8 +16,8 @@
 
 //! \file
 
-#ifndef TNT_FILAMENT_DEBUG_H
-#define TNT_FILAMENT_DEBUG_H
+#ifndef TNT_FILAMENT_DEBUGREGISTRY_H
+#define TNT_FILAMENT_DEBUGREGISTRY_H
 
 #include <filament/FilamentAPI.h>
 
@@ -54,18 +54,6 @@ public:
         Type type;          //!< property type
     };
 
-    struct PropertyArray {
-        Property const* array;
-        size_t size;
-    };
-
-    /**
-     * Queries the list of all available properties.
-     *
-     * @return A pair containing a pointer to a Property array and the size of this array.
-     */
-    PropertyArray getProperties() const noexcept;
-
     /**
      * Queries whether a property exists
      * @param name The name of the property to query
@@ -79,15 +67,28 @@ public:
      * @return Address of the data of the \p name property
      * @{
      */
-    void* getPropertyAddress(const char* name) noexcept;
+    void* getPropertyAddress(const char* name);
+
+    void const* getPropertyAddress(const char* name) const noexcept;
 
     template<typename T>
-    inline T* getPropertyAddress(const char* name) noexcept {
+    inline T* getPropertyAddress(const char* name) {
         return static_cast<T*>(getPropertyAddress(name));
     }
 
     template<typename T>
-    inline bool getPropertyAddress(const char* name, T** p) noexcept {
+    inline T const* getPropertyAddress(const char* name) const noexcept {
+        return static_cast<T*>(getPropertyAddress(name));
+    }
+
+    template<typename T>
+    inline bool getPropertyAddress(const char* name, T** p) {
+        *p = getPropertyAddress<T>(name);
+        return *p != nullptr;
+    }
+
+    template<typename T>
+    inline bool getPropertyAddress(const char* name, T* const* p) const noexcept {
         *p = getPropertyAddress<T>(name);
         return *p != nullptr;
     }
@@ -123,9 +124,27 @@ public:
     bool getProperty(const char* name, math::float4* v) const noexcept;
     /** @}*/
 
+    struct DataSource {
+        void const* data;
+        size_t count;
+    };
+
+    DataSource getDataSource(const char* name) const noexcept;
+
+    struct FrameHistory {
+        using duration_ms = float;
+        duration_ms target{};
+        duration_ms targetWithHeadroom{};
+        duration_ms frameTime{};
+        duration_ms frameTimeDenoised{};
+        float scale = 1.0f;
+        float pid_e = 0.0f;
+        float pid_i = 0.0f;
+        float pid_d = 0.0f;
+    };
 };
 
 
 } // namespace filament
 
-#endif /* TNT_FILAMENT_DEBUG_H */
+#endif /* TNT_FILAMENT_DEBUGREGISTRY_H */

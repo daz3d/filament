@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef MATH_MAT3_H_
-#define MATH_MAT3_H_
+#ifndef TNT_MATH_MAT3_H
+#define TNT_MATH_MAT3_H
 
-#include <math/quat.h>
 #include <math/TMatHelpers.h>
-#include <math/vec3.h>
 #include <math/compiler.h>
+#include <math/quat.h>
+#include <math/vec3.h>
 
 #include <limits.h>
 #include <stdint.h>
@@ -289,6 +289,14 @@ public:
         return matrix::cof(m);
     }
 
+    /*
+     * Returns a matrix representing the pose of a virtual camera looking towards -Z in its
+     * local Y-up coordinate system. "up" defines where the Y axis of the camera's local coordinate
+     * system is.
+     */
+    template<typename A, typename B>
+    static TMat33 lookTo(const TVec3<A>& direction, const TVec3<B>& up) noexcept;
+
     /**
      * Packs the tangent frame represented by the specified matrix into a quaternion.
      * Reflection is preserved by encoding it as the sign of the w component in the
@@ -406,6 +414,29 @@ constexpr TMat33<T>::TMat33(const TQuaternion<U>& q) noexcept : m_value{} {
     m_value[2] = col_type(xz + yw, yz - xw, 1 - xx - yy);  // NOLINT
 }
 
+template<typename T>
+constexpr T dot_tolerance() noexcept;
+
+template<>
+constexpr float dot_tolerance<float>() noexcept { return 0.999f; }
+
+template<>
+constexpr double dot_tolerance<double>() noexcept { return 0.9999; }
+
+template<typename T>
+template<typename A, typename B>
+TMat33<T> TMat33<T>::lookTo(const TVec3<A>& direction, const TVec3<B>& up) noexcept {
+    auto const z_axis = direction;
+    auto norm_up = up;
+    if (std::abs(dot(z_axis, norm_up)) > dot_tolerance< arithmetic_result_t<A, B> >()) {
+        // Fix up vector if we're degenerate (looking straight up, basically)
+        norm_up = { norm_up.z, norm_up.x, norm_up.y };
+    }
+    auto const x_axis = normalize(cross(z_axis, norm_up));
+    auto const y_axis = cross(x_axis, z_axis);
+    return { x_axis, y_axis, -z_axis };
+}
+
 //------------------------------------------------------------------------------
 template<typename T>
 constexpr TQuaternion<T> TMat33<T>::packTangentFrame(const TMat33<T>& m, size_t storageSize) noexcept {
@@ -430,7 +461,20 @@ constexpr TQuaternion<T> TMat33<T>::packTangentFrame(const TMat33<T>& m, size_t 
     return q;
 }
 
+
 }  // namespace details
+
+/**
+ * Pre-scale a matrix m by the inverse of the largest scale factor to avoid large post-transform
+ * magnitudes in the shader. This is useful for normal transformations, to avoid large
+ * post-transform magnitudes in the shader, especially in the fragment shader, where we use
+ * medium precision.
+ */
+template<typename T>
+constexpr details::TMat33<T> prescaleForNormals(const details::TMat33<T>& m) noexcept {
+    return m * details::TMat33<T>(
+                    1.0 / std::sqrt(max(float3{length2(m[0]), length2(m[1]), length2(m[2])})));
+}
 
 // ----------------------------------------------------------------------------------------
 
@@ -487,4 +531,4 @@ constexpr void swap(filament::math::details::TMat33<T>& lhs,
 }
 }
 
-#endif  // MATH_MAT3_H_
+#endif  // TNT_MATH_MAT3_H

@@ -49,6 +49,13 @@ class ImGuiHelper;
 class IBL;
 class MeshAssimp;
 
+#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+// For customizing the vulkan backend
+namespace filament::backend {
+class VulkanPlatform;
+}
+#endif
+
 class FilamentApp {
 public:
     using SetupCallback = std::function<void(filament::Engine*, filament::View*, filament::Scene*)>;
@@ -61,7 +68,7 @@ public:
     using ImGuiCallback = std::function<void(filament::Engine*, filament::View*)>;
     using AnimCallback = std::function<void(filament::Engine*, filament::View*, double now)>;
     using ResizeCallback = std::function<void(filament::Engine*, filament::View*)>;
-    using DropCallback = std::function<void(std::string)>;
+    using DropCallback = std::function<void(std::string_view)>;
 
     static FilamentApp& get();
 
@@ -88,7 +95,8 @@ public:
 
     void setSidebarWidth(int width) { mSidebarWidth = width; }
     void setWindowTitle(const char* title) { mWindowTitle = title; }
-    float& getCameraFocalLength() { return mCameraFocalLength; }
+    void setCameraFocalLength(float focalLength) { mCameraFocalLength = focalLength; }
+    void setCameraNearFar(float near, float far) { mCameraNear = near; mCameraFar = far; }
 
     void addOffscreenView(filament::View* view) { mOffscreenViews.push_back(view); }
 
@@ -180,8 +188,10 @@ private:
         void configureCamerasForWindow();
         void fixupMouseCoordinatesForHdpi(ssize_t& x, ssize_t& y) const;
 
+        FilamentApp* const mFilamentApp = nullptr;
+        const bool mIsHeadless;
+
         SDL_Window* mWindow = nullptr;
-        FilamentApp* mFilamentApp = nullptr;
         filament::Renderer* mRenderer = nullptr;
         filament::Engine::Backend mBackend;
 
@@ -239,6 +249,12 @@ private:
     std::string mWindowTitle;
     std::vector<filament::View*> mOffscreenViews;
     float mCameraFocalLength = 28.0f;
+    float mCameraNear = 0.1f;
+    float mCameraFar = 100.0f;
+
+#if defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
+    filament::backend::VulkanPlatform* mVulkanPlatform = nullptr;
+#endif
 };
 
 #endif // TNT_FILAMENT_SAMPLE_FILAMENTAPP_H

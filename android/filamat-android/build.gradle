@@ -1,18 +1,10 @@
 android {
-    flavorDimensions "functionality"
-    productFlavors {
-        full {
-            dimension "functionality"
-        }
+    namespace 'com.google.android.filament.filamat'
 
-        lite {
-            dimension "functionality"
-
-            externalNativeBuild {
-                cmake {
-                    arguments.add("-DFILAMAT_LITE=ON")
-                }
-            }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
         }
     }
 }
@@ -26,14 +18,9 @@ apply from: rootProject.file('gradle/gradle-mvn-push.gradle')
 afterEvaluate { project ->
     publishing {
         publications {
-            fullRelease(MavenPublication) {
+            release(MavenPublication) {
                 artifactId = POM_ARTIFACT_ID_FULL
-                from components.fullRelease
-            }
-
-            liteRelease(MavenPublication) {
-                artifactId = POM_ARTIFACT_ID_LITE
-                from components.liteRelease
+                from components.release
             }
         }
     }

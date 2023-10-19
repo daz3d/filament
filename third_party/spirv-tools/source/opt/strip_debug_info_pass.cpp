@@ -14,6 +14,7 @@
 
 #include "source/opt/strip_debug_info_pass.h"
 #include "source/opt/ir_context.h"
+#include "source/util/string_utils.h"
 
 namespace spvtools {
 namespace opt {
@@ -21,9 +22,8 @@ namespace opt {
 Pass::Status StripDebugInfoPass::Process() {
   bool uses_non_semantic_info = false;
   for (auto& inst : context()->module()->extensions()) {
-    const char* ext_name =
-        reinterpret_cast<const char*>(&inst.GetInOperand(0).words[0]);
-    if (0 == std::strcmp(ext_name, "SPV_KHR_non_semantic_info")) {
+    const std::string ext_name = inst.GetInOperand(0).AsString();
+    if (ext_name == "SPV_KHR_non_semantic_info") {
       uses_non_semantic_info = true;
     }
   }
@@ -37,18 +37,19 @@ Pass::Status StripDebugInfoPass::Process() {
   if (uses_non_semantic_info) {
     for (auto& inst : context()->module()->debugs1()) {
       switch (inst.opcode()) {
-        case SpvOpString: {
+        case spv::Op::OpString: {
           analysis::DefUseManager* def_use = context()->get_def_use_mgr();
 
           // see if this string is used anywhere by a non-semantic instruction
           bool no_nonsemantic_use =
               def_use->WhileEachUser(&inst, [def_use](Instruction* use) {
-                if (use->opcode() == SpvOpExtInst) {
+                if (use->opcode() == spv::Op::OpExtInst) {
                   auto ext_inst_set =
                       def_use->GetDef(use->GetSingleWordInOperand(0u));
-                  const char* extension_name = reinterpret_cast<const char*>(
-                      &ext_inst_set->GetInOperand(0).words[0]);
-                  if (0 == std::strncmp(extension_name, "NonSemantic.", 12)) {
+                  const std::string extension_name =
+                      ext_inst_set->GetInOperand(0).AsString();
+                  if (spvtools::utils::starts_with(extension_name,
+                                                   "NonSemantic.")) {
                     // found a non-semantic use, return false as we cannot
                     // remove this OpString
                     return false;
@@ -82,7 +83,8 @@ Pass::Status StripDebugInfoPass::Process() {
   // when that instruction is killed, which will lead to a double kill.
   std::sort(to_kill.begin(), to_kill.end(),
             [](Instruction* lhs, Instruction* rhs) -> bool {
-              if (lhs->opcode() == SpvOpName && rhs->opcode() != SpvOpName)
+              if (lhs->opcode() == spv::Op::OpName &&
+                  rhs->opcode() != spv::Op::OpName)
                 return true;
               return false;
             });

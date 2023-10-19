@@ -90,6 +90,9 @@ INSTANTIATE_TEST_SUITE_P(
     Glsl, LinkTest,
     ::testing::ValuesIn(std::vector<std::vector<std::string>>({
         {"mains1.frag", "mains2.frag", "noMain1.geom", "noMain2.geom"},
+        {"implicitArraySize.vert", "implicitArraySize.frag"},
+        {"implicitArraySizeBuiltin.vert", "implicitArraySizeBuiltin.geom"},
+        {"implicitArraySize1.geom", "implicitArraySize2.geom"},
         {"noMain.vert", "mains.frag"},
         {"link1.frag", "link2.frag", "link3.frag"},
         {"recurse1.vert", "recurse1.frag", "recurse2.frag"},
@@ -106,6 +109,9 @@ INSTANTIATE_TEST_SUITE_P(
         {"link.multiAnonBlocksValid.0.0.vert", "link.multiAnonBlocksValid.0.1.vert"},
         {"link.multiBlocksInvalid.0.0.vert", "link.multiBlocksInvalid.0.1.vert"},
         {"link.multiBlocksValid.1.0.vert", "link.multiBlocksValid.1.1.vert"},
+        {"link.tesselation.vert", "link.tesselation.frag"},
+        {"link.tesselation.tese", "link.tesselation.tesc"},
+        {"link.redeclareBuiltin.vert", "link.redeclareBuiltin.geom"},
     }))
 );
 // clang-format on

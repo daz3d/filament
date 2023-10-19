@@ -52,34 +52,11 @@ public:
     Frustum& operator=(Frustum&& rhs) noexcept = default;
 
     /**
-     * Creates a frustum from a projection matrix (usually the projection * view matrix)
-     * @param pv a 4x4 projection matrix
+     * Creates a frustum from a projection matrix in GL convention
+     * (usually the projection * view matrix)
+     * @param pv a 4x4 projection matrix in GL convention
      */
     explicit Frustum(const math::mat4f& pv);
-
-    /**
-     * Creates a frustum from 8 corner coordinates.
-     * @param corners the corners of the frustum
-     *
-     * The corners should be specified in this order:
-     * 0. far bottom left
-     * 1. far bottom right
-     * 2. far top left
-     * 3. far top right
-     * 4. near bottom left
-     * 5. near bottom right
-     * 6. near top left
-     * 7. near top right
-     *
-     *     2----3
-     *    /|   /|
-     *   6----7 |
-     *   | 0--|-1      far
-     *   |/   |/       /
-     *   4----5      near
-     *
-     */
-    explicit Frustum(const math::float3 corners[8]);
 
     /**
      * Sets the frustum from the given projection matrix
@@ -138,7 +115,13 @@ private:
     math::float4 mPlanes[6];
 };
 
-
 } // namespace filament
+
+#if !defined(NDEBUG)
+namespace utils::io {
+class ostream;
+} // namespace utils::io
+utils::io::ostream& operator<<(utils::io::ostream& out, filament::Frustum const& frustum);
+#endif
 
 #endif // TNT_FILAMENT_FRUSTUM_H

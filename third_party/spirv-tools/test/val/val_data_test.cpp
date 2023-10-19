@@ -387,7 +387,7 @@ TEST_F(ValidateData, ids_should_be_validated_before_data) {
   CompileSuccessfully(str.c_str());
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
   EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("Operand 3[%3] requires a previous definition"));
+              HasSubstr("Operand '3[%3]' requires a previous definition"));
 }
 
 TEST_F(ValidateData, matrix_bad_column_type) {
@@ -549,7 +549,7 @@ TEST_F(ValidateData, missing_forward_pointer_decl) {
   CompileSuccessfully(str.c_str());
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
   EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("Operand 3[%3] requires a previous definition"));
+              HasSubstr("Operand '3[%3]' requires a previous definition"));
 }
 
 TEST_F(ValidateData, missing_forward_pointer_decl_self_reference) {
@@ -561,7 +561,7 @@ TEST_F(ValidateData, missing_forward_pointer_decl_self_reference) {
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
   EXPECT_THAT(
       getDiagnosticString(),
-      HasSubstr("Operand 2[%_struct_2] requires a previous definition"));
+      HasSubstr("Operand '2[%_struct_2]' requires a previous definition"));
 }
 
 TEST_F(ValidateData, forward_pointer_missing_definition) {
@@ -767,6 +767,8 @@ TEST_F(ValidateData, vulkan_RTA_not_at_end_of_struct) {
   CompileSuccessfully(str.c_str(), SPV_ENV_VULKAN_1_1);
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions(SPV_ENV_VULKAN_1_1));
   EXPECT_THAT(getDiagnosticString(),
+              AnyVUID("VUID-StandaloneSpirv-OpTypeRuntimeArray-04680"));
+  EXPECT_THAT(getDiagnosticString(),
               HasSubstr("In Vulkan, OpTypeRuntimeArray must only be used for "
                         "the last member of an OpTypeStruct\n  %_struct_3 = "
                         "OpTypeStruct %_runtimearr_uint %uint\n"));
@@ -822,7 +824,7 @@ OpMemoryModel Logical GLSL450
   CompileSuccessfully(test, SPV_ENV_UNIVERSAL_1_5);
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions(SPV_ENV_UNIVERSAL_1_5));
   EXPECT_THAT(getDiagnosticString(),
-              HasSubstr("Operand 3[%_ptr_PhysicalStorageBuffer__struct_1] "
+              HasSubstr("Operand '3[%_ptr_PhysicalStorageBuffer__struct_1]' "
                         "requires a previous definition"));
 }
 

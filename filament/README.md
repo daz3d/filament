@@ -44,10 +44,11 @@ To link against debug builds of Filament, you must also link against:
 
 - `matdbg`, Support library that adds an interactive web-based debugger to Filament
 
-To use the Vulkan backend on macOS you must also make the following libraries available at runtime:
-- `MoltenVK_icd.json`
-- `libMoltenVK.dylib`
-- `libvulkan.1.dylib`
+To use the Vulkan backend on macOS you must install the LunarG SDK, enable "System Global
+Components", and reboot your machine.
+
+The easiest way to install those files is to use the macOS
+[LunarG Vulkan SDK](https://www.lunarg.com/vulkan-sdk/) installer.
 
 ## Linking against Filament
 
@@ -60,7 +61,7 @@ with the platform name, for example, `filament-20181009-linux.tgz`.
 
 Create a file, `main.cpp`, in the same directory with the following contents:
 
-```
+```c++
 #include <filament/FilamentAPI.h>
 #include <filament/Engine.h>
 
@@ -90,7 +91,7 @@ Copy your platform's Makefile below into a `Makefile` inside the same directory.
 
 ### Linux
 
-```
+```make
 FILAMENT_LIBS=-lfilament -lbackend -lbluegl -lbluevk -lfilabridge -lfilaflat -lutils -lgeometry -lsmol-v -lvkshaders -libl
 CC=clang++
 
@@ -108,7 +109,7 @@ clean:
 
 ### macOS
 
-```
+```make
 FILAMENT_LIBS=-lfilament -lbackend -lbluegl -lbluevk -lfilabridge -lfilaflat -lutils -lgeometry -lsmol-v -lvkshaders -libl
 FRAMEWORKS=-framework Cocoa -framework Metal -framework CoreVideo
 CC=clang++
@@ -136,7 +137,7 @@ be sure to also include `matdbg.lib` in `FILAMENT_LIBS`.
 When building Filament from source, the `USE_STATIC_CRT` CMake option can be
 used to change the run-time library version.
 
-```
+```make
 FILAMENT_LIBS=filament.lib backend.lib bluegl.lib bluevk.lib filabridge.lib filaflat.lib \
               utils.lib geometry.lib smol-v.lib ibl.lib vkshaders.lib
 CC=cl.exe
@@ -170,12 +171,12 @@ and invoke `nmake` instead of `make`.
 
 ### Generating C++ documentation
 
-To generate the documentation you must first install `doxygen` and `graphviz`, then run the 
+To generate the documentation you must first install `doxygen` and `graphviz`, then run the
 following commands:
 
-```
-$ cd filament/filament
-$ doxygen docs/doxygen/filament.doxygen
+```shell
+cd filament/filament
+doxygen docs/doxygen/filament.doxygen
 ```
 
 Finally simply open `docs/html/index.html` in your web browser.

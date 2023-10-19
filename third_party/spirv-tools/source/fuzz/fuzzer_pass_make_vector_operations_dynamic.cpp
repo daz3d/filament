@@ -24,9 +24,10 @@ namespace fuzz {
 FuzzerPassMakeVectorOperationsDynamic::FuzzerPassMakeVectorOperationsDynamic(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassMakeVectorOperationsDynamic::Apply() {
   for (auto& function : *GetIRContext()->module()) {
@@ -46,18 +47,20 @@ void FuzzerPassMakeVectorOperationsDynamic::Apply() {
         }
 
         // Make sure |instruction| has only one indexing operand.
-        assert(instruction.NumInOperands() ==
-                   (instruction.opcode() == SpvOpCompositeExtract ? 2 : 3) &&
-               "FuzzerPassMakeVectorOperationsDynamic: the composite "
-               "instruction must have "
-               "only one indexing operand.");
+        assert(
+            instruction.NumInOperands() ==
+                (instruction.opcode() == spv::Op::OpCompositeExtract ? 2 : 3) &&
+            "FuzzerPassMakeVectorOperationsDynamic: the composite "
+            "instruction must have "
+            "only one indexing operand.");
 
         // Applies the make vector operation dynamic transformation.
         ApplyTransformation(TransformationMakeVectorOperationDynamic(
             instruction.result_id(),
             FindOrCreateIntegerConstant(
                 {instruction.GetSingleWordInOperand(
-                    instruction.opcode() == SpvOpCompositeExtract ? 1 : 2)},
+                    instruction.opcode() == spv::Op::OpCompositeExtract ? 1
+                                                                        : 2)},
                 32, GetFuzzerContext()->ChooseEven(), false)));
       }
     }

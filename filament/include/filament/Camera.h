@@ -26,6 +26,7 @@
 #include <math/mathfwd.h>
 #include <math/vec2.h>
 #include <math/vec4.h>
+#include <math/mat4.h>
 
 namespace utils {
 class Entity;
@@ -34,9 +35,12 @@ class Entity;
 namespace filament {
 
 /**
- * Camera represents the eye through which the scene is viewed.
+ * Camera represents the eye(s) through which the scene is viewed.
  *
  * A Camera has a position and orientation and controls the projection and exposure parameters.
+ *
+ * For stereoscopic rendering, a Camera maintains two separate "eyes": Eye 0 and Eye 1. These are
+ * arbitrary and don't necessarily need to correspond to "left" and "right".
  *
  * Creation and destruction
  * ========================
@@ -98,7 +102,7 @@ namespace filament {
  * The *near* plane distance greatly affects the depth-buffer resolution.
  *
  * Example: Precision at 1m, 10m, 100m and 1Km for various near distances assuming a 32-bit float
- * depth-buffer
+ * depth-buffer:
  *
  *    near (m)  |   1 m  |   10 m  |  100 m   |  1 Km
  *  -----------:|:------:|:-------:|:--------:|:--------:
@@ -107,10 +111,30 @@ namespace filament {
  *      0.1     | 3.6e-7 |  7.0e-5 |  0.0072  |   0.43
  *      1.0     |    0   |  3.8e-6 |  0.0007  |   0.07
  *
- *
  *  As can be seen in the table above, the depth-buffer precision drops rapidly with the
  *  distance to the camera.
+ *
  * Make sure to pick the highest *near* plane distance possible.
+ *
+ * On Vulkan and Metal platforms (or OpenGL platforms supporting either EXT_clip_control or
+ * ARB_clip_control extensions), the depth-buffer precision is much less dependent on the *near*
+ * plane value:
+ *
+ *    near (m)  |   1 m  |   10 m  |  100 m   |  1 Km
+ *  -----------:|:------:|:-------:|:--------:|:--------:
+ *      0.001   | 1.2e-7 |  9.5e-7 |  7.6e-6  |  6.1e-5
+ *      0.01    | 1.2e-7 |  9.5e-7 |  7.6e-6  |  6.1e-5
+ *      0.1     | 5.9e-8 |  9.5e-7 |  1.5e-5  |  1.2e-4
+ *      1.0     |    0   |  9.5e-7 |  7.6e-6  |  1.8e-4
+ *
+ *
+ * Choosing the *far* plane distance
+ * =================================
+ *
+ * The far plane distance is always set internally to infinity for rendering, however it is used for
+ * culling and shadowing calculations. It is important to keep a reasonable ratio between
+ * the near and far plane distances. Typically a ratio in the range 1:100 to 1:100000 is
+ * commanded. Larger values may causes rendering artifacts or trigger assertions in debug builds.
  *
  *
  * Exposure
@@ -120,6 +144,18 @@ namespace filament {
  * intensity and the Camera exposure interact to produce the final scene's brightness.
  *
  *
+ * Stereoscopic rendering
+ * ======================
+ *
+ * The Camera's transform (as set by setModelMatrix or via TransformManager) defines a "head" space,
+ * which typically corresponds to the location of the viewer's head. Each eye's transform is set
+ * relative to this head space by setEyeModelMatrix.
+ *
+ * Each eye also maintains its own projection matrix. These can be set with setCustomEyeProjection.
+ * Care must be taken to correctly set the projectionForCulling matrix, as well as its corresponding
+ * near and far values. The projectionForCulling matrix must define a frustum (in head space) that
+ * bounds the frustums of both eyes. Alternatively, culling may be disabled with
+ * View::setFrustumCullingEnabled.
  *
  * \see Frustum, View
  */
@@ -136,6 +172,30 @@ public:
         VERTICAL,       //!< the field-of-view angle is defined on the vertical axis
         HORIZONTAL      //!< the field-of-view angle is defined on the horizontal axis
     };
+
+    /** Returns the projection matrix from the field-of-view.
+     *
+     * @param fovInDegrees full field-of-view in degrees. 0 < \p fov < 180.
+     * @param aspect       aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
+     * @param near         distance in world units from the camera to the near plane. \p near > 0.
+     * @param far          distance in world units from the camera to the far plane. \p far > \p near.
+     * @param direction    direction of the \p fovInDegrees parameter.
+     *
+     * @see Fov.
+     */
+    static math::mat4 projection(Fov direction, double fovInDegrees,
+            double aspect, double near, double far = std::numeric_limits<double>::infinity());
+
+    /** Returns the projection matrix from the focal length.
+     *
+     * @param focalLengthInMillimeters lens's focal length in millimeters. \p focalLength > 0.
+     * @param aspect      aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
+     * @param near        distance in world units from the camera to the near plane. \p near > 0.
+     * @param far         distance in world units from the camera to the far plane. \p far > \p near.
+     */
+    static math::mat4 projection(double focalLengthInMillimeters,
+            double aspect, double near, double far = std::numeric_limits<double>::infinity());
+
 
     /** Sets the projection matrix from a frustum defined by six planes.
      *
@@ -167,16 +227,15 @@ public:
      *                  Precondition: \p far > near for PROJECTION::PERSPECTIVE or
      *                                \p far != near for PROJECTION::ORTHO
      *
-     * @attention these parameters are silently modified to meet the preconditions above.
-     *
      * @see Projection, Frustum
      */
     void setProjection(Projection projection,
             double left, double right,
             double bottom, double top,
-            double near, double far) noexcept;
+            double near, double far);
 
-    /** Sets the projection matrix from the field-of-view.
+
+    /** Utility to set the projection matrix from the field-of-view.
      *
      * @param fovInDegrees full field-of-view in degrees. 0 < \p fov < 180.
      * @param aspect       aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
@@ -187,9 +246,9 @@ public:
      * @see Fov.
      */
     void setProjection(double fovInDegrees, double aspect, double near, double far,
-                       Fov direction = Fov::VERTICAL) noexcept;
+                       Fov direction = Fov::VERTICAL);
 
-    /** Sets the projection matrix from the focal length.
+    /** Utility to set the projection matrix from the focal length.
      *
      * @param focalLengthInMillimeters lens's focal length in millimeters. \p focalLength > 0.
      * @param aspect      aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
@@ -197,15 +256,13 @@ public:
      * @param far         distance in world units from the camera to the far plane. \p far > \p near.
      */
     void setLensProjection(double focalLengthInMillimeters,
-            double aspect, double near, double far) noexcept;
+            double aspect, double near, double far);
+
 
     /** Sets a custom projection matrix.
      *
-     * The projection matrix must be of one of the following form:
-     *       a 0 tx 0              a 0 0 tx
-     *       0 b ty 0              0 b 0 ty
-     *       0 0 tz c              0 0 c tz
-     *       0 0 -1 0              0 0 0 1
+     * The projection matrix must define an NDC system that must match the OpenGL convention,
+     * that is all 3 axis are mapped to [-1, 1].
      *
      * @param projection  custom projection matrix used for rendering and culling
      * @param near        distance in world units from the camera to the near plane. \p near > 0.
@@ -215,11 +272,8 @@ public:
 
     /** Sets the projection matrix.
      *
-     * The projection matrices must be of one of the following form:
-     *       a 0 tx 0              a 0 0 tx
-     *       0 b ty 0              0 b 0 ty
-     *       0 0 tz c              0 0 c tz
-     *       0 0 -1 0              0 0 0 1
+     * The projection matrices must define an NDC system that must match the OpenGL convention,
+     * that is all 3 axis are mapped to [-1, 1].
      *
      * @param projection  custom projection matrix used for rendering
      * @param projectionForCulling  custom projection matrix used for culling
@@ -228,6 +282,24 @@ public:
      */
     void setCustomProjection(math::mat4 const& projection, math::mat4 const& projectionForCulling,
             double near, double far) noexcept;
+
+    /** Sets a custom projection matrix for each eye.
+     *
+     * The projectionForCulling, near, and far parameters establish a "culling frustum" which must
+     * encompass anything either eye can see.
+     *
+     * @param projection an array of projection matrices, only the first
+     *                   CONFIG_STEREOSCOPIC_EYES (2) are read
+     * @param count size of the projection matrix array to set, must be
+     *              >= CONFIG_STEREOSCOPIC_EYES (2)
+     * @param projectionForCulling custom projection matrix for culling, must encompass both eyes
+     * @param near distance in world units from the camera to the culling near plane. \p near > 0.
+     * @param far distance in world units from the camera to the culling far plane. \p far > \p
+     * near.
+     * @see setCustomProjection
+     */
+    void setCustomEyeProjection(math::mat4 const* projection, size_t count,
+            math::mat4 const& projectionForCulling, double near, double far);
 
     /** Sets an additional matrix that scales the projection matrix.
      *
@@ -285,11 +357,14 @@ public:
      * The projection matrix used for rendering always has its far plane set to infinity. This
      * is why it may differ from the matrix set through setProjection() or setLensProjection().
      *
+     * @param eyeId the index of the eye to return the projection matrix for, must be <
+     *              CONFIG_STEREOSCOPIC_EYES (2)
      * @return The projection matrix used for rendering
      *
-     * @see setProjection, setLensProjection, setCustomProjection, getCullingProjectionMatrix
+     * @see setProjection, setLensProjection, setCustomProjection, getCullingProjectionMatrix,
+     * setCustomEyeProjection
      */
-    math::mat4 getProjectionMatrix() const noexcept;
+    math::mat4 getProjectionMatrix(uint8_t eyeId = 0) const;
 
 
     /** Returns the projection matrix used for culling (far plane is finite).
@@ -302,46 +377,59 @@ public:
 
 
     //! Returns the frustum's near plane
-    float getNear() const noexcept;
+    double getNear() const noexcept;
 
     //! Returns the frustum's far plane used for culling
-    float getCullingFar() const noexcept;
+    double getCullingFar() const noexcept;
 
-    /** Sets the camera's view matrix.
+    /** Sets the camera's model matrix.
      *
      * Helper method to set the camera's entity transform component.
      * It has the same effect as calling:
      *
      * ~~~~~~~~~~~{.cpp}
      *  engine.getTransformManager().setTransform(
-     *          engine.getTransformManager().getInstance(camera->getEntity()), view);
+     *          engine.getTransformManager().getInstance(camera->getEntity()), model);
      * ~~~~~~~~~~~
      *
-     * @param view The camera position and orientation provided as a rigid transform matrix.
+     * @param model The camera position and orientation provided as a rigid transform matrix.
      *
      * @note The Camera "looks" towards its -z axis
      *
-     * @warning \p view must be a rigid transform
+     * @warning \p model must be a rigid transform
      */
-    void setModelMatrix(const math::mat4f& view) noexcept;
+    void setModelMatrix(const math::mat4& model) noexcept;
+    void setModelMatrix(const math::mat4f& model) noexcept; //!< @overload
 
-    /** Sets the camera's view matrix
+    /** Set the position of an eye relative to this Camera (head).
+     *
+     * By default, both eyes' model matrices are identity matrices.
+     *
+     * For example, to position Eye 0 3cm leftwards and Eye 1 3cm rightwards:
+     * ~~~~~~~~~~~{.cpp}
+     * const mat4 leftEye  = mat4::translation(double3{-0.03, 0.0, 0.0});
+     * const mat4 rightEye = mat4::translation(double3{ 0.03, 0.0, 0.0});
+     * camera.setEyeModelMatrix(0, leftEye);
+     * camera.setEyeModelMatrix(1, rightEye);
+     * ~~~~~~~~~~~
+     *
+     * This method is not intended to be called every frame. Instead, to update the position of the
+     * head, use Camera::setModelMatrix.
+     *
+     * @param eyeId the index of the eye to set, must be < CONFIG_STEREOSCOPIC_EYES (2)
+     * @param model the model matrix for an individual eye
+     */
+    void setEyeModelMatrix(uint8_t eyeId, math::mat4 const& model);
+
+    /** Sets the camera's model matrix
      *
      * @param eye       The position of the camera in world space.
      * @param center    The point in world space the camera is looking at.
      * @param up        A unit vector denoting the camera's "up" direction.
      */
-    void lookAt(const math::float3& eye,
-                const math::float3& center,
-                const math::float3& up) noexcept;
-
-    /** Sets the camera's view matrix, assuming up is along the y axis
-     *
-     * @param eye       The position of the camera in world space.
-     * @param center    The point in world space the camera is looking at.
-     */
-    void lookAt(const math::float3& eye,
-                const math::float3& center) noexcept;
+    void lookAt(math::double3 const& eye,
+                math::double3 const& center,
+                math::double3 const& up = math::double3{0, 1, 0}) noexcept;
 
     /** Returns the camera's model matrix
      *
@@ -356,13 +444,13 @@ public:
      * @return The camera's pose in world space as a rigid transform. Parent transforms, if any,
      * are taken into account.
      */
-    math::mat4f getModelMatrix() const noexcept;
+    math::mat4 getModelMatrix() const noexcept;
 
     //! Returns the camera's view matrix (inverse of the model matrix)
-    math::mat4f getViewMatrix() const noexcept;
+    math::mat4 getViewMatrix() const noexcept;
 
     //! Returns the camera's position in world space
-    math::float3 getPosition() const noexcept;
+    math::double3 getPosition() const noexcept;
 
     //! Returns the camera's normalized left vector
     math::float3 getLeftVector() const noexcept;
@@ -376,7 +464,7 @@ public:
     //! Returns the camera's field of view in degrees
     float getFieldOfViewInDegrees(Fov direction) const noexcept;
 
-    //! Returns a Frustum object in world space
+    //! Returns the camera's culling Frustum in world space
     class Frustum getFrustum() const noexcept;
 
     //! Returns the entity representing this camera
@@ -431,7 +519,9 @@ public:
     //! returns this camera's sensitivity in ISO
     float getSensitivity() const noexcept;
 
-    //! returns the focal length in meters [m] for a 35mm camera
+    /** Returns the focal length in meters [m] for a 35mm camera.
+     * Eye 0's projection matrix is used to compute the focal length.
+     */
     double getFocalLength() const noexcept;
 
     /**
@@ -449,33 +539,6 @@ public:
      *
      * \param p the projection matrix to inverse
      * \returns the inverse of the projection matrix \p p
-     *
-     * \warning the projection matrix to invert must have one of the form below:
-     * - perspective projection
-     *
-     *      \f$
-     *      \left(
-     *      \begin{array}{cccc}
-     *      a & 0 & tx & 0 \\
-     *      0 & b & ty & 0 \\
-     *      0 & 0 & tz & c \\
-     *      0 & 0 & -1 & 0 \\
-     *      \end{array}
-     *      \right)
-     *      \f$
-     *
-     * - orthographic projection
-     *
-     *      \f$
-     *      \left(
-     *      \begin{array}{cccc}
-     *      a & 0 & 0 & tx \\
-     *      0 & b & 0 & ty \\
-     *      0 & 0 & c & tz \\
-     *      0 & 0 & 0 & 1  \\
-     *      \end{array}
-     *      \right)
-     *      \f$
      */
     static math::mat4 inverseProjection(const math::mat4& p) noexcept;
 

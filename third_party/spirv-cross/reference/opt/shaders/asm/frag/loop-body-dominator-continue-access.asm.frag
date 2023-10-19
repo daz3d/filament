@@ -1,4 +1,18 @@
 #version 450
+#if defined(GL_EXT_control_flow_attributes)
+#extension GL_EXT_control_flow_attributes : require
+#define SPIRV_CROSS_FLATTEN [[flatten]]
+#define SPIRV_CROSS_BRANCH [[dont_flatten]]
+#define SPIRV_CROSS_UNROLL [[unroll]]
+#define SPIRV_CROSS_LOOP [[dont_unroll]]
+#else
+#define SPIRV_CROSS_FLATTEN
+#define SPIRV_CROSS_BRANCH
+#define SPIRV_CROSS_UNROLL
+#define SPIRV_CROSS_LOOP
+#endif
+
+int _231;
 
 layout(binding = 0, std140) uniform Foo
 {
@@ -10,8 +24,6 @@ layout(binding = 0, std140) uniform Foo
 layout(location = 0) in vec3 fragWorld;
 layout(location = 0) out int _entryPointOutput;
 
-int _231;
-
 mat4 spvWorkaroundRowMajor(mat4 wrap) { return wrap; }
 
 void main()
@@ -22,6 +34,7 @@ void main()
         bool _225;
         int _229;
         uint _222 = 0u;
+        SPIRV_CROSS_UNROLL
         for (;;)
         {
             if (_222 < _11.shadowCascadesNum)

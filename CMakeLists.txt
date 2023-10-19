@@ -4,6 +4,14 @@
 cmake_minimum_required(VERSION 3.19)
 
 # ==================================================================================================
+# Toolchain configuration
+# ==================================================================================================
+if (APPLE AND NOT IOS)
+    # This must be set before project() is called
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "")
+endif()
+
+# ==================================================================================================
 # Project declaration
 # ==================================================================================================
 project(TNT)
@@ -23,20 +31,30 @@ option(FILAMENT_SUPPORTS_XCB "Include XCB support in Linux builds" ON)
 
 option(FILAMENT_SUPPORTS_XLIB "Include XLIB support in Linux builds" ON)
 
+option(FILAMENT_SUPPORTS_EGL_ON_LINUX "Use EGL for OpenGL in Linux builds" OFF)
+
+option(FILAMENT_SUPPORTS_WAYLAND "Include Wayland support in Linux builds" OFF)
+
+option(FILAMENT_SKIP_SDL2 "Skip dependencies of SDL2, and SDL2" OFF)
+
+option(FILAMENT_LINUX_IS_MOBILE "Treat Linux as Mobile" OFF)
+
+option(FILAMENT_ENABLE_ASAN_UBSAN "Enable Address and Undefined Behavior Sanitizers" OFF)
+
 set(FILAMENT_NDK_VERSION "" CACHE STRING
     "Android NDK version or version prefix to be used when building for Android."
 )
 
-set(FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB "2" CACHE STRING
-    "Per render pass arena size. Must be roughly 1 MB larger than FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB, default 2."
+set(FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB "3" CACHE STRING
+    "Per render pass arena size. Must be roughly 1 MB larger than FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB, default 3."
 )
 
-set(FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB "1" CACHE STRING
-    "Size of the high-level draw commands buffer. Rule of thumb, 1 MB less than FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB, default 1."
+set(FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB "2" CACHE STRING
+    "Size of the high-level draw commands buffer. Rule of thumb, 1 MB less than FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB, default 2."
 )
 
-set(FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB "1" CACHE STRING
-    "Size of the command-stream buffer. As a rule of thumb use the same value as FILAMENT_PER_FRRAME_COMMANDS_SIZE_IN_MB, default 1."
+set(FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB "2" CACHE STRING
+    "Size of the command-stream buffer. As a rule of thumb use the same value as FILAMENT_PER_FRRAME_COMMANDS_SIZE_IN_MB, default 2."
 )
 
 set(FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB "4" CACHE STRING
@@ -59,25 +77,30 @@ endif()
 # ==================================================================================================
 find_program(CCACHE_PROGRAM ccache)
 if (CCACHE_PROGRAM)
-    set(C_LAUNCHER   "${CCACHE_PROGRAM}")
-    set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
-
-    configure_file(build/launch-c.in   launch-c)
-    configure_file(build/launch-cxx.in launch-cxx)
-
-    execute_process(COMMAND chmod a+rx
-        "${CMAKE_BINARY_DIR}/launch-c"
-        "${CMAKE_BINARY_DIR}/launch-cxx"
-    )
-
-    if (CMAKE_GENERATOR STREQUAL "Xcode")
-        set(CMAKE_XCODE_ATTRIBUTE_CC         "${CMAKE_BINARY_DIR}/launch-c")
-        set(CMAKE_XCODE_ATTRIBUTE_CXX        "${CMAKE_BINARY_DIR}/launch-cxx")
-        set(CMAKE_XCODE_ATTRIBUTE_LD         "${CMAKE_BINARY_DIR}/launch-c")
-        set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_BINARY_DIR}/launch-cxx")
+    if (WIN32)
+        set(CMAKE_C_COMPILER_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
     else()
-        set(CMAKE_C_COMPILER_LAUNCHER        "${CMAKE_BINARY_DIR}/launch-c")
-        set(CMAKE_CXX_COMPILER_LAUNCHER      "${CMAKE_BINARY_DIR}/launch-cxx")
+        set(C_LAUNCHER   "${CCACHE_PROGRAM}")
+        set(CXX_LAUNCHER "${CCACHE_PROGRAM}")
+
+        configure_file(build/launch-c.in   launch-c)
+        configure_file(build/launch-cxx.in launch-cxx)
+
+        execute_process(COMMAND chmod a+rx
+            "${CMAKE_CURRENT_BINARY_DIR}/launch-c"
+            "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx"
+        )
+
+        if (CMAKE_GENERATOR STREQUAL "Xcode")
+            set(CMAKE_XCODE_ATTRIBUTE_CC         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_CXX        "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+            set(CMAKE_XCODE_ATTRIBUTE_LD         "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_XCODE_ATTRIBUTE_LDPLUSPLUS "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+        else()
+            set(CMAKE_C_COMPILER_LAUNCHER        "${CMAKE_CURRENT_BINARY_DIR}/launch-c")
+            set(CMAKE_CXX_COMPILER_LAUNCHER      "${CMAKE_CURRENT_BINARY_DIR}/launch-cxx")
+        endif()
     endif()
 endif()
 
@@ -91,23 +114,49 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ==================================================================================================
 if (UNIX AND NOT APPLE AND NOT ANDROID AND NOT WEBGL)
     set(LINUX TRUE)
+else()
+    # since cmake 3.25 LINUX is automatically set based on CMAKE_SYSTEM_NAME, which the android
+    # cmake files are setting to "Linux".
+    set(LINUX FALSE)
 endif()
 
 if (LINUX)
-    if (FILAMENT_SUPPORTS_XCB)
-        add_definitions(-DFILAMENT_SUPPORTS_XCB)
-    endif()
+    if (FILAMENT_SUPPORTS_WAYLAND)
+        add_definitions(-DFILAMENT_SUPPORTS_WAYLAND)
+        set(FILAMENT_SUPPORTS_X11 FALSE)
+    elseif (FILAMENT_SUPPORTS_EGL_ON_LINUX)
+        add_definitions(-DFILAMENT_SUPPORTS_EGL_ON_LINUX)
+        set(FILAMENT_SUPPORTS_X11 FALSE)
+    else ()
+        if (FILAMENT_SUPPORTS_XCB)
+            add_definitions(-DFILAMENT_SUPPORTS_XCB)
+        endif()
 
-    if (FILAMENT_SUPPORTS_XLIB)
-        add_definitions(-DFILAMENT_SUPPORTS_XLIB)
+        # Default Swiftshader build does not enable the xlib extension
+        if (FILAMENT_SUPPORTS_XLIB AND FILAMENT_USE_SWIFTSHADER)
+            set(FILAMENT_SUPPORTS_XLIB OFF)
+        endif()
+
+        if (FILAMENT_SUPPORTS_XLIB)
+            add_definitions(-DFILAMENT_SUPPORTS_XLIB)
+        endif()
+
+        if (FILAMENT_SUPPORTS_XCB OR FILAMENT_SUPPORTS_XLIB)
+            add_definitions(-DFILAMENT_SUPPORTS_X11)
+            set(FILAMENT_SUPPORTS_X11 TRUE)
+        endif()
     endif()
 endif()
 
-if (ANDROID OR WEBGL OR IOS)
+if (ANDROID OR WEBGL OR IOS OR FILAMENT_LINUX_IS_MOBILE)
     set(IS_MOBILE_TARGET TRUE)
 endif()
 
-if (NOT ANDROID AND NOT WEBGL AND NOT IOS)
+if (ANDROID)
+    add_definitions(-D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__)
+endif()
+
+if (NOT ANDROID AND NOT WEBGL AND NOT IOS AND NOT FILAMENT_LINUX_IS_MOBILE)
     set(IS_HOST_PLATFORM TRUE)
 endif()
 
@@ -131,27 +180,35 @@ if (WIN32)
     # __declspec(dllexport) in front of each functions).
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
+    # The CMAKE_CXX_FLAGS vars can be overriden by some Visual Studio generators, so we use an alternative
+    # global method here:
     if (${USE_STATIC_CRT})
-        set(CRT_FLAGS_RELEASE "/MT")
-        set(CRT_FLAGS_DEBUG "/MTd")
+        add_compile_options(
+            $<$<CONFIG:>:/MT>
+            $<$<CONFIG:Debug>:/MTd>
+            $<$<CONFIG:Release>:/MT>
+        )
     else()
-        set(CRT_FLAGS_RELEASE "/MD")
-        set(CRT_FLAGS_DEBUG "/MDd")
+        add_compile_options(
+            $<$<CONFIG:>:/MD>
+            $<$<CONFIG:Debug>:/MDd>
+            $<$<CONFIG:Release>:/MD>
+        )
     endif()
 
     # TODO: Figure out why pdb generation messes with incremental compilaton.
     # IN RELEASE_WITH_DEBUG_INFO, generate debug info in .obj, no in pdb.
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${CRT_FLAGS_RELEASE} /Z7")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${CRT_FLAGS_RELEASE} /Z7")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Z7")
+    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /Z7")
 
     # In RELEASE, also generate PDBs.
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${CRT_FLAGS_RELEASE} /Zi")
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${CRT_FLAGS_RELEASE} /Zi")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
 
     # In DEBUG, avoid generating a PDB file which seems to mess with incremental compilation.
     # Instead generate debug info directly inside obj files.
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${CRT_FLAGS_DEBUG} /Z7")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CRT_FLAGS_DEBUG} /Z7")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Z7")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Z7")
 
     # Special settings when building on CI.
     if (${FILAMENT_WINDOWS_CI_BUILD})
@@ -240,11 +297,15 @@ if (MSVC)
     set(CXX_STANDARD "/std:c++latest")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} /W0 /Zc:__cplusplus")
 else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} -fstrict-aliasing -Wno-unknown-pragmas -Wno-unused-function")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} -fstrict-aliasing -Wno-unknown-pragmas -Wno-unused-function -Wno-deprecated-declarations")
 endif()
 
 if (FILAMENT_USE_EXTERNAL_GLES3)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_EXTERNAL_GLES3")
+endif()
+
+if (FILAMENT_SUPPORTS_EGL_ON_LINUX)
+  set(EGL TRUE)
 endif()
 
 if (FILAMENT_USE_SWIFTSHADER)
@@ -271,7 +332,7 @@ if (LINUX)
 endif()
 
 if (ANDROID)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Werror=unguarded-availability")
 endif()
 
 if (CYGWIN)
@@ -300,19 +361,29 @@ endif()
 # ==================================================================================================
 # Release compiler flags
 # ==================================================================================================
-if (NOT MSVC)
+if (NOT MSVC AND NOT IOS)
+    # Omitting stack frame pointers prevents the generation of readable stack traces in crash reports on iOS
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer")
 
     # These aren't compatible with -fembed-bitcode (and seem to have no effect on Apple platforms anyway)
-    if (NOT IOS)
-        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffunction-sections -fdata-sections")
-    endif()
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffunction-sections -fdata-sections")
 endif()
 
 # On Android RELEASE builds, we disable exceptions and RTTI to save some space (about 75 KiB
 # saved by -fno-exception and 10 KiB saved by -fno-rtti).
 if (ANDROID OR IOS OR WEBGL)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-rtti")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-exceptions -fno-rtti")
+
+    if (ANDROID OR WEBGL)
+        # Omitting unwind info prevents the generation of readable stack traces in crash reports on iOS
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-unwind-tables -fno-asynchronous-unwind-tables")
+    endif()
+endif()
+
+# Turn off exceptions on iOS debug as well. This fixes an availability error we see when using
+# std::visit, which is not supported on iOS 11.0 when exceptions are enabled.
+if (IOS)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-exceptions")
 endif()
 
 # With WebGL, we disable RTTI even for debug builds because we pass emscripten::val back and forth
@@ -322,13 +393,17 @@ if (WEBGL)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-rtti")
 endif()
 
+if (WEBGL_PTHREADS)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+endif()
+
 # ==================================================================================================
 # Debug compiler flags
 # ==================================================================================================
-# ASAN is deactivated for now because:
-#  -fsanitize=undefined causes extremely long link times
-#  -fsanitize=address causes a crash with assimp, which we can't explain for now
-#set(EXTRA_SANITIZE_OPTIONS "-fsanitize=undefined -fsanitize=address")
+if (FILAMENT_ENABLE_ASAN_UBSAN)
+   set(EXTRA_SANITIZE_OPTIONS "-fsanitize=address -fsanitize=undefined")
+endif()
+
 if (NOT MSVC AND NOT WEBGL)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstack-protector")
 endif()
@@ -364,8 +439,8 @@ endif()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${GC_SECTIONS}")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${GC_SECTIONS} ${B_SYMBOLIC_FUNCTIONS}")
 
-if (WEBGL)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s USE_WEBGL2=1")
+if (WEBGL_PTHREADS)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -pthread")
 endif()
 
 # ==================================================================================================
@@ -448,9 +523,14 @@ if (FILAMENT_SUPPORTS_METAL)
     set(MATC_API_FLAGS ${MATC_API_FLAGS} -a metal)
 endif()
 
-# Disable optimizations and enable debug info (preserves names in SPIR-V)
+# Enable debug info (preserves names in SPIR-V)
+if (FILAMENT_ENABLE_MATDBG)
+    set(MATC_OPT_FLAGS ${MATC_OPT_FLAGS} -d)
+endif()
+
+# Disable optimizations
 if (FILAMENT_DISABLE_MATOPT)
-    set(MATC_OPT_FLAGS -gd)
+    set(MATC_OPT_FLAGS ${MATC_OPT_FLAGS} -g)
 endif()
 
 set(MATC_BASE_FLAGS ${MATC_API_FLAGS} -p ${MATC_TARGET} ${MATC_OPT_FLAGS})
@@ -494,14 +574,18 @@ function(list_licenses OUTPUT MODULES)
     foreach(module ${_MODULES})
         set(license_path "../../third_party/${module}/LICENSE")
         get_filename_component(fullname "${license_path}" ABSOLUTE)
-        string(APPEND CONTENT "${STR_OPENER}License and copyrights for ${module}:\n${STR_CLOSER},\n")
-        file(READ ${license_path} license_long)
-        string(REPLACE "\n" "${STR_CLOSER},\n${STR_OPENER}" license ${license_long})
-        string(APPEND CONTENT ${STR_OPENER}${license}\n${STR_CLOSER},)
-        string(APPEND CONTENT "\n\n")
+        if(EXISTS ${fullname})
+            string(APPEND CONTENT "${STR_OPENER}License and copyrights for ${module}:\n${STR_CLOSER},\n")
+            file(READ ${license_path} license_long)
+            string(REPLACE "\n" "${STR_CLOSER},\n${STR_OPENER}" license ${license_long})
+            string(APPEND CONTENT ${STR_OPENER}${license}\n${STR_CLOSER},)
+            string(APPEND CONTENT "\n\n")
+        else()
+            message(AUTHOR_WARNING "${license_path} not found. You can ignore this warning if you have devendored ${module}.")
+        endif()
     endforeach()
     configure_file(${FILAMENT}/build/licenses.inc.in ${OUTPUT})
-endfunction(list_licenses)
+endfunction()
 
 set(COMBINE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/build/linux/combine-static-libs.sh")
 if (WIN32)
@@ -514,7 +598,12 @@ function(combine_static_libs TARGET OUTPUT DEPS)
     # Loop through the dependent libraries and query their location on disk.
     set(DEPS_FILES )
     foreach(DEPENDENCY ${DEPS})
-        list(APPEND DEPS_FILES "$<TARGET_FILE:${DEPENDENCY}>")
+        if(TARGET ${DEPENDENCY})
+            get_property(dep_type TARGET ${DEPENDENCY} PROPERTY TYPE)
+            if(dep_type STREQUAL "STATIC_LIBRARY")
+                list(APPEND DEPS_FILES "$<TARGET_FILE:${DEPENDENCY}>")
+            endif()
+        endif()
     endforeach()
 
     add_custom_command(
@@ -547,13 +636,6 @@ if (FILAMENT_USE_SWIFTSHADER)
     find_library(SWIFTSHADER_VK NAMES vk_swiftshader HINTS "$ENV{SWIFTSHADER_LD_LIBRARY_PATH}")
     message(STATUS "Found SwiftShader VK library in: ${SWIFTSHADER_VK}.")
     add_definitions(-DFILAMENT_VKLIBRARY_PATH=\"${SWIFTSHADER_VK}\")
-elseif (FILAMENT_SUPPORTS_VULKAN AND APPLE)
-    find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/macOS/lib")
-    if (Vulkan_LIBRARY)
-        set(Vulkan_FOUND ON)
-        message(STATUS "Found Vulkan library in SDK: ${Vulkan_LIBRARY}.")
-        add_definitions(-DFILAMENT_VKLIBRARY_PATH=\"${Vulkan_LIBRARY}\")
-    endif()
 endif()
 
 # ==================================================================================================
@@ -608,19 +690,23 @@ add_subdirectory(${LIBRARIES}/gltfio)
 add_subdirectory(${LIBRARIES}/ibl)
 add_subdirectory(${LIBRARIES}/iblprefilter)
 add_subdirectory(${LIBRARIES}/image)
+add_subdirectory(${LIBRARIES}/ktxreader)
 add_subdirectory(${LIBRARIES}/math)
 add_subdirectory(${LIBRARIES}/mathio)
+add_subdirectory(${LIBRARIES}/uberz)
 add_subdirectory(${LIBRARIES}/utils)
 add_subdirectory(${LIBRARIES}/viewer)
 add_subdirectory(${FILAMENT}/filament)
 add_subdirectory(${FILAMENT}/shaders)
+add_subdirectory(${EXTERNAL}/basisu/tnt)
 add_subdirectory(${EXTERNAL}/civetweb/tnt)
 add_subdirectory(${EXTERNAL}/hat-trie/tnt)
 add_subdirectory(${EXTERNAL}/imgui/tnt)
 add_subdirectory(${EXTERNAL}/robin-map/tnt)
 add_subdirectory(${EXTERNAL}/smol-v/tnt)
 add_subdirectory(${EXTERNAL}/benchmark/tnt)
-add_subdirectory(${EXTERNAL}/meshoptimizer)
+add_subdirectory(${EXTERNAL}/meshoptimizer/tnt)
+add_subdirectory(${EXTERNAL}/mikktspace)
 add_subdirectory(${EXTERNAL}/cgltf/tnt)
 add_subdirectory(${EXTERNAL}/draco/tnt)
 add_subdirectory(${EXTERNAL}/jsmn/tnt)
@@ -646,10 +732,6 @@ if (FILAMENT_SUPPORTS_VULKAN)
     add_subdirectory(${EXTERNAL}/vkmemalloc/tnt)
 endif()
 
-if (APPLE)
-    add_subdirectory(${EXTERNAL}/moltenvk/tnt)
-endif()
-
 set(FILAMENT_SAMPLES_BINARY_DIR ${PROJECT_BINARY_DIR}/samples)
 
 if (WEBGL)
@@ -661,13 +743,13 @@ if (IS_HOST_PLATFORM)
     if (FILAMENT_SUPPORTS_OPENGL)
         add_subdirectory(${LIBRARIES}/bluegl)
     endif()
-    add_subdirectory(${LIBRARIES}/filamentapp)
+    if (NOT FILAMENT_SKIP_SDL2)
+      add_subdirectory(${LIBRARIES}/filamentapp)
+    endif()
     add_subdirectory(${LIBRARIES}/imageio)
 
     add_subdirectory(${FILAMENT}/samples)
 
-    add_subdirectory(${EXTERNAL}/astcenc/tnt)
-    add_subdirectory(${EXTERNAL}/etc2comp)
     add_subdirectory(${EXTERNAL}/libassimp/tnt)
     add_subdirectory(${EXTERNAL}/libpng/tnt)
     add_subdirectory(${EXTERNAL}/libsdl2/tnt)
@@ -683,11 +765,13 @@ if (IS_HOST_PLATFORM)
     add_subdirectory(${TOOLS}/mipgen)
     add_subdirectory(${TOOLS}/normal-blending)
     add_subdirectory(${TOOLS}/resgen)
+    add_subdirectory(${TOOLS}/rgb-to-lmsr)
     add_subdirectory(${TOOLS}/roughness-prefilter)
     add_subdirectory(${TOOLS}/specular-color)
+    add_subdirectory(${TOOLS}/uberz)
 endif()
 
 # Generate exported executables for cross-compiled builds (Android, WebGL, and iOS)
 if (NOT CMAKE_CROSSCOMPILING)
-    export(TARGETS matc cmgen filamesh mipgen resgen glslminifier FILE ${IMPORT_EXECUTABLES})
+    export(TARGETS matc cmgen filamesh mipgen resgen uberz glslminifier FILE ${IMPORT_EXECUTABLES})
 endif()

@@ -17,46 +17,66 @@
 #ifndef TNT_FILAMAT_MATERIAL_CHUNK_H
 #define TNT_FILAMAT_MATERIAL_CHUNK_H
 
-
 #include <filament/MaterialChunkType.h>
 
+#include <filaflat/ChunkContainer.h>
 #include <filaflat/Unflattener.h>
+
+#include <private/filament/Variant.h>
 
 #include <tsl/robin_map.h>
 
-namespace filaflat {
+#include <backend/DriverEnums.h>
 
-class BlobDictionary;
-class ChunkContainer;
-class ShaderBuilder;
+#include <utils/Invocable.h>
+#include <utils/FixedCapacityVector.h>
+
+namespace filaflat {
 
 class MaterialChunk {
 public:
+    using ShaderModel = filament::backend::ShaderModel;
+    using ShaderStage = filament::backend::ShaderStage;
+    using Variant = filament::Variant;
+
     explicit MaterialChunk(ChunkContainer const& container);
     ~MaterialChunk() noexcept;
 
     // call this once after container.parse() has been called
-    bool readIndex(filamat::ChunkType materialTag);
+    bool initialize(filamat::ChunkType materialTag);
 
     // call this as many times as needed
-    bool getShader(ShaderBuilder& shaderBuilder,
-            BlobDictionary const& dictionary,
-            uint8_t shaderModel, uint8_t variant, uint8_t stage);
+    // populates "shaderContent" with the requested shader, or returns false on failure.
+    bool getShader(ShaderContent& shaderContent, BlobDictionary const& dictionary,
+            ShaderModel shaderModel, filament::Variant variant, ShaderStage stage);
+
+    uint32_t getShaderCount() const noexcept;
+
+    void visitShaders(utils::Invocable<void(ShaderModel, Variant, ShaderStage)>&& visitor) const;
+
+    bool hasShader(ShaderModel model, Variant variant, ShaderStage stage) const noexcept;
+
+    // These methods are for debugging purposes only (matdbg)
+    // @{
+    static void decodeKey(uint32_t key,
+            ShaderModel* outModel, Variant* outVariant, ShaderStage* outStage);
+    const tsl::robin_map<uint32_t, uint32_t>& getOffsets() const { return mOffsets; }
+    // @}
 
 private:
     ChunkContainer const& mContainer;
     filamat::ChunkType mMaterialTag = filamat::ChunkType::Unknown;
-    Unflattener mUnflattener{nullptr, nullptr};
+    Unflattener mUnflattener;
     const uint8_t* mBase = nullptr;
     tsl::robin_map<uint32_t, uint32_t> mOffsets;
 
     bool getTextShader(Unflattener unflattener,
-            BlobDictionary const& dictionary, ShaderBuilder& shaderBuilder,
-            uint8_t shaderModel, uint8_t variant, uint8_t stage);
+            BlobDictionary const& dictionary, ShaderContent& shaderContent,
+            ShaderModel shaderModel, filament::Variant variant, ShaderStage shaderStage);
 
     bool getSpirvShader(
-            BlobDictionary const& dictionary, ShaderBuilder& shaderBuilder,
-            uint8_t shaderModel, uint8_t variant, uint8_t stage);
+            BlobDictionary const& dictionary, ShaderContent& shaderContent,
+            ShaderModel shaderModel, filament::Variant variant, ShaderStage shaderStage);
 };
 
 } // namespace filamat

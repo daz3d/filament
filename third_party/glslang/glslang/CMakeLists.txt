@@ -33,16 +33,16 @@
 
 if(WIN32)
     add_subdirectory(OSDependent/Windows)
-elseif(UNIX OR "${CMAKE_SYSTEM_NAME}" STREQUAL "Fuchsia")
+elseif(UNIX OR "${CMAKE_SYSTEM_NAME}" STREQUAL "Fuchsia" OR ANDROID)
     add_subdirectory(OSDependent/Unix)
-else(WIN32)
+else()
     message("unknown platform")
-endif(WIN32)
+endif()
 
 if(EMSCRIPTEN OR ENABLE_GLSLANG_JS)
     # May be enabled on non-Emscripten builds for binary-size testing.
     add_subdirectory(OSDependent/Web)
-endif(EMSCRIPTEN OR ENABLE_GLSLANG_JS)
+endif()
 
 ################################################################################
 # GenericCodeGen
@@ -57,7 +57,6 @@ set_property(TARGET GenericCodeGen PROPERTY FOLDER glslang)
 # MachineIndependent
 ################################################################################
 set(MACHINEINDEPENDENT_SOURCES
-    MachineIndependent/glslang.m4
     MachineIndependent/glslang.y
     MachineIndependent/glslang_tab.cpp
     MachineIndependent/attribute.cpp
@@ -129,7 +128,7 @@ if(ENABLE_HLSL)
         HLSL/hlslTokenStream.h
         HLSL/hlslGrammar.h
         HLSL/hlslParseables.h)
-endif(ENABLE_HLSL)
+endif()
 
 add_library(MachineIndependent STATIC ${MACHINEINDEPENDENT_SOURCES} ${MACHINEINDEPENDENT_HEADERS})
 set_property(TARGET MachineIndependent PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -184,6 +183,30 @@ if(WIN32 AND BUILD_SHARED_LIBS)
 endif()
 
 ################################################################################
+# ResourceLimits
+################################################################################
+set(RESOURCELIMITS_SOURCES
+    ResourceLimits/ResourceLimits.cpp
+    ResourceLimits/resource_limits_c.cpp
+)
+
+set(RESOURCELIMITS_HEADERS
+  Public/ResourceLimits.h
+  Public/resource_limits_c.h
+)
+
+add_library(glslang-default-resource-limits ${RESOURCELIMITS_SOURCES} ${RESOURCELIMITS_HEADERS})
+set_target_properties(glslang-default-resource-limits PROPERTIES
+    VERSION "${GLSLANG_VERSION}"
+    SOVERSION "${GLSLANG_VERSION_MAJOR}"
+    FOLDER glslang
+    POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(glslang-default-resource-limits PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+################################################################################
 # source_groups
 ################################################################################
 if(WIN32)
@@ -194,29 +217,40 @@ if(WIN32)
     source_group("MachineIndependent\\Preprocessor" REGULAR_EXPRESSION "MachineIndependent/preprocessor/*")
     source_group("HLSL" REGULAR_EXPRESSION "HLSL/*")
     source_group("CInterface" REGULAR_EXPRESSION "CInterface/*")
-endif(WIN32)
+endif()
 
 ################################################################################
 # install
 ################################################################################
 if(ENABLE_GLSLANG_INSTALL)
-    if(BUILD_SHARED_LIBS)
-        install(TARGETS glslang
-                EXPORT  glslangTargets
-                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    else()
-        install(TARGETS glslang MachineIndependent GenericCodeGen
-                EXPORT  glslangTargets
-                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-    endif()
+    install(TARGETS glslang EXPORT glslang-targets)
+    if(NOT BUILD_SHARED_LIBS)
+        install(TARGETS MachineIndependent EXPORT glslang-targets)
+        install(TARGETS GenericCodeGen EXPORT glslang-targets)
 
-    install(EXPORT glslangTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+        # Backward compatibility
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/glslangTargets.cmake" "
+            message(WARNING \"Using `glslangTargets.cmake` is deprecated: use `find_package(glslang)` to find glslang CMake targets.\")
+
+            if (NOT TARGET glslang::glslang)
+                include(\"${CMAKE_INSTALL_FULL_LIBDIR}/cmake/${PROJECT_NAME}/glslang-targets.cmake\")
+            endif()
+
+            if(${BUILD_SHARED_LIBS})
+                add_library(glslang ALIAS glslang::glslang)
+            else()
+                add_library(glslang ALIAS glslang::glslang)
+                add_library(MachineIndependent ALIAS glslang::MachineIndependent)
+                add_library(GenericCodeGen ALIAS glslang::GenericCodeGen)
+            endif()
+        ")
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/glslangTargets.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+    endif()
 
     set(ALL_HEADERS
         ${GLSLANG_HEADERS}
-        ${MACHINEINDEPENDENT_HEADERS})
+        ${MACHINEINDEPENDENT_HEADERS}
+        ${RESOURCELIMITS_HEADERS})
 
     foreach(file ${ALL_HEADERS})
         get_filename_component(dir ${file} DIRECTORY)
@@ -225,4 +259,18 @@ if(ENABLE_GLSLANG_INSTALL)
 
     install(FILES ${GLSLANG_BUILD_INFO_H} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/glslang)
 
-endif(ENABLE_GLSLANG_INSTALL)
+    install(TARGETS glslang-default-resource-limits EXPORT glslang-targets)
+
+    # Backward compatibility
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/glslang-default-resource-limitsTargets.cmake" "
+        message(WARNING \"Using `glslang-default-resource-limitsTargets.cmake` is deprecated: use `find_package(glslang)` to find glslang CMake targets.\")
+
+        if (NOT TARGET glslang::glslang-default-resource-limits)
+            include(\"\${CMAKE_INSTALL_FULL_LIBDIR}/cmake/${PROJECT_NAME}/glslang-targets.cmake\")
+        endif()
+
+        add_library(glslang-default-resource-limits ALIAS glslang::glslang-default-resource-limits)
+    ")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/glslang-default-resource-limitsTargets.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+
+endif()

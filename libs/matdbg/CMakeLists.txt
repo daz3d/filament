@@ -22,6 +22,8 @@ set(PUBLIC_HDRS
 )
 
 set(SRCS
+    src/ApiHandler.cpp
+    src/ApiHandler.h
     src/CommonWriter.h
     src/CommonWriter.cpp
     src/DebugServer.cpp
@@ -60,6 +62,7 @@ set(DUMMY_SRC "${RESOURCE_DIR}/dummy.c")
 add_custom_command(OUTPUT ${DUMMY_SRC} COMMAND echo "//" > ${DUMMY_SRC})
 
 add_library(matdbg_resources ${DUMMY_SRC} ${RESGEN_SOURCE})
+set_target_properties(matdbg_resources PROPERTIES FOLDER Libs)
 
 # ==================================================================================================
 # Include and target definitions
@@ -81,21 +84,19 @@ target_link_libraries(${TARGET} PUBLIC
         spirv-cross-glsl
         SPIRV-Tools
         utils
-        utils
 )
 
 target_include_directories(${TARGET} PRIVATE ${filamat_SOURCE_DIR}/src)
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
 
 # ==================================================================================================
 # Compiler flags
 # ==================================================================================================
 
 if (MSVC)
-    target_compile_options(${TARGET} PRIVATE $<$<CONFIG:Release>:/fp:fast>)
 else()
-    target_compile_options(${TARGET} PRIVATE $<$<CONFIG:Release>:-ffast-math>)
     target_compile_options(${TARGET} PRIVATE -Wno-deprecated-register)
 endif()
 
@@ -120,4 +121,5 @@ combine_static_libs(matdbg "${MATDBG_COMBINED_OUTPUT}" "${MATDBG_DEPS}")
 
 set(MATDBG_LIB_NAME ${CMAKE_STATIC_LIBRARY_PREFIX}matdbg${CMAKE_STATIC_LIBRARY_SUFFIX})
 install(FILES "${MATDBG_COMBINED_OUTPUT}" DESTINATION lib/${DIST_DIR} RENAME ${MATDBG_LIB_NAME})
-install(DIRECTORY ${PUBLIC_HDR_DIR}/matdbg DESTINATION include)
+# We do not need matdbg headers in the install directory
+# install(DIRECTORY ${PUBLIC_HDR_DIR}/matdbg DESTINATION include)

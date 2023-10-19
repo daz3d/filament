@@ -18,12 +18,17 @@
 #define TNT_FILAMENT_SWAPCHAIN_H
 
 #include <filament/FilamentAPI.h>
+
+#include <backend/CallbackHandler.h>
 #include <backend/DriverEnums.h>
 #include <backend/PresentCallable.h>
 
 #include <utils/compiler.h>
+#include <utils/Invocable.h>
 
 namespace filament {
+
+class Engine;
 
 /**
  * A swap chain represents an Operating System's *native* renderable surface.
@@ -146,9 +151,13 @@ namespace filament {
 class UTILS_PUBLIC SwapChain : public FilamentAPI {
 public:
     using FrameScheduledCallback = backend::FrameScheduledCallback;
-    using FrameCompletedCallback = backend::FrameCompletedCallback;
+    using FrameCompletedCallback = utils::Invocable<void(SwapChain*)>;
 
+    /**
+     * Requests a SwapChain with an alpha channel.
+     */
     static const uint64_t CONFIG_TRANSPARENT = backend::SWAP_CHAIN_CONFIG_TRANSPARENT;
+
     /**
      * This flag indicates that the swap chain may be used as a source surface
      * for reading back render results.  This config must be set when creating
@@ -177,6 +186,54 @@ public:
      */
     static const uint64_t CONFIG_APPLE_CVPIXELBUFFER =
             backend::SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER;
+
+    /**
+     * Indicates that the SwapChain must automatically perform linear to sRGB encoding.
+     *
+     * This flag is ignored if isSRGBSwapChainSupported() is false.
+     *
+     * When using this flag, the output colorspace in ColorGrading should be set to
+     * Rec709-Linear-D65, or post-processing should be disabled.
+     *
+     * @see isSRGBSwapChainSupported()
+     * @see ColorGrading.outputColorSpace()
+     * @see View.setPostProcessingEnabled()
+     */
+    static constexpr uint64_t CONFIG_SRGB_COLORSPACE = backend::SWAP_CHAIN_CONFIG_SRGB_COLORSPACE;
+
+    /**
+     * Indicates that this SwapChain should allocate a stencil buffer in addition to a depth buffer.
+     *
+     * This flag is necessary when using View::setStencilBufferEnabled and rendering directly into
+     * the SwapChain (when post-processing is disabled).
+     *
+     * The specific format of the stencil buffer depends on platform support. The following pixel
+     * formats are tried, in order of preference:
+     *
+     * Depth only (without CONFIG_HAS_STENCIL_BUFFER):
+     * - DEPTH32F
+     * - DEPTH24
+     *
+     * Depth + stencil (with CONFIG_HAS_STENCIL_BUFFER):
+     * - DEPTH32F_STENCIL8
+     * - DEPTH24F_STENCIL8
+     *
+     * Note that enabling the stencil buffer may hinder depth precision and should only be used if
+     * necessary.
+     *
+     * @see View.setStencilBufferEnabled
+     * @see View.setPostProcessingEnabled
+     */
+    static constexpr uint64_t CONFIG_HAS_STENCIL_BUFFER = backend::SWAP_CHAIN_HAS_STENCIL_BUFFER;
+
+    /**
+     * Return whether createSwapChain supports the SWAP_CHAIN_CONFIG_SRGB_COLORSPACE flag.
+     * The default implementation returns false.
+     *
+     * @param engine A pointer to the filament Engine
+     * @return true if SWAP_CHAIN_CONFIG_SRGB_COLORSPACE is supported, false otherwise.
+     */
+    static bool isSRGBSwapChainSupported(Engine& engine) noexcept;
 
     void* getNativeWindow() const noexcept;
 
@@ -212,17 +269,23 @@ public:
      * contents have completed rendering on the GPU.
      *
      * Use SwapChain::setFrameCompletedCallback to set a callback on an individual SwapChain. Each
-     * time a frame completes GPU rendering, the callback will be called with optional user data.
+     * time a frame completes GPU rendering, the callback will be called.
      *
-     * The FrameCompletedCallback is guaranteed to be called on the main Filament thread.
+     * If handler is nullptr, the callback is guaranteed to be called on the main Filament thread.
      *
-     * @param callback    A callback, or nullptr to unset.
-     * @param user        An optional pointer to user data passed to the callback function.
+     * Use \c setFrameCompletedCallback() (with default arguments) to unset the callback.
+     *
+     * @param handler     Handler to dispatch the callback or nullptr for the default handler.
+     * @param callback    Callback called when each frame completes.
      *
      * @remark Only Filament's Metal backend supports frame callbacks. Other backends ignore the
      * callback (which will never be called) and proceed normally.
+     *
+     * @see CallbackHandler
      */
-    void setFrameCompletedCallback(FrameCompletedCallback callback, void* user = nullptr);
+    void setFrameCompletedCallback(backend::CallbackHandler* handler = nullptr,
+            FrameCompletedCallback&& callback = {}) noexcept;
+
 };
 
 } // namespace filament

@@ -70,13 +70,19 @@ class UTILS_PUBLIC TransformManager : public FilamentAPI {
 public:
     using Instance = utils::EntityInstance<TransformManager>;
 
-    class children_iterator : std::iterator<std::forward_iterator_tag, Instance> {
+    class children_iterator {
         friend class FTransformManager;
         TransformManager const& mManager;
         Instance mInstance;
         children_iterator(TransformManager const& mgr, Instance instance) noexcept
                 : mManager(mgr), mInstance(instance) { }
     public:
+        using value_type = Instance;
+        using difference_type = ptrdiff_t;
+        using pointer = Instance*;
+        using reference = Instance&;
+        using iterator_category = std::forward_iterator_tag;
+
         children_iterator& operator++();
 
         children_iterator operator++(int) { // NOLINT
@@ -113,6 +119,30 @@ public:
     Instance getInstance(utils::Entity e) const noexcept;
 
     /**
+     * Enables or disable the accurate translation mode. Disabled by default.
+     *
+     * When accurate translation mode is active, the translation component of all transforms is
+     * maintained at double precision. This is only useful if the mat4 version of setTransform()
+     * is used, as well as getTransformAccurate().
+     *
+     * @param enable true to enable the accurate translation mode, false to disable.
+     *
+     * @see isAccurateTranslationsEnabled
+     * @see create(utils::Entity, Instance, const math::mat4&);
+     * @see setTransform(Instance, const math::mat4&)
+     * @see getTransformAccurate
+     * @see getWorldTransformAccurate
+     */
+    void setAccurateTranslationsEnabled(bool enable) noexcept;
+
+    /**
+     * Returns whether the high precision translation mode is active.
+     * @return true if accurate translations mode is active, false otherwise
+     * @see setAccurateTranslationsEnabled
+     */
+    bool isAccurateTranslationsEnabled() const noexcept;
+
+    /**
      * Creates a transform component and associate it with the given entity.
      * @param entity            An Entity to associate a transform component to.
      * @param parent            The Instance of the parent transform, or Instance{} if no parent.
@@ -125,7 +155,8 @@ public:
      * @see destroy()
      */
     void create(utils::Entity entity, Instance parent, const math::mat4f& localTransform);
-    void create(utils::Entity entity, Instance parent = {});
+    void create(utils::Entity entity, Instance parent, const math::mat4& localTransform); //!< \overload
+    void create(utils::Entity entity, Instance parent = {}); //!< \overload
 
     /**
      * Destroys this component from the given entity, children are orphaned.
@@ -203,6 +234,18 @@ public:
     void setTransform(Instance ci, const math::mat4f& localTransform) noexcept;
 
     /**
+     * Sets a local transform of a transform component and keeps double precision translation.
+     * All other values of the transform are stored at single precision.
+     * @param ci              The instance of the transform component to set the local transform to.
+     * @param localTransform  The local transform (i.e. relative to the parent).
+     * @see getTransform()
+     * @attention This operation can be slow if the hierarchy of transform is too deep, and this
+     *            will be particularly bad when updating a lot of transforms. In that case,
+     *            consider using openLocalTransformTransaction() / commitLocalTransformTransaction().
+     */
+    void setTransform(Instance ci, const math::mat4& localTransform) noexcept;
+
+    /**
      * Returns the local transform of a transform component.
      * @param ci The instance of the transform component to query the local transform from.
      * @return The local transform of the component (i.e. relative to the parent). This always
@@ -212,6 +255,15 @@ public:
     const math::mat4f& getTransform(Instance ci) const noexcept;
 
     /**
+     * Returns the local transform of a transform component.
+     * @param ci The instance of the transform component to query the local transform from.
+     * @return The local transform of the component (i.e. relative to the parent). This always
+     *         returns the value set by setTransform().
+     * @see setTransform()
+     */
+    const math::mat4 getTransformAccurate(Instance ci) const noexcept;
+
+    /**
      * Return the world transform of a transform component.
      * @param ci The instance of the transform component to query the world transform from.
      * @return The world transform of the component (i.e. relative to the root). This is the
@@ -219,6 +271,15 @@ public:
      * @see setTransform()
      */
     const math::mat4f& getWorldTransform(Instance ci) const noexcept;
+
+    /**
+     * Return the world transform of a transform component.
+     * @param ci The instance of the transform component to query the world transform from.
+     * @return The world transform of the component (i.e. relative to the root). This is the
+     *         composition of this component's local transform with its parent's world transform.
+     * @see setTransform()
+     */
+    const math::mat4 getWorldTransformAccurate(Instance ci) const noexcept;
 
     /**
      * Opens a local transform transaction. During a transaction, getWorldTransform() can

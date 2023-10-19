@@ -23,9 +23,10 @@ namespace fuzz {
 FuzzerPassAddOpPhiSynonyms::FuzzerPassAddOpPhiSynonyms(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddOpPhiSynonyms::Apply() {
   // Get a list of synonymous ids with the same type that can be used in the
@@ -175,8 +176,8 @@ FuzzerPassAddOpPhiSynonyms::GetIdEquivalenceClasses() {
     // - OpFunction does not yield a value;
     // - OpUndef yields an undefined value at each use, so it should never be a
     //   synonym of another id.
-    if (pair.second->opcode() == SpvOpFunction ||
-        pair.second->opcode() == SpvOpUndef) {
+    if (pair.second->opcode() == spv::Op::OpFunction ||
+        pair.second->opcode() == spv::Op::OpUndef) {
       continue;
     }
 

@@ -48,19 +48,19 @@ Java_com_google_android_filament_ToneMapper_nCreateFilmicToneMapper(JNIEnv*, jcl
 }
 
 extern "C" JNIEXPORT jlong JNICALL
+Java_com_google_android_filament_ToneMapper_nCreateAgxToneMapper(JNIEnv*, jclass, jint look) {
+    return (jlong) new AgxToneMapper(AgxToneMapper::AgxLook(look));
+}
+
+extern "C" JNIEXPORT jlong JNICALL
 Java_com_google_android_filament_ToneMapper_nCreateGenericToneMapper(JNIEnv*, jclass,
-        jfloat contrast, jfloat shoulder, jfloat midGrayIn, jfloat midGrayOut, jfloat hdrMax) {
-    return (jlong) new GenericToneMapper(contrast, shoulder, midGrayIn, midGrayOut, hdrMax);
+        jfloat contrast, jfloat midGrayIn, jfloat midGrayOut, jfloat hdrMax) {
+    return (jlong) new GenericToneMapper(contrast, midGrayIn, midGrayOut, hdrMax);
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
 Java_com_google_android_filament_ToneMapper_nGenericGetContrast(JNIEnv*, jclass, jlong nativeObject) {
     return ((GenericToneMapper*) nativeObject)->getContrast();
-}
-
-extern "C" JNIEXPORT jfloat JNICALL
-Java_com_google_android_filament_ToneMapper_nGenericGetShoulder(JNIEnv*, jclass, jlong nativeObject) {
-    return ((GenericToneMapper*) nativeObject)->getShoulder();
 }
 
 extern "C" JNIEXPORT jfloat JNICALL
@@ -82,12 +82,6 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_ToneMapper_nGenericSetContrast(JNIEnv*, jclass,
         jlong nativeObject, jfloat contrast) {
     ((GenericToneMapper*) nativeObject)->setContrast(contrast);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_google_android_filament_ToneMapper_nGenericSetShoulder(JNIEnv*, jclass,
-        jlong nativeObject, jfloat shoulder) {
-    ((GenericToneMapper*) nativeObject)->setShoulder(shoulder);
 }
 
 extern "C" JNIEXPORT void JNICALL

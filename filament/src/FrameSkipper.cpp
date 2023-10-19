@@ -14,59 +14,58 @@
  * limitations under the License.
  */
 
+#include "FrameSkipper.h"
+
 #include <utils/Log.h>
 #include <utils/debug.h>
-
-#include "details/FrameSkipper.h"
-#include "details/Engine.h"
 
 namespace filament {
 
 using namespace utils;
 using namespace backend;
 
-FrameSkipper::FrameSkipper(FEngine& engine, size_t latency) noexcept
-        : mEngine(engine), mLast(latency) {
+FrameSkipper::FrameSkipper(size_t latency) noexcept
+        : mLast(latency - 1) {
     assert_invariant(latency <= MAX_FRAME_LATENCY);
 }
 
-FrameSkipper::~FrameSkipper() noexcept {
-    auto& driver = mEngine.getDriverApi();
-    for (auto sync : mDelayedSyncs) {
-        if (sync) {
-            driver.destroySync(sync);
+FrameSkipper::~FrameSkipper() noexcept = default;
+
+void FrameSkipper::terminate(DriverApi& driver) noexcept {
+    for (auto fence : mDelayedFences) {
+        if (fence) {
+            driver.destroyFence(fence);
         }
     }
 }
 
-bool FrameSkipper::beginFrame() noexcept {
-    auto& driver = mEngine.getDriverApi();
-    auto& syncs = mDelayedSyncs;
-    auto sync = syncs.front();
-    if (sync) {
-        auto status = driver.getSyncStatus(sync);
-        if (status == SyncStatus::NOT_SIGNALED) {
+bool FrameSkipper::beginFrame(DriverApi& driver) noexcept {
+    auto& fences = mDelayedFences;
+    auto fence = fences.front();
+    if (fence) {
+        auto status = driver.getFenceStatus(fence);
+        if (status == FenceStatus::TIMEOUT_EXPIRED) {
             // Sync not ready, skip frame
             return false;
         }
-        driver.destroySync(sync);
+        assert_invariant(status == FenceStatus::CONDITION_SATISFIED);
+        driver.destroyFence(fence);
     }
     // shift all fences down by 1
-    std::move(syncs.begin() + 1, syncs.end(), syncs.begin());
-    syncs.back() = {};
+    std::move(fences.begin() + 1, fences.end(), fences.begin());
+    fences.back() = {};
     return true;
 }
 
-void FrameSkipper::endFrame() noexcept {
-    // if the user produced a new frame despite the fact that the previous one wasn't finished
+void FrameSkipper::endFrame(DriverApi& driver) noexcept {
+    // If the user produced a new frame despite the fact that the previous one wasn't finished
     // (i.e. FrameSkipper::beginFrame() returned false), we need to make sure to replace
     // a fence that might be here already)
-    auto& driver = mEngine.getDriverApi();
-    auto& sync = mDelayedSyncs[mLast];
-    if (sync) {
-        driver.destroySync(sync);
+    auto& fence = mDelayedFences[mLast];
+    if (fence) {
+        driver.destroyFence(fence);
     }
-    sync = driver.createSync();
+    fence = driver.createFence();
 }
 
 } // namespace filament

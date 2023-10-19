@@ -16,8 +16,8 @@
 
 //! \file
 
-#ifndef TNT_FILAMENT_COLOR_GRADING_H
-#define TNT_FILAMENT_COLOR_GRADING_H
+#ifndef TNT_FILAMENT_COLORGRADING_H
+#define TNT_FILAMENT_COLORGRADING_H
 
 #include <filament/FilamentAPI.h>
 #include <filament/ToneMapper.h>
@@ -30,6 +30,10 @@ namespace filament {
 
 class Engine;
 class FColorGrading;
+
+namespace color {
+class ColorSpace;
+}
 
 /**
  * ColorGrading is used to transform (either to modify or correct) the colors of the HDR buffer
@@ -66,6 +70,7 @@ class FColorGrading;
  *
  * The various transforms held by ColorGrading are applied in the following order:
  * - Exposure
+ * - Night adaptation
  * - White balance
  * - Channel mixer
  * - Shadows/mid-tones/highlights
@@ -76,12 +81,14 @@ class FColorGrading;
  * - Curves
  * - Tone mapping
  * - Luminance scaling
+ * - Gamut mapping
  *
  * Defaults
  * ========
  *
  * Here are the default color grading options:
  * - Exposure: 0.0
+ * - Night adaptation: 0.0
  * - White balance: temperature 0, and tint 0
  * - Channel mixer: red {1,0,0}, green {0,1,0}, blue {0,0,1}
  * - Shadows/mid-tones/highlights: shadows {1,1,1,0}, mid-tones {1,1,1,0}, highlights {1,1,1,0},
@@ -93,18 +100,27 @@ class FColorGrading;
  * - Curves: gamma {1,1,1}, midPoint {1,1,1}, and scale {1,1,1}
  * - Tone mapping: ACESLegacyToneMapper
  * - Luminance scaling: false
+ * - Gamut mapping: false
+ * - Output color space: Rec709-sRGB-D65
  *
  * @see View
  */
 class UTILS_PUBLIC ColorGrading : public FilamentAPI {
     struct BuilderDetails;
 public:
+
     enum class QualityLevel : uint8_t {
         LOW,
         MEDIUM,
         HIGH,
         ULTRA
     };
+
+    enum class LutFormat : uint8_t {
+        INTEGER,    //!< 10 bits per component
+        FLOAT,      //!< 16 bits per component (10 bits mantissa precision)
+    };
+
 
     /**
      * List of available tone-mapping operators.
@@ -136,6 +152,7 @@ public:
          * 3D texture. For instance, a low quality level will use a 16x16x16 10 bit LUT, a medium
          * quality level will use a 32x32x32 10 bit LUT, a high quality will use a 32x32x32 16 bit
          * LUT, and a ultra quality will use a 64x64x64 16 bit LUT.
+         * This overrides the values set by format() and dimensions().
          *
          * The default quality is medium.
          *
@@ -144,6 +161,30 @@ public:
          * @return This Builder, for chaining calls
          */
         Builder& quality(QualityLevel qualityLevel) noexcept;
+
+        /**
+         * When color grading is implemented using a 3D LUT, this sets the texture format of
+         * of the LUT. This overrides the value set by quality().
+         *
+         * The default is INTEGER
+         *
+         * @param format The desired format of the 3D LUT.
+         *
+         * @return This Builder, for chaining calls
+         */
+        Builder& format(LutFormat format) noexcept;
+
+        /**
+         * When color grading is implemented using a 3D LUT, this sets the dimension of the LUT.
+         * This overrides the value set by quality().
+         *
+         * The default is 32
+         *
+         * @param dim The desired dimension of the LUT. Between 16 and 64.
+         *
+         * @return This Builder, for chaining calls
+         */
+        Builder& dimensions(uint8_t dim) noexcept;
 
         /**
          * Selects the tone mapping operator to apply to the HDR color buffer as the last
@@ -186,11 +227,24 @@ public:
          * When luminance scaling is enabled, tone mapping is performed on the luminance of each
          * pixel instead of per-channel.
          *
-         * @param luminanceScaling Enables or disables EVILS post-tone mapping
+         * @param luminanceScaling Enables or disables luminance scaling post-tone mapping
          *
          * @return This Builder, for chaining calls
          */
         Builder& luminanceScaling(bool luminanceScaling) noexcept;
+
+        /**
+         * Enables or disables gamut mapping to the destination color space's gamut. When gamut
+         * mapping is turned off, out-of-gamut colors are clipped to the destination's gamut,
+         * which may produce hue skews (blue skewing to purple, green to yellow, etc.). When
+         * gamut mapping is enabled, out-of-gamut colors are brought back in gamut by trying to
+         * preserve the perceived chroma and lightness of the original values.
+         *
+         * @param gamutMapping Enables or disables gamut mapping
+         *
+         * @return This Builder, for chaining calls
+         */
+        Builder& gamutMapping(bool gamutMapping) noexcept;
 
         /**
          * Adjusts the exposure of this image. The exposure is specified in stops:
@@ -204,6 +258,19 @@ public:
          * @return This Builder, for chaining calls
          */
         Builder& exposure(float exposure) noexcept;
+
+        /**
+         * Controls the amount of night adaptation to replicate a more natural representation of
+         * low-light conditions as perceived by the human vision system. In low-light conditions,
+         * peak luminance sensitivity of the eye shifts toward the blue end of the color spectrum:
+         * darker tones appear brighter, reducing contrast, and colors are blue shifted (the darker
+         * the more intense the effect).
+         *
+         * @param adaptation Amount of adaptation, between 0 (no adaptation) and 1 (full adaptation).
+         *
+         * @return This Builder, for chaining calls
+         */
+        Builder& nightAdaptation(float adaptation) noexcept;
 
         /**
          * Adjusts the while balance of the image. This can be used to remove color casts
@@ -386,6 +453,19 @@ public:
         Builder& curves(math::float3 shadowGamma, math::float3 midPoint, math::float3 highlightScale) noexcept;
 
         /**
+         * Sets the output color space for this ColorGrading object. After all color grading steps
+         * have been applied, the final color will be converted in the desired color space.
+         *
+         * NOTE: Currently the output color space must be one of Rec709-sRGB-D65 or
+         *       Rec709-Linear-D65. Only the transfer function is taken into account.
+         *
+         * @param colorSpace The output color space.
+         *
+         * @return This Builder, for chaining calls
+         */
+        Builder& outputColorSpace(const color::ColorSpace& colorSpace) noexcept;
+
+        /**
          * Creates the ColorGrading object and returns a pointer to it.
          *
          * @param engine Reference to the filament::Engine to associate this ColorGrading with.
@@ -402,4 +482,4 @@ public:
 
 } // namespace filament
 
-#endif // TNT_FILAMENT_COLOR_GRADING_H
+#endif // TNT_FILAMENT_COLORGRADING_H

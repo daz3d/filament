@@ -70,7 +70,7 @@ TEST(FuzzerUtilMaybeFindBlockTest, BasicTest) {
   ASSERT_TRUE(fuzzerutil::MaybeFindBlock(ir_context, block_id2) != nullptr);
   // Block with id 13 cannot be found.
   ASSERT_FALSE(fuzzerutil::MaybeFindBlock(ir_context, block_id3) != nullptr);
-  // Block with id 8 exisits but don't not of type OpLabel.
+  // Block with id 8 exists but don't not of type OpLabel.
   ASSERT_FALSE(fuzzerutil::MaybeFindBlock(ir_context, block_id4) != nullptr);
 }
 
@@ -196,8 +196,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetBoolTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -507,8 +505,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetFloatTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -799,8 +795,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetIntegerTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -894,8 +888,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetPointerTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -947,9 +939,9 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetPointerTypeTest) {
                                                kConsoleMessageConsumer));
 
   opt::IRContext* ir_context = context.get();
-  auto private_storage_class = SpvStorageClassPrivate;
-  auto function_storage_class = SpvStorageClassFunction;
-  auto input_storage_class = SpvStorageClassInput;
+  auto private_storage_class = spv::StorageClass::Private;
+  auto function_storage_class = spv::StorageClass::Function;
+  auto input_storage_class = spv::StorageClass::Input;
 
   // A valid pointer must have the correct |pointee_type_id| and |storageClass|.
   // A function type pointer with id = 9 and pointee type id 8 should be found.
@@ -973,7 +965,7 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetPointerTypeTest) {
   ASSERT_EQ(
       91, fuzzerutil::MaybeGetPointerType(ir_context, 90, input_storage_class));
 
-  // A pointer with id=91 and pointee type 90 exisits, but the type should be
+  // A pointer with id=91 and pointee type 90 exists, but the type should be
   // input.
   ASSERT_EQ(0, fuzzerutil::MaybeGetPointerType(ir_context, 90,
                                                function_storage_class));
@@ -1165,8 +1157,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetStructTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -1261,8 +1251,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetVectorTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -1362,8 +1350,6 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetVoidTypeTest) {
          %50 = OpTypePointer Private %7
          %34 = OpTypeBool
          %35 = OpConstantFalse %34
-         %60 = OpConstantNull %50
-         %61 = OpUndef %51
          %52 = OpVariable %50 Private
          %53 = OpVariable %51 Private
          %80 = OpConstantComposite %8 %21 %24
@@ -1561,6 +1547,269 @@ TEST(FuzzerutilTest, FuzzerUtilMaybeGetZeroConstantTest) {
   // There is no zero float constant.
   ASSERT_TRUE(std::find(float_ids.begin(), float_ids.end(), maybe_float_id) ==
               float_ids.end());
+}
+
+TEST(FuzzerutilTest, TypesAreCompatible) {
+  const std::string shader = R"(
+               OpCapability Shader
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %4 "main"
+               OpExecutionMode %4 OriginUpperLeft
+               OpSource ESSL 320
+          %2 = OpTypeVoid
+          %3 = OpTypeFunction %2
+          %6 = OpTypeInt 32 1
+          %9 = OpTypeInt 32 0
+          %8 = OpTypeStruct %6
+         %10 = OpTypePointer StorageBuffer %8
+         %11 = OpVariable %10 StorageBuffer
+         %86 = OpTypeStruct %9
+         %87 = OpTypePointer Workgroup %86
+         %88 = OpVariable %87 Workgroup
+         %89 = OpTypePointer Workgroup %9
+         %19 = OpConstant %9 0
+         %18 = OpConstant %9 1
+         %12 = OpConstant %6 0
+         %13 = OpTypePointer StorageBuffer %6
+         %15 = OpConstant %6 2
+         %16 = OpConstant %6 7
+         %20 = OpConstant %9 64
+          %4 = OpFunction %2 None %3
+          %5 = OpLabel
+         %14 = OpAccessChain %13 %11 %12
+         %90 = OpAccessChain %89 %88 %19
+         %21 = OpAtomicLoad %6 %14 %15 %20
+         %22 = OpAtomicExchange %6 %14 %15 %20 %16
+         %23 = OpAtomicCompareExchange %6 %14 %15 %20 %12 %16 %15
+         %24 = OpAtomicIIncrement %6 %14 %15 %20
+         %25 = OpAtomicIDecrement %6 %14 %15 %20
+         %26 = OpAtomicIAdd %6  %14 %15 %20 %16
+         %27 = OpAtomicISub %6  %14 %15 %20 %16
+         %28 = OpAtomicSMin %6  %14 %15 %20 %16
+         %29 = OpAtomicUMin %9 %90 %15 %20 %18
+         %30 = OpAtomicSMax %6  %14 %15 %20 %15
+         %31 = OpAtomicUMax %9 %90 %15 %20 %18
+         %32 = OpAtomicAnd  %6  %14 %15 %20 %16
+         %33 = OpAtomicOr   %6  %14 %15 %20 %16
+         %34 = OpAtomicXor  %6  %14 %15 %20 %16
+               OpAtomicStore %14 %15 %20 %16
+               OpReturn
+               OpFunctionEnd
+  )";
+
+  const auto env = SPV_ENV_UNIVERSAL_1_3;
+  const auto consumer = nullptr;
+  const auto context = BuildModule(env, consumer, shader, kFuzzAssembleOption);
+  spvtools::ValidatorOptions validator_options;
+  ASSERT_TRUE(fuzzerutil::IsValidAndWellFormed(context.get(), validator_options,
+                                               kConsoleMessageConsumer));
+
+  const uint32_t int_type = 6;   // The id of OpTypeInt 32 1
+  const uint32_t uint_type = 9;  // The id of OpTypeInt 32 0
+
+  // OpAtomicLoad
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicLoad, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicLoad, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicLoad, 2, int_type, uint_type));
+
+  // OpAtomicExchange
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicExchange,
+                                     0, int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicExchange, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicExchange, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicExchange, 3, int_type, uint_type));
+
+  // OpAtomicStore
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicStore, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicStore, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicStore, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicStore, 3, int_type, uint_type));
+
+  // OpAtomicCompareExchange
+#ifndef NDEBUG
+  ASSERT_DEATH(fuzzerutil::TypesAreCompatible(context.get(),
+                                              spv::Op::OpAtomicCompareExchange,
+                                              0, int_type, uint_type),
+               "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicCompareExchange, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicCompareExchange, 2, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicCompareExchange, 3, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicCompareExchange, 4, int_type, uint_type));
+
+  // OpAtomicIIncrement
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicIIncrement,
+                                     0, int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicIIncrement, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicIIncrement, 2, int_type, uint_type));
+
+// OpAtomicIDecrement
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicStore, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicStore, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicStore, 2, int_type, uint_type));
+
+// OpAtomicIAdd
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicIAdd, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicIAdd, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicIAdd, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicIAdd, 3, int_type, uint_type));
+
+// OpAtomicISub
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicISub, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicISub, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicISub, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicISub, 3, int_type, uint_type));
+
+// OpAtomicSMin
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicSMin, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMin, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMin, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMin, 3, int_type, uint_type));
+
+// OpAtomicUMin
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicUMin, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMin, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMin, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMin, 3, int_type, uint_type));
+
+// OpAtomicSMax
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicSMax, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMax, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMax, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicSMax, 3, int_type, uint_type));
+
+// OpAtomicUMax
+#ifndef NDEBUG
+  ASSERT_DEATH(
+      fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicUMax, 0,
+                                     int_type, uint_type),
+      "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMax, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMax, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicUMax, 3, int_type, uint_type));
+
+// OpAtomicAnd
+#ifndef NDEBUG
+  ASSERT_DEATH(fuzzerutil::TypesAreCompatible(
+                   context.get(), spv::Op::OpAtomicAnd, 0, int_type, uint_type),
+               "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicAnd, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicAnd, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicAnd, 3, int_type, uint_type));
+
+// OpAtomicOr
+#ifndef NDEBUG
+  ASSERT_DEATH(fuzzerutil::TypesAreCompatible(
+                   context.get(), spv::Op::OpAtomicOr, 0, int_type, uint_type),
+               "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicOr,
+                                             1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(context.get(), spv::Op::OpAtomicOr,
+                                             2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicOr, 3, int_type, uint_type));
+
+// OpAtomicXor
+#ifndef NDEBUG
+  ASSERT_DEATH(fuzzerutil::TypesAreCompatible(
+                   context.get(), spv::Op::OpAtomicXor, 0, int_type, uint_type),
+               "Signedness check should not occur on a pointer operand.");
+#endif
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicXor, 1, int_type, uint_type));
+  ASSERT_TRUE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicXor, 2, int_type, uint_type));
+  ASSERT_FALSE(fuzzerutil::TypesAreCompatible(
+      context.get(), spv::Op::OpAtomicXor, 3, int_type, uint_type));
 }
 
 }  // namespace

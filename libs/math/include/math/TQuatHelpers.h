@@ -14,22 +14,18 @@
  * limitations under the License.
  */
 
-
-#ifndef MATH_TQUATHELPERS_H_
-#define MATH_TQUATHELPERS_H_
-
-#include <math.h>
-#include <stdint.h>
-#include <sys/types.h>
+#ifndef TNT_MATH_TQUATHELPERS_H
+#define TNT_MATH_TQUATHELPERS_H
 
 #include <math/compiler.h>
 #include <math/scalar.h>
 #include <math/vec3.h>
 
-namespace filament {
-namespace math {
-namespace details {
-// -------------------------------------------------------------------------------------
+#include <math.h>
+#include <stdint.h>
+#include <sys/types.h>
+
+namespace filament::math::details {
 
 /*
  * No user serviceable parts here.
@@ -50,7 +46,7 @@ namespace details {
 template<template<typename T> class QUATERNION, typename T>
 class TQuatProductOperators {
 public:
-    /* compound assignment from a another quaternion of the same size but different
+    /* compound assignment from another quaternion of the same size but different
      * element type.
      */
     template<typename OTHER>
@@ -62,7 +58,8 @@ public:
 
     /* compound assignment products by a scalar
      */
-    constexpr QUATERNION<T>& operator*=(T v) {
+    template<typename U>
+    constexpr QUATERNION<T>& operator*=(U v) {
         QUATERNION<T>& lhs = static_cast<QUATERNION<T>&>(*this);
         for (size_t i = 0; i < QUATERNION<T>::size(); i++) {
             lhs[i] *= v;
@@ -70,7 +67,8 @@ public:
         return lhs;
     }
 
-    constexpr QUATERNION<T>& operator/=(T v) {
+    template<typename U>
+    constexpr QUATERNION<T>& operator/=(U v) {
         QUATERNION<T>& lhs = static_cast<QUATERNION<T>&>(*this);
         for (size_t i = 0; i < QUATERNION<T>::size(); i++) {
             lhs[i] /= v;
@@ -86,31 +84,32 @@ public:
      * (the first one, BASE<T> being known).
      */
 
-    /* The operators below handle operation between quaternion of the same size
+    /* The operators below handle operation between quaternions of the same size
      * but of a different element type.
      */
-    template<typename RT>
-    friend inline
-    constexpr QUATERNION<T> MATH_PURE operator*(const QUATERNION<T>& q, const QUATERNION<RT>& r) {
+    template<typename U>
+    friend inline constexpr
+    QUATERNION<arithmetic_result_t<T, U>> MATH_PURE operator*(
+            const QUATERNION<T>& q, const QUATERNION<U>& r) {
         // could be written as:
         //  return QUATERNION<T>(
         //            q.w*r.w - dot(q.xyz, r.xyz),
         //            q.w*r.xyz + r.w*q.xyz + cross(q.xyz, r.xyz));
-
-        return QUATERNION<T>(
+        return {
                 q.w * r.w - q.x * r.x - q.y * r.y - q.z * r.z,
                 q.w * r.x + q.x * r.w + q.y * r.z - q.z * r.y,
                 q.w * r.y - q.x * r.z + q.y * r.w + q.z * r.x,
-                q.w * r.z + q.x * r.y - q.y * r.x + q.z * r.w);
+                q.w * r.z + q.x * r.y - q.y * r.x + q.z * r.w
+        };
     }
 
-    template<typename RT>
-    friend inline
-    constexpr TVec3<T> MATH_PURE operator*(const QUATERNION<T>& q, const TVec3<RT>& v) {
+    template<typename U>
+    friend inline constexpr
+    TVec3<arithmetic_result_t<T, U>> MATH_PURE operator*(const QUATERNION<T>& q, const TVec3<U>& v) {
         // note: if q is known to be a unit quaternion, then this simplifies to:
         //  TVec3<T> t = 2 * cross(q.xyz, v)
         //  return v + (q.w * t) + cross(q.xyz, t)
-        return imaginary(q * QUATERNION<T>(v, 0) * inverse(q));
+        return imaginary(q * QUATERNION<U>(v, 0) * inverse(q));
     }
 
 
@@ -126,21 +125,24 @@ public:
      *              q.w*r.z + q.x*r.y - q.y*r.x + q.z*r.w);
      *
      */
-    friend inline
-    constexpr QUATERNION<T> MATH_PURE operator*(QUATERNION<T> q, T scalar) {
-        // don't pass q by reference because we need a copy anyways
+    template<typename U>
+    friend inline constexpr
+    QUATERNION<arithmetic_result_t<T, U>> MATH_PURE operator*(QUATERNION<T> q, U scalar) {
+        // don't pass q by reference because we need a copy anyway
         return q *= scalar;
     }
 
-    friend inline
-    constexpr QUATERNION<T> MATH_PURE operator*(T scalar, QUATERNION<T> q) {
-        // don't pass q by reference because we need a copy anyways
+    template<typename U>
+    friend inline constexpr
+    QUATERNION<arithmetic_result_t<T, U>> MATH_PURE operator*(T scalar, QUATERNION<U> q) {
+        // don't pass q by reference because we need a copy anyway
         return q *= scalar;
     }
 
-    friend inline
-    constexpr QUATERNION<T> MATH_PURE operator/(QUATERNION<T> q, T scalar) {
-        // don't pass q by reference because we need a copy anyways
+    template<typename U>
+    friend inline constexpr
+    QUATERNION<arithmetic_result_t<T, U>> MATH_PURE operator/(QUATERNION<T> q, U scalar) {
+        // don't pass q by reference because we need a copy anyway
         return q /= scalar;
     }
 };
@@ -164,9 +166,10 @@ public:
      * (the first one, BASE<T> being known).
      */
 
-    template<typename RT>
-    friend inline
-    constexpr T MATH_PURE dot(const QUATERNION<T>& p, const QUATERNION<RT>& q) {
+    template<typename U>
+    friend inline constexpr
+    arithmetic_result_t<T, U> MATH_PURE dot(
+            const QUATERNION<T>& p, const QUATERNION<U>& q) {
         return p.x * q.x +
                p.y * q.y +
                p.z * q.z +
@@ -200,7 +203,7 @@ public:
 
     friend inline
     constexpr QUATERNION<T> MATH_PURE inverse(const QUATERNION<T>& q) {
-        return conj(q) * (1 / dot(q, q));
+        return conj(q) * (T(1) / dot(q, q));
     }
 
     friend inline
@@ -218,8 +221,10 @@ public:
         return QUATERNION<T>(q.xyz, 0);
     }
 
-    friend inline
-    constexpr QUATERNION<T> MATH_PURE cross(const QUATERNION<T>& p, const QUATERNION<T>& q) {
+    template<typename U>
+    friend inline constexpr
+    QUATERNION<arithmetic_result_t<T, U>> MATH_PURE cross(
+            const QUATERNION<T>& p, const QUATERNION<U>& q) {
         return unreal(p * q);
     }
 
@@ -284,9 +289,6 @@ public:
     }
 };
 
-// -------------------------------------------------------------------------------------
-}  // namespace details
-}  // namespace math
-}  // namespace filament
+}  // namespace filament::math::details
 
-#endif  // MATH_TQUATHELPERS_H_
+#endif  // TNT_MATH_TQUATHELPERS_H

@@ -1,33 +1,28 @@
 android {
-    flavorDimensions "functionality"
-    productFlavors {
-        full {
-            dimension "functionality"
-        }
+    namespace 'com.google.android.filament.gltfio'
 
-        lite {
-            dimension "functionality"
-
-            externalNativeBuild {
-                cmake {
-                    arguments.add("-DGLTFIO_LITE=ON")
-                }
-            }
+    packagingOptions {
+        // No need to package up the following shared libs, which arise as a side effect of our
+        // externalNativeBuild dependencies. When clients pick and choose from project-level gradle
+        // dependencies, these shared libs already get pulled in, so we need to avoid the error:
+        // "More than one file was found with OS independent path ..."
+        jniLibs {
+            excludes += ['lib/*/libfilament-jni.so']
         }
     }
 
-    // No need to package up the following shared libs, which arise as a side effect of our
-    // externalNativeBuild dependencies. When clients pick and choose from project-level gradle
-    // dependencies, these shared libs already get pulled in, so we need to avoid the error:
-    // "More than one file was found with OS independent path ..."
-    packagingOptions {
-        exclude 'lib/*/libfilament-jni.so'
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
     }
 }
 
 dependencies {
     implementation deps.androidx.annotations
-    implementation project(':filament-android')
+
+    api project(':filament-android')
 }
 
 apply from: rootProject.file('gradle/gradle-mvn-push.gradle')
@@ -35,14 +30,9 @@ apply from: rootProject.file('gradle/gradle-mvn-push.gradle')
 afterEvaluate { project ->
     publishing {
         publications {
-            fullRelease(MavenPublication) {
+            release(MavenPublication) {
                 artifactId = POM_ARTIFACT_ID_FULL
-                from components.fullRelease
-            }
-
-            liteRelease(MavenPublication) {
-                artifactId = POM_ARTIFACT_ID_LITE
-                from components.liteRelease
+                from components.release
             }
         }
     }

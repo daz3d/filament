@@ -71,9 +71,22 @@ vec3 Irradiance_RoughnessOne(const vec3 n) {
 //------------------------------------------------------------------------------
 
 vec3 diffuseIrradiance(const vec3 n) {
+    // On Metal devices with an A8X chipset, this light_iblSpecular texture sample must be pulled
+    // outside the frameUniforms.iblSH check. This is to avoid a Metal pipeline compilation error
+    // with the message: "Could not statically determine the target of a texture".
+    // The reason for this is unknown, and is possibly a bug that exhibits only on these devices.
+    vec3 irradianceRoughnessOne;
+    if (CONFIG_STATIC_TEXTURE_TARGET_WORKAROUND) {
+        irradianceRoughnessOne = Irradiance_RoughnessOne(n);
+    }
+
     if (frameUniforms.iblSH[0].x == 65504.0) {
 #if FILAMENT_QUALITY < FILAMENT_QUALITY_HIGH
-        return Irradiance_RoughnessOne(n);
+        if (CONFIG_STATIC_TEXTURE_TARGET_WORKAROUND) {
+            return irradianceRoughnessOne;
+        } else {
+            return Irradiance_RoughnessOne(n);
+        }
 #else
         ivec2 s = textureSize(light_iblSpecular, int(frameUniforms.iblRoughnessOneLevel));
         float du = 1.0 / float(s.x);
@@ -127,30 +140,6 @@ vec3 specularDFG(const PixelParams pixel) {
 #endif
 }
 
-/**
- * Returns the reflected vector at the current shading point. The reflected vector
- * return by this function might be different from shading_reflected:
- * - For anisotropic material, we bend the reflection vector to simulate
- *   anisotropic indirect lighting
- * - The reflected vector may be modified to point towards the dominant specular
- *   direction to match reference renderings when the roughness increases
- */
-
-vec3 getReflectedVector(const PixelParams pixel, const vec3 v, const vec3 n) {
-#if defined(MATERIAL_HAS_ANISOTROPY)
-    vec3  anisotropyDirection = pixel.anisotropy >= 0.0 ? pixel.anisotropicB : pixel.anisotropicT;
-    vec3  anisotropicTangent  = cross(anisotropyDirection, v);
-    vec3  anisotropicNormal   = cross(anisotropicTangent, anisotropyDirection);
-    float bendFactor          = abs(pixel.anisotropy) * saturate(5.0 * pixel.perceptualRoughness);
-    vec3  bentNormal          = normalize(mix(n, anisotropicNormal, bendFactor));
-
-    vec3 r = reflect(-v, bentNormal);
-#else
-    vec3 r = reflect(-v, n);
-#endif
-    return r;
-}
-
 vec3 getReflectedVector(const PixelParams pixel, const vec3 n) {
 #if defined(MATERIAL_HAS_ANISOTROPY)
     vec3 r = getReflectedVector(pixel, shading_view, n);
@@ -189,7 +178,7 @@ vec3 importanceSamplingNdfDggx(vec2 u, float roughness) {
 }
 
 vec3 hemisphereCosSample(vec2 u) {
-    float phi = 2.0f * PI * u.x;
+    float phi = 2.0 * PI * u.x;
     float cosTheta2 = 1.0 - u.y;
     float cosTheta = sqrt(cosTheta2);
     float sinTheta = sqrt(1.0 - cosTheta2);
@@ -234,8 +223,8 @@ float prefilteredImportanceSampling(float ipdf, float omegaP) {
     return mipLevel;
 }
 
-vec3 isEvaluateSpecularIBL(const PixelParams pixel, vec3 n, vec3 v, float NoV) {
-    const uint numSamples = uint(IBL_INTEGRATION_IMPORTANCE_SAMPLING_COUNT);
+vec3 isEvaluateSpecularIBL(const PixelParams pixel, const vec3 n, const vec3 v, const float NoV) {
+    const int numSamples = IBL_INTEGRATION_IMPORTANCE_SAMPLING_COUNT;
     const float invNumSamples = 1.0 / float(numSamples);
     const vec3 up = vec3(0.0, 0.0, 1.0);
 
@@ -262,7 +251,7 @@ vec3 isEvaluateSpecularIBL(const PixelParams pixel, vec3 n, vec3 v, float NoV) {
     float omegaP = (4.0 * PI) / (6.0 * dim * dim);
 
     vec3 indirectSpecular = vec3(0.0);
-    for (uint i = 0u; i < numSamples; i++) {
+    for (int i = 0; i < numSamples; i++) {
         vec2 u = hammersley(i);
         vec3 h = T * importanceSamplingNdfDggx(u, roughness);
 
@@ -294,7 +283,7 @@ vec3 isEvaluateSpecularIBL(const PixelParams pixel, vec3 n, vec3 v, float NoV) {
 }
 
 vec3 isEvaluateDiffuseIBL(const PixelParams pixel, vec3 n, vec3 v) {
-    const uint numSamples = uint(IBL_INTEGRATION_IMPORTANCE_SAMPLING_COUNT);
+    const int numSamples = IBL_INTEGRATION_IMPORTANCE_SAMPLING_COUNT;
     const float invNumSamples = 1.0 / float(numSamples);
     const vec3 up = vec3(0.0, 0.0, 1.0);
 
@@ -320,7 +309,7 @@ vec3 isEvaluateDiffuseIBL(const PixelParams pixel, vec3 n, vec3 v) {
     float omegaP = (4.0 * PI) / (6.0 * dim * dim);
 
     vec3 indirectDiffuse = vec3(0.0);
-    for (uint i = 0u; i < numSamples; i++) {
+    for (int i = 0; i < numSamples; i++) {
         vec2 u = hammersley(i);
         vec3 h = T * hemisphereCosSample(u);
 
@@ -386,7 +375,8 @@ void evaluateClothIndirectDiffuseBRDF(const PixelParams pixel, inout float diffu
 #endif
 }
 
-void evaluateSheenIBL(const PixelParams pixel, float specularAO, inout vec3 Fd, inout vec3 Fr) {
+void evaluateSheenIBL(const PixelParams pixel, float diffuseAO,
+        const in SSAOInterpolationCache cache, inout vec3 Fd, inout vec3 Fr) {
 #if !defined(SHADING_MODEL_CLOTH) && !defined(SHADING_MODEL_SUBSURFACE)
 #if defined(MATERIAL_HAS_SHEEN_COLOR)
     // Albedo scaling of the base layer before we layer sheen on top
@@ -394,32 +384,41 @@ void evaluateSheenIBL(const PixelParams pixel, float specularAO, inout vec3 Fd, 
     Fr *= pixel.sheenScaling;
 
     vec3 reflectance = pixel.sheenDFG * pixel.sheenColor;
+    reflectance *= specularAO(shading_NoV, diffuseAO, pixel.sheenRoughness, cache);
+
     Fr += reflectance * prefilteredRadiance(shading_reflected, pixel.sheenPerceptualRoughness);
 #endif
 #endif
 }
 
-void evaluateClearCoatIBL(const PixelParams pixel, float specularAO, inout vec3 Fd, inout vec3 Fr) {
+void evaluateClearCoatIBL(const PixelParams pixel, float diffuseAO,
+        const in SSAOInterpolationCache cache, inout vec3 Fd, inout vec3 Fr) {
 #if IBL_INTEGRATION == IBL_INTEGRATION_IMPORTANCE_SAMPLING
+    float specularAO = specularAO(shading_NoV, diffuseAO, pixel.clearCoatRoughness, cache);
     isEvaluateClearCoatIBL(pixel, specularAO, Fd, Fr);
     return;
 #endif
 
 #if defined(MATERIAL_HAS_CLEAR_COAT)
+    if (pixel.clearCoat > 0.0) {
 #if defined(MATERIAL_HAS_NORMAL) || defined(MATERIAL_HAS_CLEAR_COAT_NORMAL)
-    // We want to use the geometric normal for the clear coat layer
-    float clearCoatNoV = clampNoV(dot(shading_clearCoatNormal, shading_view));
-    vec3 clearCoatR = reflect(-shading_view, shading_clearCoatNormal);
+        // We want to use the geometric normal for the clear coat layer
+        float clearCoatNoV = clampNoV(dot(shading_clearCoatNormal, shading_view));
+        vec3 clearCoatR = reflect(-shading_view, shading_clearCoatNormal);
 #else
-    float clearCoatNoV = shading_NoV;
-    vec3 clearCoatR = shading_reflected;
+        float clearCoatNoV = shading_NoV;
+        vec3 clearCoatR = shading_reflected;
 #endif
-    // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
-    float Fc = F_Schlick(0.04, 1.0, clearCoatNoV) * pixel.clearCoat;
-    float attenuation = 1.0 - Fc;
-    Fd *= attenuation;
-    Fr *= attenuation;
-    Fr += prefilteredRadiance(clearCoatR, pixel.clearCoatPerceptualRoughness) * (specularAO * Fc);
+        // The clear coat layer assumes an IOR of 1.5 (4% reflectance)
+        float Fc = F_Schlick(0.04, 1.0, clearCoatNoV) * pixel.clearCoat;
+        float attenuation = 1.0 - Fc;
+        Fd *= attenuation;
+        Fr *= attenuation;
+
+        // TODO: Should we apply specularAO to the attenuation as well?
+        float specularAO = specularAO(clearCoatNoV, diffuseAO, pixel.clearCoatRoughness, cache);
+        Fr += prefilteredRadiance(clearCoatR, pixel.clearCoatPerceptualRoughness) * (specularAO * Fc);
+    }
 #endif
 }
 
@@ -435,7 +434,7 @@ void evaluateSubsurfaceIBL(const PixelParams pixel, const vec3 diffuseIrradiance
 #endif
 }
 
-#if defined(HAS_REFRACTION)
+#if defined(MATERIAL_HAS_REFRACTION)
 
 struct Refraction {
     vec3 position;
@@ -486,10 +485,9 @@ void refractionThinSphere(const PixelParams pixel,
     ray.d = d;
 }
 
-void applyRefraction(
+vec3 evaluateRefraction(
     const PixelParams pixel,
-    const vec3 n0, vec3 E, vec3 Fd, vec3 Fr,
-    inout vec3 color) {
+    const vec3 n0, vec3 E) {
 
     Refraction ray;
 
@@ -531,17 +529,16 @@ void applyRefraction(
     // which is not the case when we'll read from the screen-space buffer
     vec3 Ft = prefilteredRadiance(ray.direction, perceptualRoughness) * frameUniforms.iblLuminance;
 #else
+    vec3 Ft;
+
     // compute the point where the ray exits the medium, if needed
-    vec4 p = vec4(frameUniforms.clipFromWorldMatrix * vec4(ray.position, 1.0));
+    vec4 p = vec4(getClipFromWorldMatrix() * vec4(ray.position, 1.0));
     p.xy = uvToRenderTargetUV(p.xy * (0.5 / p.w) + 0.5);
 
-    // perceptualRoughness to LOD
-    // Empirical factor to compensate for the gaussian approximation of Dggx, chosen so
-    // cubemap and screen-space modes match at perceptualRoughness 0.125
-    float tweakedPerceptualRoughness = perceptualRoughness * 1.74;
-    float lod = max(0.0, 2.0 * log2(tweakedPerceptualRoughness) + frameUniforms.refractionLodOffset);
-
-    vec3 Ft = textureLod(light_ssr, p.xy, lod).rgb;
+    // distance to camera plane
+    const float invLog2sqrt5 = 0.8614;
+    float lod = max(0.0, (2.0 * log2(perceptualRoughness) + frameUniforms.refractionLodOffset) * invLog2sqrt5);
+    Ft = textureLod(light_ssr, vec3(p.xy, 0.0), lod).rgb;
 #endif
 
     // base color changes the amount of light passing through the boundary
@@ -555,39 +552,70 @@ void applyRefraction(
     Ft *= T;
 #endif
 
-    Fr *= frameUniforms.iblLuminance;
-    Fd *= frameUniforms.iblLuminance;
-    color.rgb += Fr + mix(Fd, Ft, pixel.transmission);
+    return Ft;
 }
 #endif
-
-void combineDiffuseAndSpecular(
-        const PixelParams pixel,
-        const vec3 n, const vec3 E, const vec3 Fd, const vec3 Fr,
-        inout vec3 color) {
-#if defined(HAS_REFRACTION)
-    applyRefraction(pixel, n, E, Fd, Fr, color);
-#else
-    color.rgb += (Fd + Fr) * frameUniforms.iblLuminance;
-#endif
-}
 
 void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout vec3 color) {
-    float ssao = evaluateSSAO();
-    float diffuseAO = min(material.ambientOcclusion, ssao);
-    float specularAO = computeSpecularAO(shading_NoV, diffuseAO, pixel.roughness);
-
     // specular layer
-    vec3 Fr;
+    vec3 Fr = vec3(0.0);
+
+    SSAOInterpolationCache interpolationCache;
+#if defined(BLEND_MODE_OPAQUE) || defined(BLEND_MODE_MASKED) || defined(MATERIAL_HAS_REFLECTIONS)
+    interpolationCache.uv = uvToRenderTargetUV(getNormalizedPhysicalViewportCoord().xy);
+#endif
+
+    // screen-space reflections
+#if defined(MATERIAL_HAS_REFLECTIONS)
+    vec4 ssrFr = vec4(0.0);
+#if defined(BLEND_MODE_OPAQUE) || defined(BLEND_MODE_MASKED)
+    // do the uniform based test first
+    if (frameUniforms.ssrDistance > 0.0) {
+        // There is no point doing SSR for very high roughness because we're limited by the fov
+        // of the screen, in addition it doesn't really add much to the final image.
+        // TODO: maybe make this a parameter
+        const float maxPerceptualRoughness = sqrt(0.5);
+        if (pixel.perceptualRoughness < maxPerceptualRoughness) {
+            // distance to camera plane
+            const float invLog2sqrt5 = 0.8614;
+            float d = -mulMat4x4Float3(getViewFromWorldMatrix(), getWorldPosition()).z;
+            float lod = max(0.0, (log2(pixel.roughness / d) + frameUniforms.refractionLodOffset) * invLog2sqrt5);
+            ssrFr = textureLod(light_ssr, vec3(interpolationCache.uv, 1.0), lod);
+        }
+    }
+#else // BLEND_MODE_OPAQUE
+    // TODO: for blended transparency, we have to ray-march here (limited to mirror reflections)
+#endif
+#else // MATERIAL_HAS_REFLECTIONS
+    const vec4 ssrFr = vec4(0.0);
+#endif
+
+    // If screen-space reflections are turned on and have full contribution (ssr.a == 1.0), then we
+    // skip sampling the IBL down below.
+
 #if IBL_INTEGRATION == IBL_INTEGRATION_PREFILTERED_CUBEMAP
     vec3 E = specularDFG(pixel);
-    vec3 r = getReflectedVector(pixel, shading_normal);
-    Fr = E * prefilteredRadiance(r, pixel.perceptualRoughness);
+    if (ssrFr.a < 1.0) { // prevent reading the IBL if possible
+        vec3 r = getReflectedVector(pixel, shading_normal);
+        Fr = E * prefilteredRadiance(r, pixel.perceptualRoughness);
+    }
 #elif IBL_INTEGRATION == IBL_INTEGRATION_IMPORTANCE_SAMPLING
     vec3 E = vec3(0.0); // TODO: fix for importance sampling
-    Fr = isEvaluateSpecularIBL(pixel, shading_normal, shading_view, shading_NoV);
+    if (ssrFr.a < 1.0) { // prevent evaluating the IBL if possible
+        Fr = isEvaluateSpecularIBL(pixel, shading_normal, shading_view, shading_NoV);
+    }
 #endif
-    Fr *= singleBounceAO(specularAO) * pixel.energyCompensation;
+
+    // Ambient occlusion
+    float ssao = evaluateSSAO(interpolationCache);
+    float diffuseAO = min(material.ambientOcclusion, ssao);
+    float specularAO = specularAO(shading_NoV, diffuseAO, pixel.roughness, interpolationCache);
+
+    vec3 specularSingleBounceAO = singleBounceAO(specularAO) * pixel.energyCompensation;
+    Fr *= specularSingleBounceAO;
+#if defined(MATERIAL_HAS_REFLECTIONS)
+    ssrFr.rgb *= specularSingleBounceAO;
+#endif
 
     // diffuse layer
     float diffuseBRDF = singleBounceAO(diffuseAO); // Fd_Lambert() is baked in the SH below
@@ -606,19 +634,37 @@ void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout v
 #endif
     vec3 Fd = pixel.diffuseColor * diffuseIrradiance * (1.0 - E) * diffuseBRDF;
 
-    // sheen layer
-    evaluateSheenIBL(pixel, specularAO, Fd, Fr);
-
-    // clear coat layer
-    evaluateClearCoatIBL(pixel, specularAO, Fd, Fr);
-
     // subsurface layer
     evaluateSubsurfaceIBL(pixel, diffuseIrradiance, Fd, Fr);
 
-    // extra ambient occlusion term
+    // extra ambient occlusion term for the base and subsurface layers
     multiBounceAO(diffuseAO, pixel.diffuseColor, Fd);
     multiBounceSpecularAO(specularAO, pixel.f0, Fr);
 
+    // sheen layer
+    evaluateSheenIBL(pixel, diffuseAO, interpolationCache, Fd, Fr);
+
+    // clear coat layer
+    evaluateClearCoatIBL(pixel, diffuseAO, interpolationCache, Fd, Fr);
+
+    Fr *= frameUniforms.iblLuminance;
+    Fd *= frameUniforms.iblLuminance;
+
+#if defined(MATERIAL_HAS_REFRACTION)
+    vec3 Ft = evaluateRefraction(pixel, shading_normal, E);
+    Ft *= pixel.transmission;
+    Fd *= (1.0 - pixel.transmission);
+#endif
+
+#if defined(MATERIAL_HAS_REFLECTIONS)
+    Fr = Fr * (1.0 - ssrFr.a) + (E * ssrFr.rgb);
+#endif
+
+    // Combine all terms
     // Note: iblLuminance is already premultiplied by the exposure
-    combineDiffuseAndSpecular(pixel, shading_normal, E, Fd, Fr, color);
+
+    color.rgb += Fr + Fd;
+#if defined(MATERIAL_HAS_REFRACTION)
+    color.rgb += Ft;
+#endif
 }

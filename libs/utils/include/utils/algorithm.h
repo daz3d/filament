@@ -19,7 +19,6 @@
 
 #include <utils/compiler.h>
 
-#include <functional>       // for std::less
 #include <type_traits>      // for std::enable_if
 
 #include <limits.h>
@@ -47,10 +46,10 @@ constexpr inline T clz(T x) noexcept {
     x |= (x >> 4u);
     x |= (x >> 8u);
     x |= (x >> 16u);
-    if (sizeof(T) * CHAR_BIT >= 64) {   // just to silence compiler warning
+    if constexpr (sizeof(T) * CHAR_BIT >= 64) {   // just to silence compiler warning
         x |= (x >> 32u);
     }
-    if (sizeof(T) * CHAR_BIT >= 128) {   // just to silence compiler warning
+    if constexpr (sizeof(T) * CHAR_BIT >= 128) {   // just to silence compiler warning
         x |= (x >> 64u);
     }
     return T(sizeof(T) * CHAR_BIT) - details::popcount(x);
@@ -60,7 +59,13 @@ template<typename T, typename = std::enable_if_t<std::is_unsigned<T>::value>>
 constexpr inline T ctz(T x) noexcept {
     static_assert(sizeof(T) * CHAR_BIT <= 64, "details::ctz() only support up to 64 bits");
     T c = sizeof(T) * CHAR_BIT;
-    x &= -x;    // equivalent to x & (~x + 1)
+#if defined(_MSC_VER)
+    // equivalent to x & -x, but MSVC yield a warning for using unary minus operator on unsigned types
+    x &= (~x + 1);
+#else
+    // equivalent to x & (~x + 1), but some compilers generate a better sequence on ARM
+    x &= -x;
+#endif
     if (x) c--;
     if (sizeof(T) * CHAR_BIT >= 64) {
         if (x & T(0x00000000FFFFFFFF)) c -= 32;
@@ -168,74 +173,6 @@ T log2i(T x) noexcept {
     return (sizeof(x) * 8 - 1u) - clz(x);
 }
 
-/*
- * branch-less version of std::lower_bound and std::upper_bound.
- * These versions are intended to be fully inlined, which only happens when the size
- * of the array is known at compile time. This code also performs better if the
- * array is a power-of-two in size.
- *
- * These code works even if the conditions above are not met, and becomes a less-branches
- * algorithm instead of a branch-less one!
- */
-
-template<typename RandomAccessIterator, typename T, typename COMPARE = typename std::less<T>>
-inline UTILS_PUBLIC
-RandomAccessIterator lower_bound(
-        RandomAccessIterator first, RandomAccessIterator last, const T& value,
-        COMPARE comp = std::less<T>(),
-        bool assume_power_of_two = false) {
-    size_t len = last - first;
-
-    if (!assume_power_of_two) {
-        // handle non power-of-two sized arrays. If it's POT, the next line is a no-op
-        // and gets optimized out if the size is known at compile time.
-        len = 1u << (31 - clz(uint32_t(len)));     // next power of two length / 2
-        size_t difference = (last - first) - len;
-        // If len was already a POT, then difference will be 0.
-        // We need to explicitly check this case to avoid dereferencing past the end of the array
-        first += !difference || comp(first[len], value) ? difference : 0;
-    }
-
-    while (len) {
-        // The number of repetitions here doesn't affect the result. We manually unroll the loop
-        // twice, to guarantee we have at least two iterations without branches (for the case
-        // where the size is not known at compile time
-        first += comp(first[len >>= 1u], value) ? len : 0;
-        first += comp(first[len >>= 1u], value) ? len : 0;
-    }
-    first += comp(*first, value);
-    return first;
-}
-
-template<typename RandomAccessIterator, typename T, typename COMPARE = typename std::less<T>>
-inline UTILS_PUBLIC
-RandomAccessIterator upper_bound(
-        RandomAccessIterator first, RandomAccessIterator last,
-        const T& value, COMPARE comp = std::less<T>(),
-        bool assume_power_of_two = false) {
-    size_t len = last - first;
-
-    if (!assume_power_of_two) {
-        // handle non power-of-two sized arrays. If it's POT, the next line is a no-op
-        // and gets optimized out if the size is known at compile time.
-        len = 1u << (31 - clz(uint32_t(len)));     // next power of two length / 2
-        size_t difference = (last - first) - len;
-        // If len was already a POT, then difference will be 0.
-        // We need to explicitly check this case to avoid dereferencing past the end of the array
-        first += !difference || comp(value, first[len]) ? 0 : difference;
-    }
-
-    while (len) {
-        // The number of repetitions here doesn't affect the result. We manually unroll the loop
-        // twice, to guarantee we have at least two iterations without branches (for the case
-        // where the size is not known at compile time
-        first += !comp(value, first[len >>= 1u]) ? len : 0;
-        first += !comp(value, first[len >>= 1u]) ? len : 0;
-    }
-    first += !comp(value, *first);
-    return first;
-}
-
 template<typename RandomAccessIterator, typename COMPARE>
 inline UTILS_PUBLIC
 RandomAccessIterator partition_point(
@@ -262,14 +199,26 @@ RandomAccessIterator partition_point(
     return first;
 }
 
-template <class To, class From>
-typename std::enable_if_t<
-    (sizeof(To) == sizeof(From)) &&
-    std::is_trivially_copyable<From>::value,
-    To>
-// constexpr support needs compiler magic
-bit_cast(const From &src) noexcept {
-    return reinterpret_cast<const To&>(src);
+template <class Dest, class Source>
+#if __has_builtin(__builtin_bit_cast)
+constexpr
+#else
+inline
+#endif
+Dest bit_cast(const Source& source) noexcept {
+#if __has_builtin(__builtin_bit_cast)
+    return __builtin_bit_cast(Dest, source);
+#else
+    static_assert(sizeof(Dest) == sizeof(Source),
+            "bit_cast requires source and destination to be the same size");
+    static_assert(std::is_trivially_copyable_v<Dest>,
+            "bit_cast requires the destination type to be copyable");
+    static_assert(std::is_trivially_copyable_v<Source>,
+            "bit_cast requires the source type to be copyable");
+    Dest dest;
+    memcpy(&dest, &source, sizeof(dest));
+    return dest;
+#endif
 }
 
 } // namespace utils

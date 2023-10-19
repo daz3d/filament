@@ -55,6 +55,11 @@ public:
         return mSkybox;
     }
 
+    filament::Texture* getFogTexture() const noexcept {
+        return mFogTexture;
+    }
+
+    bool hasSphericalHarmonics() const { return mHasSphericalHarmonics; }
     filament::math::float3 const* getSphericalHarmonics() const { return mBands; }
 
 private:
@@ -64,17 +69,19 @@ private:
 
     bool loadCubemapLevel(filament::Texture** texture,
             filament::Texture::PixelBufferDescriptor* outBuffer,
-            filament::Texture::FaceOffsets* outOffsets,
+            uint32_t* dim,
             const utils::Path& path,
             size_t level = 0, std::string const& levelPrefix = "") const;
 
     filament::Engine& mEngine;
 
     filament::math::float3 mBands[9] = {};
+    bool mHasSphericalHarmonics = false;
 
     filament::Texture* mTexture = nullptr;
     filament::IndirectLight* mIndirectLight = nullptr;
     filament::Texture* mSkyboxTexture = nullptr;
+    filament::Texture* mFogTexture = nullptr;
     filament::Skybox* mSkybox = nullptr;
 };
 

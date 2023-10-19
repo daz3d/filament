@@ -32,7 +32,7 @@
 
 #include <utils/EntityManager.h>
 
-#include <viewer/SimpleViewer.h>
+#include <viewer/ViewerGui.h>
 
 #include <camutils/Manipulator.h>
 
@@ -63,7 +63,7 @@ using namespace utils;
 
 struct App {
     Engine* engine;
-    SimpleViewer* viewer;
+    ViewerGui* viewer;
     Config config;
     Camera* mainCamera;
 
@@ -80,8 +80,7 @@ struct App {
     bool showImage = false;
     float3 backgroundColor = float3(0.0f);
 
-    // zero-initialized so that the first time through is always dirty.
-    ColorGradingSettings lastColorGradingOptions = { 0 };
+    ColorGradingSettings lastColorGradingOptions = { .enabled = false };
 
     ColorGrading* colorGrading = nullptr;
 };
@@ -215,7 +214,7 @@ static void createImageRenderable(Engine* engine, Scene* scene, App& app) {
     app.scene.defaultTexture = texture;
 }
 
-static void loadImage(App& app, Engine* engine, Path filename) {
+static void loadImage(App& app, Engine* engine, const Path& filename) {
     if (app.scene.imageTexture) {
         engine->destroy(app.scene.imageTexture);
         app.scene.imageTexture = nullptr;
@@ -229,14 +228,7 @@ static void loadImage(App& app, Engine* engine, Path filename) {
 
     std::ifstream inputStream(filename, std::ios::binary);
     LinearImage* image = new LinearImage(ImageDecoder::decode(
-            inputStream, filename, ImageDecoder::ColorSpace::LINEAR));
-
-    uint32_t channels = image->getChannels();
-    if (channels != 3) {
-        std::cerr << "The input image is invalid: " << filename << std::endl;
-        app.showImage = false;
-        return;
-    }
+            inputStream, filename, ImageDecoder::ColorSpace::SRGB));
 
     if (!image->isValid()) {
         std::cerr << "The input image is invalid: " << filename << std::endl;
@@ -246,13 +238,15 @@ static void loadImage(App& app, Engine* engine, Path filename) {
 
     inputStream.close();
 
+    uint32_t channels = image->getChannels();
     uint32_t w = image->getWidth();
     uint32_t h = image->getHeight();
     Texture* texture = Texture::Builder()
             .width(w)
             .height(h)
             .levels(0xff)
-            .format(Texture::InternalFormat::RGB16F)
+            .format(channels == 3 ?
+                    Texture::InternalFormat::RGB16F : Texture::InternalFormat::RGBA16F)
             .sampler(Texture::Sampler::SAMPLER_2D)
             .build(*engine);
 
@@ -263,9 +257,10 @@ static void loadImage(App& app, Engine* engine, Path filename) {
     Texture::PixelBufferDescriptor buffer(
             image->getPixelRef(),
             size_t(w * h * channels * sizeof(float)),
-            Texture::Format::RGB,
+            channels == 3 ? Texture::Format::RGB : Texture::Format::RGBA,
             Texture::Type::FLOAT,
-            freeCallback
+            freeCallback,
+            image
     );
 
     texture->setImage(*engine, 0, std::move(buffer));
@@ -295,8 +290,9 @@ int main(int argc, char** argv) {
 
     auto setup = [&](Engine* engine, View* view, Scene* scene) {
         app.engine = engine;
-        app.viewer = new SimpleViewer(engine, scene, view, 410);
+        app.viewer = new ViewerGui(engine, scene, view, 410);
         app.viewer->getSettings().viewer.autoScaleEnabled = false;
+        app.viewer->getSettings().viewer.autoInstancingEnabled = true;
         app.viewer->getSettings().view.bloom.enabled = false;
         app.viewer->getSettings().view.ssao.enabled = false;
         app.viewer->getSettings().view.dithering = Dithering::NONE;
@@ -337,7 +333,7 @@ int main(int argc, char** argv) {
         // This applies clear options, the skybox mask, and some camera settings.
         Camera& camera = view->getCamera();
         Skybox* skybox = scene->getSkybox();
-        applySettings(app.viewer->getSettings().viewer, &camera, skybox, renderer);
+        applySettings(engine, app.viewer->getSettings().viewer, &camera, skybox, renderer);
 
         // Check if color grading has changed.
         ColorGradingSettings& options = app.viewer->getSettings().view.colorGrading;
@@ -355,10 +351,10 @@ int main(int argc, char** argv) {
 
         if (app.showImage) {
             Texture *texture = app.scene.imageTexture;
-            float srcWidth = texture->getWidth();
-            float srcHeight = texture->getHeight();
-            float dstWidth = view->getViewport().width;
-            float dstHeight = view->getViewport().height;
+            float srcWidth = (float) texture->getWidth();
+            float srcHeight = (float) texture->getHeight();
+            float dstWidth = (float) view->getViewport().width;
+            float dstHeight = (float) view->getViewport().height;
 
             float srcRatio = srcWidth / srcHeight;
             float dstRatio = dstWidth / dstHeight;
@@ -399,7 +395,7 @@ int main(int argc, char** argv) {
 
     FilamentApp& filamentApp = FilamentApp::get();
 
-    filamentApp.setDropHandler([&] (std::string path) {
+    filamentApp.setDropHandler([&] (std::string_view path) {
         loadImage(app, app.engine, Path(path));
     });
 

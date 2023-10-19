@@ -15,6 +15,7 @@
 #ifndef SOURCE_OPT_DEBUG_INFO_MANAGER_H_
 #define SOURCE_OPT_DEBUG_INFO_MANAGER_H_
 
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -67,8 +68,8 @@ class DebugInlinedAtContext {
   std::unordered_map<uint32_t, uint32_t> callee_inlined_at2chain_;
 };
 
-// A class for analyzing, managing, and creating OpenCL.DebugInfo.100 extension
-// instructions.
+// A class for analyzing, managing, and creating OpenCL.DebugInfo.100 and
+// NonSemantic.Shader.DebugInfo.100 extension instructions.
 class DebugInfoManager {
  public:
   // Constructs a debug information manager from the given |context|.
@@ -85,7 +86,7 @@ class DebugInfoManager {
     return !(lhs == rhs);
   }
 
-  // Analyzes OpenCL.DebugInfo.100 instruction |dbg_inst|.
+  // Analyzes DebugInfo instruction |dbg_inst|.
   void AnalyzeDebugInst(Instruction* dbg_inst);
 
   // Creates new DebugInlinedAt and returns its id. Its line operand is the
@@ -144,12 +145,10 @@ class DebugInfoManager {
   // Generates a DebugValue instruction with value |value_id| for every local
   // variable that is in the scope of |scope_and_line| and whose memory is
   // |variable_id| and inserts it after the instruction |insert_pos|.
-  // Returns whether a DebugValue is added or not. |invisible_decls| returns
-  // DebugDeclares invisible to |scope_and_line|.
-  bool AddDebugValueIfVarDeclIsVisible(
-      Instruction* scope_and_line, uint32_t variable_id, uint32_t value_id,
-      Instruction* insert_pos,
-      std::unordered_set<Instruction*>* invisible_decls);
+  // Returns whether a DebugValue is added or not.
+  bool AddDebugValueForVariable(Instruction* scope_and_line,
+                                uint32_t variable_id, uint32_t value_id,
+                                Instruction* insert_pos);
 
   // Creates a DebugValue for DebugDeclare |dbg_decl| and inserts it before
   // |insert_before|. The new DebugValue has the same line and scope as
@@ -163,6 +162,9 @@ class DebugInfoManager {
 
   // Erases |instr| from data structures of this class.
   void ClearDebugInfo(Instruction* instr);
+
+  // Return the opcode for the Vulkan DebugOperation inst
+  uint32_t GetVulkanDebugOperation(Instruction* inst);
 
   // Returns the id of Value operand if |inst| is DebugValue who has Deref
   // operation and its Value operand is a result id of OpVariable with
@@ -190,9 +192,12 @@ class DebugInfoManager {
  private:
   IRContext* context() { return context_; }
 
-  // Analyzes OpenCL.DebugInfo.100 instructions in the given |module| and
+  // Analyzes DebugInfo instructions in the given |module| and
   // populates data structures in this class.
   void AnalyzeDebugInsts(Module& module);
+
+  // Get the DebugInfo ExtInstImport Id, or 0 if no DebugInfo is available.
+  uint32_t GetDbgSetImportId();
 
   // Returns the debug instruction whose id is |id|. Returns |nullptr| if one
   // does not exists.
@@ -230,7 +235,7 @@ class DebugInfoManager {
 
   IRContext* context_;
 
-  // Mapping from ids of OpenCL.DebugInfo.100 extension instructions
+  // Mapping from ids of DebugInfo extension instructions.
   // to their Instruction instances.
   std::unordered_map<uint32_t, Instruction*> id_to_dbg_inst_;
 
@@ -238,9 +243,18 @@ class DebugInfoManager {
   // operand is the function.
   std::unordered_map<uint32_t, Instruction*> fn_id_to_dbg_fn_;
 
+  // Orders Instruction* for use in associative containers (i.e. less than
+  // ordering). Unique Id is used.
+  typedef Instruction* InstPtr;
+  struct InstPtrLess {
+    bool operator()(const InstPtr& lhs, const InstPtr& rhs) const {
+      return lhs->unique_id() < rhs->unique_id();
+    }
+  };
+
   // Mapping from variable or value ids to DebugDeclare or DebugValue
   // instructions whose operand is the variable or value.
-  std::unordered_map<uint32_t, std::unordered_set<Instruction*>>
+  std::unordered_map<uint32_t, std::set<InstPtr, InstPtrLess>>
       var_id_to_dbg_decl_;
 
   // Mapping from DebugScope ids to users.

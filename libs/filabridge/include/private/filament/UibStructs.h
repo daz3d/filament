@@ -22,7 +22,7 @@
 
 #include <private/filament/EngineEnums.h>
 
-#include <utils/CString.h>
+#include <string_view>
 
 /*
  * Here we define all the UBOs known by filament as C structs. It is used by filament to
@@ -32,159 +32,322 @@
 
 namespace filament {
 
+namespace std140 {
+
+struct alignas(16) vec3 : public std::array<float, 3> {};
+struct alignas(16) vec4 : public std::array<float, 4> {};
+
+struct mat33 : public std::array<vec3, 3> {
+    mat33& operator=(math::mat3f const& rhs) noexcept {
+        for (int i = 0; i < 3; i++) {
+            (*this)[i][0] = rhs[i][0];
+            (*this)[i][1] = rhs[i][1];
+            (*this)[i][2] = rhs[i][2];
+        }
+        return *this;
+    }
+};
+
+struct mat44 : public std::array<vec4, 4> {
+    mat44& operator=(math::mat4f const& rhs) noexcept {
+        for (int i = 0; i < 4; i++) {
+            (*this)[i][0] = rhs[i][0];
+            (*this)[i][1] = rhs[i][1];
+            (*this)[i][2] = rhs[i][2];
+            (*this)[i][3] = rhs[i][3];
+        }
+        return *this;
+    }
+};
+
+} // std140
 /*
- * These structures are only used to call offsetof() and make it easy to visualize the UBO.
- *
- * IMPORTANT NOTE: Respect std140 layout, don't update without updating getUib()
+ * IMPORTANT NOTE: Respect std140 layout, don't update without updating UibGenerator::get{*}Uib()
  */
 
 struct PerViewUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
-    static constexpr utils::StaticString _name{ "FrameUniforms" };
-    filament::math::mat4f viewFromWorldMatrix;
-    filament::math::mat4f worldFromViewMatrix;
-    filament::math::mat4f clipFromViewMatrix;
-    filament::math::mat4f viewFromClipMatrix;
-    filament::math::mat4f clipFromWorldMatrix;
-    filament::math::mat4f worldFromClipMatrix;
-    filament::math::mat4f lightFromWorldMatrix[CONFIG_MAX_SHADOW_CASCADES];
+    static constexpr std::string_view _name{ "FrameUniforms" };
 
-    // position of cascade splits, in world space (not including the near plane)
-    // -Inf stored in unused components
-    filament::math::float4 cascadeSplits;
+    // --------------------------------------------------------------------------------------------
+    // Values that can be accessed in both surface and post-process materials
+    // --------------------------------------------------------------------------------------------
 
-    filament::math::float4 resolution; // viewport width, height, 1/width, 1/height
+    math::mat4f viewFromWorldMatrix;    // clip    view <- world    : view matrix
+    math::mat4f worldFromViewMatrix;    // clip    view -> world    : model matrix
+    math::mat4f clipFromViewMatrix;     // clip <- view    world    : projection matrix
+    math::mat4f viewFromClipMatrix;     // clip -> view    world    : inverse projection matrix
+    math::mat4f clipFromWorldMatrix[CONFIG_STEREOSCOPIC_EYES]; // clip <- view <- world
+    math::mat4f worldFromClipMatrix;    // clip -> view -> world
+    math::mat4f userWorldFromWorldMatrix;   // userWorld <- world
+    math::float4 clipTransform;             // [sx, sy, tx, ty] only used by VERTEX_DOMAIN_DEVICE
 
-    // camera position in view space (when camera_at_origin is enabled), i.e. it's (0,0,0).
-    // Always add worldOffset in the shader to get the true world-space position of the camera.
-    filament::math::float3 cameraPosition;
+    // --------------------------------------------------------------------------------------------
 
-    float time; // time in seconds, with a 1 second period
+    math::float2 clipControl;       // clip control
+    float time;                     // time in seconds, with a 1-second period
+    float temporalNoise;            // noise [0,1] when TAA is used, 0 otherwise
+    math::float4 userTime;          // time(s), (double)time - (float)time, 0, 0
 
-    filament::math::float4 lightColorIntensity; // directional light
+    // --------------------------------------------------------------------------------------------
+    // values below should only be accessed in surface materials
+    // (i.e.: not in the post-processing materials)
+    // --------------------------------------------------------------------------------------------
 
-    filament::math::float4 sun; // cos(sunAngle), sin(sunAngle), 1/(sunAngle*HALO_SIZE-sunAngle), HALO_EXP
+    math::float4 resolution;        // physical viewport width, height, 1/width, 1/height
+    math::float2 logicalViewportScale;  // scale-factor to go from physical to logical viewport
+    math::float2 logicalViewportOffset; // offset to go from physical to logical viewport
 
-    filament::math::float4 padding0;
-
-    filament::math::float3 lightDirection;
-    uint32_t fParamsX; // stride-x
-
-    filament::math::float3 shadowBias; // unused, normal bias, unused
-    float oneOverFroxelDimensionY;
-
-    filament::math::float4 zParams; // froxel Z parameters
-
-    filament::math::uint2 fParams; // stride-y, stride-z
-    filament::math::float2 origin; // viewport left, viewport bottom
-
-    float oneOverFroxelDimensionX;
-    float iblLuminance;
-    float exposure;
-    float ev100;
-
-    alignas(16) filament::math::float4 iblSH[9]; // actually float3 entries (std140 requires float4 alignment)
-
-    filament::math::float4 userTime;  // time(s), (double)time - (float)time, 0, 0
-
-    float iblRoughnessOneLevel;       // level for roughness == 1
-    float cameraFar;                  // camera *culling* far-plane distance (projection far is at +inf)
+    float lodBias;                  // load bias to apply to user materials
     float refractionLodOffset;
 
+    // camera position in view space (when camera_at_origin is enabled), i.e. it's (0,0,0).
+    float oneOverFarMinusNear;      // 1 / (f-n), always positive
+    float nearOverFarMinusNear;     // n / (f-n), always positive
+    float cameraFar;                // camera *culling* far-plane distance, always positive (projection far is at +inf)
+    float exposure;
+    float ev100;
+    float needsAlphaChannel;
+
+    // AO
+    float aoSamplingQualityAndEdgeDistance;     // <0: no AO, 0: bilinear, !0: bilateral edge distance
+    float aoBentNormals;                        // 0: no AO bent normal, >0.0 AO bent normals
+    float aoReserved0;
+    float aoReserved1;
+
+    // --------------------------------------------------------------------------------------------
+    // Dynamic Lighting [variant: DYN]
+    // --------------------------------------------------------------------------------------------
+    math::float4 zParams;                       // froxel Z parameters
+    math::uint3 fParams;                        // stride-x, stride-y, stride-z
+    int32_t lightChannels;                      // light channel bits
+    math::float2 froxelCountXY;
+
+    // IBL
+    float iblLuminance;
+    float iblRoughnessOneLevel;                 // level for roughness == 1
+    math::float4 iblSH[9];                      // actually float3 entries (std140 requires float4 alignment)
+
+    // --------------------------------------------------------------------------------------------
+    // Directional Lighting [variant: DIR]
+    // --------------------------------------------------------------------------------------------
+    math::float3 lightDirection;                // directional light direction
+    float padding0;
+    math::float4 lightColorIntensity;           // directional light
+    math::float4 sun;                           // cos(sunAngle), sin(sunAngle), 1/(sunAngle*HALO_SIZE-sunAngle), HALO_EXP
+    math::float2 shadowFarAttenuationParams;    // a, a/far (a=1/pct-of-far)
+
+    // --------------------------------------------------------------------------------------------
+    // Directional light shadowing [variant: SRE | DIR]
+    // --------------------------------------------------------------------------------------------
     // bit 0: directional (sun) shadow enabled
     // bit 1: directional (sun) screen-space contact shadow enabled
     // bit 8-15: screen-space contact shadows ray casting steps
-    uint32_t directionalShadows;
-
-    filament::math::float3 worldOffset; // this is (0,0,0) when camera_at_origin is disabled
+    int32_t directionalShadows;
     float ssContactShadowDistance;
 
-    // fog
-    float fogStart;
-    float fogMaxOpacity;
-    float fogHeight;
-    float fogHeightFalloff;         // falloff * 1.44269
-    math::float3 fogColor;
-    float fogDensity;               // (density/falloff)*exp(-falloff*(camera.y - fogHeight))
-    float fogInscatteringStart;
-    float fogInscatteringSize;
-    float fogColorFromIbl;
-
+    // position of cascade splits, in world space (not including the near plane)
+    // -Inf stored in unused components
+    math::float4 cascadeSplits;
     // bit 0-3: cascade count
-    // bit 4: visualize cascades
     // bit 8-11: cascade has visible shadows
-    uint32_t cascades;
+    int32_t cascades;
+    float shadowPenumbraRatioScale;     // For DPCF or PCSS, scale penumbra ratio for artistic use
+    math::float2 lightFarAttenuationParams;     // a, a/far (a=1/pct-of-far)
 
-    float aoSamplingQualityAndEdgeDistance;     // 0: bilinear, !0: bilateral edge distance
-    float aoReserved1;
-    float aoReserved2;
-    float aoReserved3;
-
-    math::float2 clipControl;
-    math::float2 padding1;
-
+    // --------------------------------------------------------------------------------------------
+    // VSM shadows [variant: VSM]
+    // --------------------------------------------------------------------------------------------
     float vsmExponent;
     float vsmDepthScale;
     float vsmLightBleedReduction;
-    float vsmReserved0;
+    uint32_t shadowSamplingType;                // 0: vsm, 1: dpcf
+
+    // --------------------------------------------------------------------------------------------
+    // Fog [variant: FOG]
+    // --------------------------------------------------------------------------------------------
+    math::float3 fogDensity;        // { density, -falloff * yc, density * exp(-fallof * yc) }
+    float fogStart;
+    float fogMaxOpacity;
+    uint32_t fogMinMaxMip;
+    float fogHeightFalloff;
+    float fogCutOffDistance;
+    math::float3 fogColor;
+    float fogColorFromIbl;
+    float fogInscatteringStart;
+    float fogInscatteringSize;
+    float fogOneOverFarMinusNear;
+    float fogNearOverFarMinusNear;
+    std140::mat33 fogFromWorldMatrix;
+
+    // --------------------------------------------------------------------------------------------
+    // Screen-space reflections [variant: SSR (i.e.: VSM | SRE)]
+    // --------------------------------------------------------------------------------------------
+    math::mat4f ssrReprojection;
+    math::mat4f ssrUvFromViewMatrix;
+    float ssrThickness;                 // ssr thickness, in world units
+    float ssrBias;                      // ssr bias, in world units
+    float ssrDistance;                  // ssr world raycast distance, 0 when ssr is off
+    float ssrStride;                    // ssr texel stride, >= 1.0
+
+    // --------------------------------------------------------------------------------------------
+    // user defined global variables
+    // --------------------------------------------------------------------------------------------
+    math::float4 custom[4];
+
+    // --------------------------------------------------------------------------------------------
+    // for feature level 0 / es2 usage
+    // --------------------------------------------------------------------------------------------
+    int32_t rec709;                     // Only for ES2, 0 or 1, whether we need to do sRGB conversion
+    float es2Reserved0;
+    float es2Reserved1;
+    float es2Reserved2;
 
     // bring PerViewUib to 2 KiB
-    filament::math::float4 padding2[59];
+    math::float4 reserved[48];
 };
 
 // 2 KiB == 128 float4s
-static_assert(sizeof(PerViewUib) == sizeof(filament::math::float4) * 128,
+static_assert(sizeof(PerViewUib) == sizeof(math::float4) * 128,
         "PerViewUib should be exactly 2KiB");
 
-// PerRenderableUib must have an alignment of 256 to be compatible with all versions of GLES.
-struct alignas(256) PerRenderableUib {
-    static constexpr utils::StaticString _name{ "ObjectUniforms" };
-    filament::math::mat4f worldFromModelMatrix;
-    filament::math::mat3f worldFromModelNormalMatrix; // this gets expanded to 48 bytes during the copy to the UBO
-    alignas(16) filament::math::float4 morphWeights;
-    // TODO: we can pack all the boolean bellow
-    int32_t skinningEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
-    int32_t morphingEnabled; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
-    uint32_t screenSpaceContactShadows; // 0=disabled, 1=enabled, ignored unless variant & SKINNING_OR_MORPHING
+// ------------------------------------------------------------------------------------------------
+// MARK: -
+
+struct PerRenderableData {
+    std140::mat44 worldFromModelMatrix;
+    std140::mat33 worldFromModelNormalMatrix;
+    int32_t morphTargetCount;
+    int32_t flagsChannels;                   // see packFlags() below (0x00000fll)
+    int32_t objectId;                        // used for picking
     // TODO: We need a better solution, this currently holds the average local scale for the renderable
     float userData;
-};
-static_assert(sizeof(PerRenderableUib) % 256 == 0, "sizeof(Transform) should be a multiple of 256");
 
-struct LightsUib {
-    static constexpr utils::StaticString _name{ "LightsUniforms" };
-    filament::math::float4 positionFalloff;   // { float3(pos), 1/falloff^2 }
-    filament::math::float4 colorIntensity;    // { float3(col), intensity }
-    filament::math::float4 directionIES;      // { float3(dir), IES index }
-    filament::math::float2 spotScaleOffset;   // { scale, offset }
-    uint32_t               shadow;            // { shadow bits (see ShadowInfo) }
-    uint32_t               type;              // { 0=point, 1=spot }
-};
-static_assert(sizeof(LightsUib) == 64, "the actual UBO is an array of 256 mat4");
+    math::float4 reserved[8];
 
-// UBO for punctual (spot light) shadows.
-struct ShadowUib {
-    static constexpr utils::StaticString _name{ "ShadowUniforms" };
-    filament::math::mat4f spotLightFromWorldMatrix[CONFIG_MAX_SHADOW_CASTING_SPOTS];
-    filament::math::float4 directionShadowBias[CONFIG_MAX_SHADOW_CASTING_SPOTS]; // light direction, normal bias
+    static uint32_t packFlagsChannels(
+            bool skinning, bool morphing, bool contactShadows, bool hasInstanceBuffer,
+            uint8_t channels) noexcept {
+        return (skinning              ? 0x100 : 0) |
+               (morphing              ? 0x200 : 0) |
+               (contactShadows        ? 0x400 : 0) |
+               (hasInstanceBuffer     ? 0x800 : 0) |
+               channels;
+    }
 };
+
+#ifndef _MSC_VER
+// not sure why this static_assert fails on MSVC
+static_assert(std::is_trivially_default_constructible_v<PerRenderableData>,
+        "make sure PerRenderableData stays trivially_default_constructible");
+#endif
+
+static_assert(sizeof(PerRenderableData) == 256,
+        "sizeof(PerRenderableData) must be 256 bytes");
+
+struct alignas(256) PerRenderableUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "ObjectUniforms" };
+    PerRenderableData data[CONFIG_MAX_INSTANCES];
+};
+// PerRenderableUib must have an alignment of 256 to be compatible with all versions of GLES.
+static_assert(sizeof(PerRenderableUib) <= CONFIG_MINSPEC_UBO_SIZE,
+        "PerRenderableUib exceeds max UBO size");
+
+// ------------------------------------------------------------------------------------------------
+// MARK: -
+
+struct LightsUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "LightsUniforms" };
+    math::float4 positionFalloff;     // { float3(pos), 1/falloff^2 }
+    math::float3 direction;           // dir
+    float reserved1;                  // 0
+    math::half4 colorIES;             // { half3(col),  IES index   }
+    math::float2 spotScaleOffset;     // { scale, offset }
+    float reserved3;                  // 0
+    float intensity;                  // float
+    uint32_t typeShadow;              // 0x00.00.ii.ct (t: 0=point, 1=spot, c:contact, ii: index)
+    uint32_t channels;                // 0x000c00ll (ll: light channels, c: caster)
+
+    static uint32_t packTypeShadow(uint8_t type, bool contactShadow, uint8_t index) noexcept {
+        return (type & 0xF) | (contactShadow ? 0x10 : 0x00) | (index << 8);
+    }
+    static uint32_t packChannels(uint8_t lightChannels, bool castShadows) noexcept {
+        return lightChannels | (castShadows ? 0x10000 : 0);
+    }
+};
+static_assert(sizeof(LightsUib) == 64,
+        "the actual UBO is an array of 256 mat4");
+
+// ------------------------------------------------------------------------------------------------
+// MARK: -
+
+// UBO for punctual (pointlight and spotlight) shadows.
+struct ShadowUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "ShadowUniforms" };
+    struct alignas(16) ShadowData {
+        math::mat4f lightFromWorldMatrix;       // 64
+        math::float4 lightFromWorldZ;           // 16
+        math::float4 scissorNormalized;         // 16
+        float texelSizeAtOneMeter;              //  4
+        float bulbRadiusLs;                     //  4
+        float nearOverFarMinusNear;             //  4
+        float normalBias;                       //  4
+        bool elvsm;                             //  4
+        uint32_t layer;                         //  4
+        uint32_t reserved1;                     //  4
+        uint32_t reserved2;                     //  4
+    };
+    ShadowData shadows[CONFIG_MAX_SHADOWMAPS];
+};
+static_assert(sizeof(ShadowUib) <= CONFIG_MINSPEC_UBO_SIZE,
+        "ShadowUib exceeds max UBO size");
+
+// ------------------------------------------------------------------------------------------------
+// MARK: -
 
 // UBO froxel record buffer.
-struct FroxelRecordUib {
-    static constexpr utils::StaticString _name{ "FroxelRecordUniforms" };
-    filament::math::uint4 records[1024];
+struct FroxelRecordUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "FroxelRecordUniforms" };
+    math::uint4 records[1024];
 };
+static_assert(sizeof(FroxelRecordUib) == 16384,
+        "FroxelRecordUib should be exactly 16KiB");
+
+struct FroxelsUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "FroxelsUniforms" };
+    math::uint4 records[1024];
+};
+static_assert(sizeof(FroxelsUib) == 16384,
+        "FroxelsUib should be exactly 16KiB");
+
+// ------------------------------------------------------------------------------------------------
+// MARK: -
 
 // This is not the UBO proper, but just an element of a bone array.
-struct PerRenderableUibBone {
-    static constexpr utils::StaticString _name{ "BonesUniforms" };
-    filament::math::quatf q = { 1, 0, 0, 0 };
-    filament::math::float4 t = {};
-    filament::math::float4 s = { 1, 1, 1, 0 };
-    filament::math::float4 ns = { 1, 1, 1, 0 };
+struct PerRenderableBoneUib { // NOLINT(cppcoreguidelines-pro-type-member-init)
+    static constexpr std::string_view _name{ "BonesUniforms" };
+    struct alignas(16) BoneData {
+        // bone transform, last row assumed [0,0,0,1]
+        math::float4 transform[3];
+        // 8 first cofactor matrix of transform's upper left
+        math::uint4 cof;
+    };
+    BoneData bones[CONFIG_MAX_BONE_COUNT];
 };
 
-static_assert(CONFIG_MAX_BONE_COUNT * sizeof(PerRenderableUibBone) <= 16384,
-        "Bones exceed max UBO size");
+static_assert(sizeof(PerRenderableBoneUib) <= CONFIG_MINSPEC_UBO_SIZE,
+        "PerRenderableUibBone exceeds max UBO size");
+
+// ------------------------------------------------------------------------------------------------
+// MARK: -
+
+struct alignas(16) PerRenderableMorphingUib {
+    static constexpr std::string_view _name{ "MorphingUniforms" };
+    // The array stride(the bytes between array elements) is always rounded up to the size of a vec4 in std140.
+    math::float4 weights[CONFIG_MAX_MORPH_TARGET_COUNT];
+};
+
+static_assert(sizeof(PerRenderableMorphingUib) <= CONFIG_MINSPEC_UBO_SIZE,
+        "PerRenderableMorphingUib exceeds max UBO size");
 
 } // namespace filament
 

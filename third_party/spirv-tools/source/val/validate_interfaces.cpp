@@ -27,16 +27,23 @@ namespace spvtools {
 namespace val {
 namespace {
 
+// Limit the number of checked locations to 4096. Multiplied by 4 to represent
+// all the components. This limit is set to be well beyond practical use cases.
+const uint32_t kMaxLocations = 4096 * 4;
+
 // Returns true if \c inst is an input or output variable.
 bool is_interface_variable(const Instruction* inst, bool is_spv_1_4) {
   if (is_spv_1_4) {
     // Starting in SPIR-V 1.4, all global variables are interface variables.
-    return inst->opcode() == SpvOpVariable &&
-           inst->word(3u) != SpvStorageClassFunction;
+    return inst->opcode() == spv::Op::OpVariable &&
+           inst->GetOperandAs<spv::StorageClass>(2u) !=
+               spv::StorageClass::Function;
   } else {
-    return inst->opcode() == SpvOpVariable &&
-           (inst->word(3u) == SpvStorageClassInput ||
-            inst->word(3u) == SpvStorageClassOutput);
+    return inst->opcode() == spv::Op::OpVariable &&
+           (inst->GetOperandAs<spv::StorageClass>(2u) ==
+                spv::StorageClass::Input ||
+            inst->GetOperandAs<spv::StorageClass>(2u) ==
+                spv::StorageClass::Output);
   }
 }
 
@@ -110,29 +117,30 @@ spv_result_t NumConsumedLocations(ValidationState_t& _, const Instruction* type,
                                   uint32_t* num_locations) {
   *num_locations = 0;
   switch (type->opcode()) {
-    case SpvOpTypeInt:
-    case SpvOpTypeFloat:
+    case spv::Op::OpTypeInt:
+    case spv::Op::OpTypeFloat:
       // Scalars always consume a single location.
       *num_locations = 1;
       break;
-    case SpvOpTypeVector:
+    case spv::Op::OpTypeVector:
       // 3- and 4-component 64-bit vectors consume two locations.
-      if ((_.ContainsSizedIntOrFloatType(type->id(), SpvOpTypeInt, 64) ||
-           _.ContainsSizedIntOrFloatType(type->id(), SpvOpTypeFloat, 64)) &&
+      if ((_.ContainsSizedIntOrFloatType(type->id(), spv::Op::OpTypeInt, 64) ||
+           _.ContainsSizedIntOrFloatType(type->id(), spv::Op::OpTypeFloat,
+                                         64)) &&
           (type->GetOperandAs<uint32_t>(2) > 2)) {
         *num_locations = 2;
       } else {
         *num_locations = 1;
       }
       break;
-    case SpvOpTypeMatrix:
+    case spv::Op::OpTypeMatrix:
       // Matrices consume locations equal to the underlying vector type for
       // each column.
       NumConsumedLocations(_, _.FindDef(type->GetOperandAs<uint32_t>(1)),
                            num_locations);
       *num_locations *= type->GetOperandAs<uint32_t>(2);
       break;
-    case SpvOpTypeArray: {
+    case spv::Op::OpTypeArray: {
       // Arrays consume locations equal to the underlying type times the number
       // of elements in the vector.
       NumConsumedLocations(_, _.FindDef(type->GetOperandAs<uint32_t>(1)),
@@ -146,11 +154,11 @@ spv_result_t NumConsumedLocations(ValidationState_t& _, const Instruction* type,
       if (is_int && is_const) *num_locations *= value;
       break;
     }
-    case SpvOpTypeStruct: {
+    case spv::Op::OpTypeStruct: {
       // Members cannot have location decorations at this point.
-      if (_.HasDecoration(type->id(), SpvDecorationLocation)) {
+      if (_.HasDecoration(type->id(), spv::Decoration::Location)) {
         return _.diag(SPV_ERROR_INVALID_DATA, type)
-               << "Members cannot be assigned a location";
+               << _.VkErrorID(4918) << "Members cannot be assigned a location";
       }
 
       // Structs consume locations equal to the sum of the locations consumed
@@ -178,8 +186,8 @@ spv_result_t NumConsumedLocations(ValidationState_t& _, const Instruction* type,
 uint32_t NumConsumedComponents(ValidationState_t& _, const Instruction* type) {
   uint32_t num_components = 0;
   switch (type->opcode()) {
-    case SpvOpTypeInt:
-    case SpvOpTypeFloat:
+    case spv::Op::OpTypeInt:
+    case spv::Op::OpTypeFloat:
       // 64-bit types consume two components.
       if (type->GetOperandAs<uint32_t>(1) == 64) {
         num_components = 2;
@@ -187,7 +195,7 @@ uint32_t NumConsumedComponents(ValidationState_t& _, const Instruction* type) {
         num_components = 1;
       }
       break;
-    case SpvOpTypeVector:
+    case spv::Op::OpTypeVector:
       // Vectors consume components equal to the underlying type's consumption
       // times the number of elements in the vector. Note that 3- and 4-element
       // vectors cannot have a component decoration (i.e. assumed to be zero).
@@ -195,6 +203,10 @@ uint32_t NumConsumedComponents(ValidationState_t& _, const Instruction* type) {
           NumConsumedComponents(_, _.FindDef(type->GetOperandAs<uint32_t>(1)));
       num_components *= type->GetOperandAs<uint32_t>(2);
       break;
+    case spv::Op::OpTypeArray:
+      // Skip the array.
+      return NumConsumedComponents(_,
+                                   _.FindDef(type->GetOperandAs<uint32_t>(1)));
     default:
       // This is an error that is validated elsewhere.
       break;
@@ -210,10 +222,10 @@ spv_result_t GetLocationsForVariable(
     ValidationState_t& _, const Instruction* entry_point,
     const Instruction* variable, std::unordered_set<uint32_t>* locations,
     std::unordered_set<uint32_t>* output_index1_locations) {
-  const bool is_fragment = entry_point->GetOperandAs<SpvExecutionModel>(0) ==
-                           SpvExecutionModelFragment;
+  const bool is_fragment = entry_point->GetOperandAs<spv::ExecutionModel>(0) ==
+                           spv::ExecutionModel::Fragment;
   const bool is_output =
-      variable->GetOperandAs<SpvStorageClass>(2) == SpvStorageClassOutput;
+      variable->GetOperandAs<spv::StorageClass>(2) == spv::StorageClass::Output;
   auto ptr_type_id = variable->GetOperandAs<uint32_t>(0);
   auto ptr_type = _.FindDef(ptr_type_id);
   auto type_id = ptr_type->GetOperandAs<uint32_t>(2);
@@ -230,23 +242,23 @@ spv_result_t GetLocationsForVariable(
   uint32_t index = 0;
   bool has_patch = false;
   bool has_per_task_nv = false;
-  bool has_per_vertex_nv = false;
+  bool has_per_vertex_khr = false;
   for (auto& dec : _.id_decorations(variable->id())) {
-    if (dec.dec_type() == SpvDecorationLocation) {
+    if (dec.dec_type() == spv::Decoration::Location) {
       if (has_location && dec.params()[0] != location) {
         return _.diag(SPV_ERROR_INVALID_DATA, variable)
                << "Variable has conflicting location decorations";
       }
       has_location = true;
       location = dec.params()[0];
-    } else if (dec.dec_type() == SpvDecorationComponent) {
+    } else if (dec.dec_type() == spv::Decoration::Component) {
       if (has_component && dec.params()[0] != component) {
         return _.diag(SPV_ERROR_INVALID_DATA, variable)
                << "Variable has conflicting component decorations";
       }
       has_component = true;
       component = dec.params()[0];
-    } else if (dec.dec_type() == SpvDecorationIndex) {
+    } else if (dec.dec_type() == spv::Decoration::Index) {
       if (!is_output || !is_fragment) {
         return _.diag(SPV_ERROR_INVALID_DATA, variable)
                << "Index can only be applied to Fragment output variables";
@@ -257,15 +269,27 @@ spv_result_t GetLocationsForVariable(
       }
       has_index = true;
       index = dec.params()[0];
-    } else if (dec.dec_type() == SpvDecorationBuiltIn) {
+    } else if (dec.dec_type() == spv::Decoration::BuiltIn) {
       // Don't check built-ins.
       return SPV_SUCCESS;
-    } else if (dec.dec_type() == SpvDecorationPatch) {
+    } else if (dec.dec_type() == spv::Decoration::Patch) {
       has_patch = true;
-    } else if (dec.dec_type() == SpvDecorationPerTaskNV) {
+    } else if (dec.dec_type() == spv::Decoration::PerTaskNV) {
       has_per_task_nv = true;
-    } else if (dec.dec_type() == SpvDecorationPerVertexNV) {
-      has_per_vertex_nv = true;
+    } else if (dec.dec_type() == spv::Decoration::PerVertexKHR) {
+      if (!is_fragment) {
+        return _.diag(SPV_ERROR_INVALID_DATA, variable)
+               << _.VkErrorID(6777)
+               << "PerVertexKHR can only be applied to Fragment Execution "
+                  "Models";
+      }
+      if (type->opcode() != spv::Op::OpTypeArray &&
+          type->opcode() != spv::Op::OpTypeRuntimeArray) {
+        return _.diag(SPV_ERROR_INVALID_DATA, variable)
+               << _.VkErrorID(6778)
+               << "PerVertexKHR must be declared as arrays";
+      }
+      has_per_vertex_khr = true;
     }
   }
 
@@ -273,28 +297,28 @@ spv_result_t GetLocationsForVariable(
   // tessellation control, evaluation and geometry per-vertex inputs have a
   // layer of arraying that is not included in interface matching.
   bool is_arrayed = false;
-  switch (entry_point->GetOperandAs<SpvExecutionModel>(0)) {
-    case SpvExecutionModelTessellationControl:
+  switch (entry_point->GetOperandAs<spv::ExecutionModel>(0)) {
+    case spv::ExecutionModel::TessellationControl:
       if (!has_patch) {
         is_arrayed = true;
       }
       break;
-    case SpvExecutionModelTessellationEvaluation:
+    case spv::ExecutionModel::TessellationEvaluation:
       if (!is_output && !has_patch) {
         is_arrayed = true;
       }
       break;
-    case SpvExecutionModelGeometry:
+    case spv::ExecutionModel::Geometry:
       if (!is_output) {
         is_arrayed = true;
       }
       break;
-    case SpvExecutionModelFragment:
-      if (!is_output && has_per_vertex_nv) {
+    case spv::ExecutionModel::Fragment:
+      if (!is_output && has_per_vertex_khr) {
         is_arrayed = true;
       }
       break;
-    case SpvExecutionModelMeshNV:
+    case spv::ExecutionModel::MeshNV:
       if (is_output && !has_per_task_nv) {
         is_arrayed = true;
       }
@@ -304,22 +328,23 @@ spv_result_t GetLocationsForVariable(
   }
 
   // Unpack arrayness.
-  if (is_arrayed && (type->opcode() == SpvOpTypeArray ||
-                     type->opcode() == SpvOpTypeRuntimeArray)) {
+  if (is_arrayed && (type->opcode() == spv::Op::OpTypeArray ||
+                     type->opcode() == spv::Op::OpTypeRuntimeArray)) {
     type_id = type->GetOperandAs<uint32_t>(1);
     type = _.FindDef(type_id);
   }
 
-  if (type->opcode() == SpvOpTypeStruct) {
+  if (type->opcode() == spv::Op::OpTypeStruct) {
     // Don't check built-ins.
-    if (_.HasDecoration(type_id, SpvDecorationBuiltIn)) return SPV_SUCCESS;
+    if (_.HasDecoration(type_id, spv::Decoration::BuiltIn)) return SPV_SUCCESS;
   }
 
   // Only block-decorated structs don't need a location on the variable.
-  const bool is_block = _.HasDecoration(type_id, SpvDecorationBlock);
+  const bool is_block = _.HasDecoration(type_id, spv::Decoration::Block);
   if (!has_location && !is_block) {
+    const auto vuid = (type->opcode() == spv::Op::OpTypeStruct) ? 4917 : 4916;
     return _.diag(SPV_ERROR_INVALID_DATA, variable)
-           << "Variable must be decorated with a location";
+           << _.VkErrorID(vuid) << "Variable must be decorated with a location";
   }
 
   const std::string storage_class = is_output ? "output" : "input";
@@ -330,7 +355,7 @@ spv_result_t GetLocationsForVariable(
     uint32_t array_size = 1;
     // If the variable is still arrayed, mark the locations/components per
     // index.
-    if (type->opcode() == SpvOpTypeArray) {
+    if (type->opcode() == spv::Op::OpTypeArray) {
       // Determine the array size if possible and get the element type.
       std::tie(is_int, is_const, array_size) =
           _.EvalInt32IfConst(type->GetOperandAs<uint32_t>(2));
@@ -347,6 +372,11 @@ spv_result_t GetLocationsForVariable(
       uint32_t num_components = NumConsumedComponents(_, sub_type);
       uint32_t array_location = location + (num_locations * array_idx);
       uint32_t start = array_location * 4;
+      if (kMaxLocations <= start) {
+        // Too many locations, give up.
+        break;
+      }
+
       uint32_t end = (array_location + num_locations) * 4;
       if (num_components != 0) {
         start += component;
@@ -373,7 +403,7 @@ spv_result_t GetLocationsForVariable(
     std::unordered_map<uint32_t, uint32_t> member_locations;
     std::unordered_map<uint32_t, uint32_t> member_components;
     for (auto& dec : _.id_decorations(type_id)) {
-      if (dec.dec_type() == SpvDecorationLocation) {
+      if (dec.dec_type() == spv::Decoration::Location) {
         auto where = member_locations.find(dec.struct_member_index());
         if (where == member_locations.end()) {
           member_locations[dec.struct_member_index()] = dec.params()[0];
@@ -382,7 +412,7 @@ spv_result_t GetLocationsForVariable(
                  << "Member index " << dec.struct_member_index()
                  << " has conflicting location assignments";
         }
-      } else if (dec.dec_type() == SpvDecorationComponent) {
+      } else if (dec.dec_type() == spv::Decoration::Component) {
         auto where = member_components.find(dec.struct_member_index());
         if (where == member_components.end()) {
           member_components[dec.struct_member_index()] = dec.params()[0];
@@ -398,7 +428,7 @@ spv_result_t GetLocationsForVariable(
       auto where = member_locations.find(i - 1);
       if (where == member_locations.end()) {
         return _.diag(SPV_ERROR_INVALID_DATA, type)
-               << "Member index " << i - 1
+               << _.VkErrorID(4919) << "Member index " << i - 1
                << " is missing a location assignment";
       }
 
@@ -416,17 +446,41 @@ spv_result_t GetLocationsForVariable(
       }
 
       uint32_t start = location * 4;
-      uint32_t end = (location + num_locations) * 4;
-      if (num_components != 0) {
-        start += component;
-        end = location * 4 + component + num_components;
+      if (kMaxLocations <= start) {
+        // Too many locations, give up.
+        continue;
       }
-      for (uint32_t l = start; l < end; ++l) {
-        if (!locations->insert(l).second) {
-          return _.diag(SPV_ERROR_INVALID_DATA, entry_point)
-                 << "Entry-point has conflicting " << storage_class
-                 << " location assignment at location " << l / 4
-                 << ", component " << l % 4;
+
+      if (member->opcode() == spv::Op::OpTypeArray && num_components >= 1 &&
+          num_components < 4) {
+        // When an array has an element that takes less than a location in
+        // size, calculate the used locations in a strided manner.
+        for (uint32_t l = location; l < num_locations + location; ++l) {
+          for (uint32_t c = component; c < component + num_components; ++c) {
+            uint32_t check = 4 * l + c;
+            if (!locations->insert(check).second) {
+              return _.diag(SPV_ERROR_INVALID_DATA, entry_point)
+                     << "Entry-point has conflicting " << storage_class
+                     << " location assignment at location " << l
+                     << ", component " << c;
+            }
+          }
+        }
+      } else {
+        // TODO: There is a hole here is the member is an array of 3- or
+        // 4-element vectors of 64-bit types.
+        uint32_t end = (location + num_locations) * 4;
+        if (num_components != 0) {
+          start += component;
+          end = location * 4 + component + num_components;
+        }
+        for (uint32_t l = start; l < end; ++l) {
+          if (!locations->insert(l).second) {
+            return _.diag(SPV_ERROR_INVALID_DATA, entry_point)
+                   << "Entry-point has conflicting " << storage_class
+                   << " location assignment at location " << l / 4
+                   << ", component " << l % 4;
+          }
         }
       }
     }
@@ -439,12 +493,15 @@ spv_result_t ValidateLocations(ValidationState_t& _,
                                const Instruction* entry_point) {
   // According to Vulkan 14.1 only the following execution models have
   // locations assigned.
-  switch (entry_point->GetOperandAs<SpvExecutionModel>(0)) {
-    case SpvExecutionModelVertex:
-    case SpvExecutionModelTessellationControl:
-    case SpvExecutionModelTessellationEvaluation:
-    case SpvExecutionModelGeometry:
-    case SpvExecutionModelFragment:
+  // TODO(dneto): SPV_NV_ray_tracing also uses locations on interface variables,
+  // in other shader stages. Similarly, the *provisional* version of
+  // SPV_KHR_ray_tracing did as well, but not the final version.
+  switch (entry_point->GetOperandAs<spv::ExecutionModel>(0)) {
+    case spv::ExecutionModel::Vertex:
+    case spv::ExecutionModel::TessellationControl:
+    case spv::ExecutionModel::TessellationEvaluation:
+    case spv::ExecutionModel::Geometry:
+    case spv::ExecutionModel::Fragment:
       break;
     default:
       return SPV_SUCCESS;
@@ -454,16 +511,22 @@ spv_result_t ValidateLocations(ValidationState_t& _,
   std::unordered_set<uint32_t> input_locations;
   std::unordered_set<uint32_t> output_locations_index0;
   std::unordered_set<uint32_t> output_locations_index1;
+  std::unordered_set<uint32_t> seen;
   for (uint32_t i = 3; i < entry_point->operands().size(); ++i) {
     auto interface_id = entry_point->GetOperandAs<uint32_t>(i);
     auto interface_var = _.FindDef(interface_id);
-    auto storage_class = interface_var->GetOperandAs<SpvStorageClass>(2);
-    if (storage_class != SpvStorageClassInput &&
-        storage_class != SpvStorageClassOutput) {
+    auto storage_class = interface_var->GetOperandAs<spv::StorageClass>(2);
+    if (storage_class != spv::StorageClass::Input &&
+        storage_class != spv::StorageClass::Output) {
+      continue;
+    }
+    if (!seen.insert(interface_id).second) {
+      // Pre-1.4 an interface variable could be listed multiple times in an
+      // entry point. Validation for 1.4 or later is done elsewhere.
       continue;
     }
 
-    auto locations = (storage_class == SpvStorageClassInput)
+    auto locations = (storage_class == spv::StorageClass::Input)
                          ? &input_locations
                          : &output_locations_index0;
     if (auto error = GetLocationsForVariable(
@@ -488,12 +551,12 @@ spv_result_t ValidateInterfaces(ValidationState_t& _) {
 
   if (spvIsVulkanEnv(_.context()->target_env)) {
     for (auto& inst : _.ordered_instructions()) {
-      if (inst.opcode() == SpvOpEntryPoint) {
+      if (inst.opcode() == spv::Op::OpEntryPoint) {
         if (auto error = ValidateLocations(_, &inst)) {
           return error;
         }
       }
-      if (inst.opcode() == SpvOpTypeVoid) break;
+      if (inst.opcode() == spv::Op::OpTypeVoid) break;
     }
   }
 

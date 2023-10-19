@@ -1,3 +1,14 @@
+android {
+    namespace 'com.google.android.filament'
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
+}
+
 dependencies {
     implementation deps.androidx.annotations
 }

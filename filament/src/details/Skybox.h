@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-#include "upcast.h"
+#ifndef TNT_FILAMENT_DETAILS_SKYBOX_H
+#define TNT_FILAMENT_DETAILS_SKYBOX_H
+
+#include "downcast.h"
 
 #include <filament/Skybox.h>
 
@@ -22,9 +25,6 @@
 
 #include <utils/compiler.h>
 #include <utils/Entity.h>
-
-#ifndef TNT_FILAMENT_DETAILS_SKYBOX_H
-#define TNT_FILAMENT_DETAILS_SKYBOX_H
 
 namespace filament {
 
@@ -68,7 +68,7 @@ private:
     uint8_t mLayerMask = 0x1;
 };
 
-FILAMENT_UPCAST(Skybox)
+FILAMENT_DOWNCAST(Skybox)
 
 } // namespace filament
 

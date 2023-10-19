@@ -26,9 +26,10 @@ namespace fuzz {
 FuzzerPassAddCompositeExtract::FuzzerPassAddCompositeExtract(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddCompositeExtract::Apply() {
   std::vector<const protobufs::DataDescriptor*> composite_synonyms;
@@ -52,8 +53,8 @@ void FuzzerPassAddCompositeExtract::Apply() {
           opt::Function* /*unused*/, opt::BasicBlock* /*unused*/,
           opt::BasicBlock::iterator inst_it,
           const protobufs::InstructionDescriptor& instruction_descriptor) {
-        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(SpvOpCompositeExtract,
-                                                          inst_it)) {
+        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(
+                spv::Op::OpCompositeExtract, inst_it)) {
           return;
         }
 
@@ -96,15 +97,15 @@ void FuzzerPassAddCompositeExtract::Apply() {
             assert(type_inst && "Composite instruction has invalid type id");
 
             switch (type_inst->opcode()) {
-              case SpvOpTypeArray:
+              case spv::Op::OpTypeArray:
                 number_of_members =
                     fuzzerutil::GetArraySize(*type_inst, GetIRContext());
                 break;
-              case SpvOpTypeVector:
-              case SpvOpTypeMatrix:
+              case spv::Op::OpTypeVector:
+              case spv::Op::OpTypeMatrix:
                 number_of_members = type_inst->GetSingleWordInOperand(1);
                 break;
-              case SpvOpTypeStruct:
+              case spv::Op::OpTypeStruct:
                 number_of_members = type_inst->NumInOperands();
                 break;
               default:
@@ -121,12 +122,12 @@ void FuzzerPassAddCompositeExtract::Apply() {
                     number_of_members));
 
             switch (type_inst->opcode()) {
-              case SpvOpTypeArray:
-              case SpvOpTypeVector:
-              case SpvOpTypeMatrix:
+              case spv::Op::OpTypeArray:
+              case spv::Op::OpTypeVector:
+              case spv::Op::OpTypeMatrix:
                 type_id = type_inst->GetSingleWordInOperand(0);
                 break;
-              case SpvOpTypeStruct:
+              case spv::Op::OpTypeStruct:
                 type_id = type_inst->GetSingleWordInOperand(indices.back());
                 break;
               default:

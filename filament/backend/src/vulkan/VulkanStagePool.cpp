@@ -22,10 +22,14 @@
 
 #include <utils/Panic.h>
 
-static constexpr uint32_t TIME_BEFORE_EVICTION = VK_MAX_COMMAND_BUFFERS;
+static constexpr uint32_t TIME_BEFORE_EVICTION = FVK_MAX_COMMAND_BUFFERS;
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
+
+void VulkanStagePool::initialize(VmaAllocator allocator, VulkanCommands* commands) noexcept {
+    mAllocator = allocator;
+    mCommands = commands;
+}
 
 VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
     // First check if a stage exists whose capacity is greater than or equal to the requested size.
@@ -51,9 +55,15 @@ VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
         .size = numBytes,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
     };
-    VmaAllocationCreateInfo allocInfo { .pool = mContext.vmaPoolCPU };
-    vmaCreateBuffer(mContext.allocator, &bufferInfo, &allocInfo, &stage->buffer, &stage->memory,
-            nullptr);
+    VmaAllocationCreateInfo allocInfo { .usage = VMA_MEMORY_USAGE_CPU_ONLY };
+    UTILS_UNUSED_IN_RELEASE VkResult result = vmaCreateBuffer(mAllocator, &bufferInfo,
+            &allocInfo, &stage->buffer, &stage->memory, nullptr);
+
+#if FVK_ENABLED(FVK_DEBUG_ALLOCATION)
+    if (result != VK_SUCCESS) {
+        utils::slog.e << "Allocation error: " << result << utils::io::endl;
+    }
+#endif
 
     return stage;
 }
@@ -95,15 +105,33 @@ VulkanStageImage const* VulkanStagePool::acquireImage(PixelDataFormat format, Pi
         .usage = VMA_MEMORY_USAGE_CPU_TO_GPU
     };
 
-    const UTILS_UNUSED VkResult result = vmaCreateImage(mContext.allocator, &imageInfo, &allocInfo,
+    const UTILS_UNUSED VkResult result = vmaCreateImage(mAllocator, &imageInfo, &allocInfo,
             &image->image, &image->memory, nullptr);
 
     assert_invariant(result == VK_SUCCESS);
 
+    VkImageAspectFlags const aspectFlags = getImageAspect(vkformat);
+    VkCommandBuffer const cmdbuffer = mCommands->get().buffer();
+
+    // We use VK_IMAGE_LAYOUT_GENERAL here because the spec says:
+    // "Host access to image memory is only well-defined for linear images and for image
+    // subresources of those images which are currently in either the
+    // VK_IMAGE_LAYOUT_PREINITIALIZED or VK_IMAGE_LAYOUT_GENERAL layout. Calling
+    // vkGetImageSubresourceLayout for a linear image returns a subresource layout mapping that is
+    // valid for either of those image layouts."
+    VulkanImageUtility::transitionLayout(cmdbuffer, {
+            .image = image->image,
+            .oldLayout = VulkanLayout::UNDEFINED,
+            .newLayout = VulkanLayout::READ_WRITE, // (= VK_IMAGE_LAYOUT_GENERAL)
+            .subresources = { aspectFlags, 0, 1, 0, 1 },
+        });
     return image;
 }
 
 void VulkanStagePool::gc() noexcept {
+    FVK_SYSTRACE_CONTEXT();
+    FVK_SYSTRACE_START("stagepool::gc");
+
     // If this is one of the first few frames, return early to avoid wrapping unsigned integers.
     if (++mCurrentFrame <= TIME_BEFORE_EVICTION) {
         return;
@@ -115,7 +143,7 @@ void VulkanStagePool::gc() noexcept {
     freeStages.swap(mFreeStages);
     for (auto pair : freeStages) {
         if (pair.second->lastAccessed < evictionTime) {
-            vmaDestroyBuffer(mContext.allocator, pair.second->buffer, pair.second->memory);
+            vmaDestroyBuffer(mAllocator, pair.second->buffer, pair.second->memory);
             delete pair.second;
         } else {
             mFreeStages.insert(pair);
@@ -139,7 +167,7 @@ void VulkanStagePool::gc() noexcept {
     freeImages.swap(mFreeImages);
     for (auto image : freeImages) {
         if (image->lastAccessed < evictionTime) {
-            vmaDestroyImage(mContext.allocator, image->image, image->memory);
+            vmaDestroyImage(mAllocator, image->image, image->memory);
             delete image;
         } else {
             mFreeImages.insert(image);
@@ -157,33 +185,33 @@ void VulkanStagePool::gc() noexcept {
             mUsedImages.insert(image);
         }
     }
+    FVK_SYSTRACE_END();
 }
 
-void VulkanStagePool::reset() noexcept {
+void VulkanStagePool::terminate() noexcept {
     for (auto stage : mUsedStages) {
-        vmaDestroyBuffer(mContext.allocator, stage->buffer, stage->memory);
+        vmaDestroyBuffer(mAllocator, stage->buffer, stage->memory);
         delete stage;
     }
     mUsedStages.clear();
 
     for (auto pair : mFreeStages) {
-        vmaDestroyBuffer(mContext.allocator, pair.second->buffer, pair.second->memory);
+        vmaDestroyBuffer(mAllocator, pair.second->buffer, pair.second->memory);
         delete pair.second;
     }
     mFreeStages.clear();
 
     for (auto image : mUsedImages) {
-        vmaDestroyImage(mContext.allocator, image->image, image->memory);
+        vmaDestroyImage(mAllocator, image->image, image->memory);
         delete image;
     }
     mUsedStages.clear();
 
     for (auto image : mFreeImages) {
-        vmaDestroyImage(mContext.allocator, image->image, image->memory);
+        vmaDestroyImage(mAllocator, image->image, image->memory);
         delete image;
     }
     mFreeStages.clear();
 }
 
-} // namespace filament
-} // namespace backend
+} // namespace filament::backend

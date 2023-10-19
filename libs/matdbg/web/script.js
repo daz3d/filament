@@ -25,14 +25,14 @@ const shaderSource = document.getElementById("shader-source");
 const matDetailTemplate = document.getElementById("material-detail-template");
 const matListTemplate = document.getElementById("material-list-template");
 
+const STATUS_LOOP_TIMEOUT = 3000;
+
 const gMaterialDatabase = {};
 
-let gSocket = null;
 let gEditor = null;
 let gCurrentMaterial = "00000000";
 let gCurrentLanguage = "glsl";
 let gCurrentShader = { matid: "00000000", glindex: 0 };
-let gCurrentSocketId = 0;
 let gEditorIsLoading = false;
 
 require.config({ paths: { "vs": `${kMonacoBaseUrl}vs` }});
@@ -60,18 +60,28 @@ function getShaderAPI(selection) {
 
 function rebuildMaterial() {
     let api = 0, index = -1;
-    if (gCurrentLanguage === "spirv") {
-        console.error("SPIR-V editing is not supported.");
-        return;
-    }
-    switch (getShaderAPI()) {
+
+    const shader = getShaderRecord(gCurrentShader);
+    const shaderApi = getShaderAPI();
+
+    switch (shaderApi) {
         case "opengl": api = 1; index = gCurrentShader.glindex; break;
         case "vulkan": api = 2; index = gCurrentShader.vkindex; break;
         case "metal":  api = 3; index = gCurrentShader.metalindex; break;
     }
-    const editedText = getShaderRecord(gCurrentShader)[gCurrentLanguage];
-    const byteCount = new Blob([editedText]).size;
-    gSocket.send(`EDIT ${gCurrentShader.matid} ${api} ${index} ${byteCount} ${editedText}`);
+
+    if (shaderApi === "vulkan") {
+        if (gCurrentLanguage === "glsl") {
+            delete shader["spirv"];
+        } else if (gCurrentLanguage === "spirv") {
+            delete shader["glsl"];
+        }
+    }
+
+    const editedText = shader[gCurrentLanguage];
+    const req = new XMLHttpRequest();
+    req.open('POST', '/api/edit');
+    req.send(`${gCurrentShader.matid} ${api} ${index} ${editedText}`);
 }
 
 document.querySelector("body").addEventListener("click", (evt) => {
@@ -156,75 +166,83 @@ function fetchMaterial(matid) {
 }
 
 function queryActiveShaders() {
-    if (!gSocket) {
-        for (matid in gMaterialDatabase) {
-            const material = gMaterialDatabase[matid];
-            material.active = false;
-            for (const shader of material.opengl) shader.active = false;
-            for (const shader of material.vulkan) shader.active = false;
-            for (const shader of material.metal)  shader.active = false;
-        }
-        renderMaterialList();
-        renderMaterialDetail();
+    if (!isConnected()) {
         return;
     }
     fetch("api/active").then(function(response) {
         return response.json();
     }).then(function(activeMaterials) {
+        // The only active materials are the ones with active variants.
         for (matid in gMaterialDatabase) {
             const material = gMaterialDatabase[matid];
-            material.active = matid in activeMaterials;
+            material.active = false;
         }
         for (matid in activeMaterials) {
             const material = gMaterialDatabase[matid];
             const activeBackend = activeMaterials[matid][0];
             const activeShaders = activeMaterials[matid].slice(1);
             for (const shader of material[activeBackend]) {
-                const variant = parseInt(shader.variant);
-                shader.active = activeShaders.indexOf(variant) > -1;
+                shader.active = activeShaders.indexOf(shader.variant) > -1;
+                material.active = material.active || shader.active;
             }
         }
         renderMaterialList();
         renderMaterialDetail();
     })
-    .catch((error) => {
-        // This is expected to fail when the server is hosted from matinfo instead of Engine, since
-        // there are no active shaders in that situation.
+    .catch(error => {
+        // This can occur if the JSON is invalid.
+        console.error(error);
     });
 }
 
-function startSocket() {
-    const url = new URL(document.URL)
-    const ws = new WebSocket(`ws://${url.host}`);
+function isConnected() {
+    return footer.innerText == 'connected';
+}
 
-    // When a new server has come online, ask it what materials it has.
-    ws.addEventListener("open", () => {
-        footer.innerText = `connection ${gCurrentSocketId}`;
-        gCurrentSocketId++;
-
-        fetch("api/matids").then(function(response) {
-            return response.json();
-        }).then(function(matInfo) {
-            for (matid of matInfo) {
-                if (!(matid in gMaterialDatabase)) {
-                    fetchMaterial(matid);
-                }
+function onConnected() {
+    footer.innerText = 'connected';
+    fetch("api/matids").then(function(response) {
+        return response.json();
+    }).then(function(matInfo) {
+        for (matid of matInfo) {
+            if (!(matid in gMaterialDatabase)) {
+                fetchMaterial(matid);
             }
+        }
+    });
+}
+
+function onDisconnected() {
+    footer.innerText = 'not connected';
+    for (matid in gMaterialDatabase) {
+        const material = gMaterialDatabase[matid];
+        material.active = false;
+        for (const shader of material.opengl) shader.active = false;
+        for (const shader of material.vulkan) shader.active = false;
+        for (const shader of material.metal)  shader.active = false;
+    }
+    renderMaterialList();
+    renderMaterialDetail();
+}
+
+function statusLoop() {
+    // This is a hanging get except for when transition from disconnected to connected, which
+    // should return immediately.
+    fetch("api/status" + (isConnected() ? '' : '?firstTime'))
+        .then(async (response) => {
+            const matid = await response.text();
+            // A first-time request returned successfully
+            if (matid === '0') {
+                onConnected();
+            } else {
+                fetchMaterial(matid);
+            }
+            statusLoop();
+        })
+        .catch(err => {
+            onDisconnected();
+            setTimeout(statusLoop, STATUS_LOOP_TIMEOUT)
         });
-    });
-
-    ws.addEventListener("close", (e) => {
-        footer.innerText = "no connection";
-        gSocket = null;
-        setTimeout(() => startSocket(), 3000);
-    });
-
-    ws.addEventListener("message", event => {
-        const matid = event.data;
-        fetchMaterial(matid);
-    });
-
-    gSocket = ws;
 }
 
 function fetchMaterials() {
@@ -399,17 +417,17 @@ function selectShader(selection) {
     // Change the current language selection if necessary.
     switch (getShaderAPI(selection)) {
         case "opengl":
-            if (gCurrentLanguage != "glsl") {
+            if (gCurrentLanguage !== "glsl") {
                 gCurrentLanguage = "glsl";
             }
             break;
         case "vulkan":
-            if (gCurrentLanguage != "spirv" && gCurrentLanguage != "glsl") {
+            if (gCurrentLanguage !== "spirv" && gCurrentLanguage !== "glsl") {
                 gCurrentLanguage = "spirv";
             }
             break;
         case "metal":
-            if (gCurrentLanguage != "msl") {
+            if (gCurrentLanguage !== "msl") {
                 gCurrentLanguage = "msl";
             }
             break;
@@ -487,7 +505,11 @@ function init() {
     Mustache.parse(matDetailTemplate.innerHTML);
     Mustache.parse(matListTemplate.innerHTML);
 
-    startSocket();
+    statusLoop();
+
+    // Poll for active shaders once every second.
+    // Take care not to poll more frequently than the frame rate. Active variants are determined
+    // by the list of variants that were fetched between this query and the previous query.
     setInterval(queryActiveShaders, 1000);
 }
 

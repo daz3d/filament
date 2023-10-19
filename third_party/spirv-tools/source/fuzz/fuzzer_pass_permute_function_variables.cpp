@@ -29,9 +29,11 @@ namespace fuzz {
 FuzzerPassPermuteFunctionVariables::FuzzerPassPermuteFunctionVariables(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}  // Here we call parent constructor.
+                 transformations, ignore_inapplicable_transformations) {
+}  // Here we call parent constructor.
 
 void FuzzerPassPermuteFunctionVariables::Apply() {
   // Permuting OpVariable instructions in each function.
@@ -45,7 +47,7 @@ void FuzzerPassPermuteFunctionVariables::Apply() {
 
     std::vector<opt::Instruction*> variables;
     for (auto& instruction : *first_block) {
-      if (instruction.opcode() == SpvOpVariable) {
+      if (instruction.opcode() == spv::Op::OpVariable) {
         variables.push_back(&instruction);
       }
     }

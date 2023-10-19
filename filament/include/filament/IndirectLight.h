@@ -16,8 +16,8 @@
 
 //! \file
 
-#ifndef TNT_FILAMENT_INDIRECT_LIGHT_H
-#define TNT_FILAMENT_INDIRECT_LIGHT_H
+#ifndef TNT_FILAMENT_INDIRECTLIGHT_H
+#define TNT_FILAMENT_INDIRECTLIGHT_H
 
 #include <filament/FilamentAPI.h>
 
@@ -260,7 +260,7 @@ public:
      * range can be adjusted with this method.
      *
      * @param intensity  Scale factor applied to the environment and irradiance such that
-     *                   the result is in lux, or <i>lumen/m^2(default = 30000)
+     *                   the result is in lux, or <i>lumen/m^2</i> (default = 30000)
      */
     void setIntensity(float intensity) noexcept;
 
@@ -346,4 +346,4 @@ public:
 
 } // namespace filament
 
-#endif // TNT_FILAMENT_INDIRECT_LIGHT_H
+#endif // TNT_FILAMENT_INDIRECTLIGHT_H

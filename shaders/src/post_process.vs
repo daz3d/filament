@@ -4,23 +4,22 @@ void main() {
     initPostProcessMaterialVertex(inputs);
 
     inputs.normalizedUV = position.xy * 0.5 + 0.5;
-    inputs.texelCoords = inputs.normalizedUV * frameUniforms.resolution.xy;
 
-// In Vulkan and Metal, texture coords are Y-down. In OpenGL, texture coords are Y-up.
-#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
-    inputs.texelCoords.y = frameUniforms.resolution.y - inputs.texelCoords.y;
-    inputs.normalizedUV.y = 1.0 - inputs.normalizedUV.y;
-#endif
+    vec4 position = getPosition();
 
-    gl_Position = getPosition();
+    // GL convention to inverted DX convention
+    position.z = position.z * -0.5 + 0.5;
 
     // Adjust clip-space
-    gl_Position.z = dot(gl_Position.zw, frameUniforms.clipControl.xy);
+#if !defined(TARGET_VULKAN_ENVIRONMENT) && !defined(TARGET_METAL_ENVIRONMENT)
+    // This is not needed in Vulkan or Metal because clipControl is always (1, 0)
+    // (We don't use a dot() here because it workaround a spirv-opt optimization that in turn
+    //  causes a crash on PowerVR, see #5118)
+    position.z = position.z * frameUniforms.clipControl.x + position.w * frameUniforms.clipControl.y;
+#endif
 
     // Invoke user code
     postProcessVertex(inputs);
-
-    vertex_uv = inputs.texelCoords;
 
     // Handle user-defined interpolated attributes
 #if defined(VARIABLE_CUSTOM0)
@@ -35,4 +34,7 @@ void main() {
 #if defined(VARIABLE_CUSTOM3)
     VARIABLE_CUSTOM_AT3 = inputs.VARIABLE_CUSTOM3;
 #endif
+
+    // some PowerVR drivers crash when gl_Position is written more than once
+    gl_Position = position;
 }

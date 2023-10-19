@@ -15,16 +15,29 @@
  */
 
 #include <filaflat/MaterialChunk.h>
-#include <filaflat/BlobDictionary.h>
 #include <filaflat/ChunkContainer.h>
-#include <filaflat/ShaderBuilder.h>
+
+#include <backend/DriverEnums.h>
 
 #include <utils/Log.h>
 
 namespace filaflat {
 
-static inline uint32_t makeKey(uint8_t shaderModel, uint8_t variant, uint8_t type) noexcept {
-    return (shaderModel << 16) | (type << 8) | variant;
+static inline uint32_t makeKey(
+        MaterialChunk::ShaderModel shaderModel,
+        MaterialChunk::Variant variant,
+        MaterialChunk::ShaderStage stage) noexcept {
+    static_assert(sizeof(variant.key) * 8 <= 8);
+    return (uint32_t(shaderModel) << 16) | (uint32_t(stage) << 8) | variant.key;
+}
+
+void MaterialChunk::decodeKey(uint32_t key,
+        MaterialChunk::ShaderModel* model,
+        MaterialChunk::Variant* variant,
+        MaterialChunk::ShaderStage* stage) {
+    variant->key = key & 0xff;
+    *model = MaterialChunk::ShaderModel((key >> 16) & 0xff);
+    *stage = MaterialChunk::ShaderStage((key >> 8) & 0xff);
 }
 
 MaterialChunk::MaterialChunk(ChunkContainer const& container)
@@ -33,16 +46,15 @@ MaterialChunk::MaterialChunk(ChunkContainer const& container)
 
 MaterialChunk::~MaterialChunk() noexcept = default;
 
-bool MaterialChunk::readIndex(filamat::ChunkType materialTag) {
+bool MaterialChunk::initialize(filamat::ChunkType materialTag) {
 
     if (mBase != nullptr) {
-        // readIndex() should be called only once.
+        // initialize() should be called only once.
         return true;
     }
 
-    Unflattener unflattener(
-            mContainer.getChunkStart(materialTag),
-            mContainer.getChunkEnd(materialTag));
+    auto [start, end] = mContainer.getChunkRange(materialTag);
+    Unflattener unflattener(start, end);
 
     mUnflattener = unflattener;
     mMaterialTag = materialTag;
@@ -56,20 +68,20 @@ bool MaterialChunk::readIndex(filamat::ChunkType materialTag) {
 
     // Read all index entries.
     for (uint64_t i = 0 ; i < numShaders; i++) {
-        uint8_t shaderModelValue;
-        uint8_t variantValue;
-        uint8_t pipelineStageValue;
+        uint8_t model;
+        Variant variant;
+        uint8_t stage;
         uint32_t offsetValue;
 
-        if (!unflattener.read(&shaderModelValue)) {
+        if (!unflattener.read(&model)) {
             return false;
         }
 
-        if (!unflattener.read(&variantValue)) {
+        if (!unflattener.read(&variant)) {
             return false;
         }
 
-        if (!unflattener.read(&pipelineStageValue)) {
+        if (!unflattener.read(&stage)) {
             return false;
         }
 
@@ -77,22 +89,21 @@ bool MaterialChunk::readIndex(filamat::ChunkType materialTag) {
             return false;
         }
 
-        uint32_t key = makeKey(shaderModelValue, variantValue, pipelineStageValue);
+        uint32_t key = makeKey(ShaderModel(model), variant, ShaderStage(stage));
         mOffsets[key] = offsetValue;
     }
     return true;
 }
 
-bool MaterialChunk::getTextShader(Unflattener unflattener, BlobDictionary const& dictionary,
-        ShaderBuilder& shaderBuilder, uint8_t shaderModel, uint8_t variant, uint8_t ps) {
+bool MaterialChunk::getTextShader(Unflattener unflattener,
+        BlobDictionary const& dictionary, ShaderContent& shaderContent,
+        ShaderModel shaderModel, Variant variant, ShaderStage shaderStage) {
     if (mBase == nullptr) {
         return false;
     }
 
-    shaderBuilder.reset();
-
     // Jump and read
-    uint32_t key = makeKey(shaderModel, variant, ps);
+    uint32_t key = makeKey(shaderModel, variant, shaderStage);
     auto pos = mOffsets.find(key);
     if (pos == mOffsets.end()) {
         return false;
@@ -111,14 +122,15 @@ bool MaterialChunk::getTextShader(Unflattener unflattener, BlobDictionary const&
         return false;
     }
 
-    // Add an extra char for the null terminator.
-    shaderBuilder.announce(shaderSize + 1);
-
     // Read how many lines there are.
     uint32_t lineCount = 0;
     if (!unflattener.read(&lineCount)){
         return false;
     }
+
+    shaderContent.reserve(shaderSize);
+    shaderContent.resize(shaderSize);
+    size_t cursor = 0;
 
     // Read all lines.
     for(int32_t i = 0 ; i < lineCount; i++) {
@@ -126,51 +138,92 @@ bool MaterialChunk::getTextShader(Unflattener unflattener, BlobDictionary const&
         if (!unflattener.read(&lineIndex)) {
             return false;
         }
-        const char* string = dictionary.getString(lineIndex);
-        shaderBuilder.append(string, strlen(string));
-        shaderBuilder.append("\n", 1);
+        const auto& content = dictionary[lineIndex];
+
+        // Replace null with newline.
+        memcpy(&shaderContent[cursor], content.data(), content.size() - 1);
+        cursor += content.size() - 1;
+        shaderContent[cursor++] = '\n';
     }
 
     // Write the terminating null character.
-    shaderBuilder.append("", 1);
+    shaderContent[cursor++] = 0;
+    assert_invariant(cursor == shaderSize);
 
     return true;
 }
 
-
 bool MaterialChunk::getSpirvShader(BlobDictionary const& dictionary,
-        ShaderBuilder& shaderBuilder, uint8_t shaderModel, uint8_t variant, uint8_t stage) {
+        ShaderContent& shaderContent, ShaderModel shaderModel, filament::Variant variant, ShaderStage shaderStage) {
 
     if (mBase == nullptr) {
         return false;
     }
 
-    uint32_t key = makeKey(shaderModel, variant, stage);
+    uint32_t key = makeKey(shaderModel, variant, shaderStage);
     auto pos = mOffsets.find(key);
     if (pos == mOffsets.end()) {
         return false;
     }
 
-    size_t index = pos->second;
-    size_t shaderSize;
-    const char* shaderContent = dictionary.getBlob(index, &shaderSize);
-
-    shaderBuilder.reset();
-    shaderBuilder.announce(shaderSize);
-    shaderBuilder.append(shaderContent, shaderSize);
+    shaderContent = dictionary[pos->second];
     return true;
 }
 
-bool MaterialChunk::getShader(ShaderBuilder& shaderBuilder,
-        BlobDictionary const& dictionary, uint8_t shaderModel, uint8_t variant, uint8_t stage) {
+bool MaterialChunk::hasShader(ShaderModel model, Variant variant, ShaderStage stage) const noexcept {
+    if (mBase == nullptr) {
+        return false;
+    }
+    auto pos = mOffsets.find(makeKey(model, variant, stage));
+    return pos != mOffsets.end();
+}
+
+bool MaterialChunk::getShader(ShaderContent& shaderContent, BlobDictionary const& dictionary,
+        ShaderModel shaderModel, filament::Variant variant, ShaderStage stage) {
     switch (mMaterialTag) {
         case filamat::ChunkType::MaterialGlsl:
+        case filamat::ChunkType::MaterialEssl1:
         case filamat::ChunkType::MaterialMetal:
-            return getTextShader(mUnflattener, dictionary, shaderBuilder, shaderModel, variant, stage);
+            return getTextShader(mUnflattener, dictionary, shaderContent, shaderModel, variant, stage);
         case filamat::ChunkType::MaterialSpirv:
-            return getSpirvShader(dictionary, shaderBuilder, shaderModel, variant, stage);
+            return getSpirvShader(dictionary, shaderContent, shaderModel, variant, stage);
         default:
             return false;
+    }
+}
+
+uint32_t MaterialChunk::getShaderCount() const noexcept {
+    Unflattener unflattener{ mUnflattener }; // make a copy
+    uint64_t numShaders;
+    unflattener.read(&numShaders);
+    return uint32_t(numShaders);
+}
+
+void MaterialChunk::visitShaders(
+        utils::Invocable<void(ShaderModel, Variant, ShaderStage)>&& visitor) const {
+
+    Unflattener unflattener{ mUnflattener }; // make a copy
+
+    // read() calls below cannot fail by construction, because we've already run through them
+    // in the constructor.
+
+    // Read how many shaders we have in the chunk.
+    uint64_t numShaders;
+    unflattener.read(&numShaders);
+
+    // Read all index entries.
+    for (uint64_t i = 0; i < numShaders; i++) {
+        uint8_t shaderModelValue;
+        filament::Variant variant;
+        uint8_t pipelineStageValue;
+        uint32_t offsetValue;
+
+        unflattener.read(&shaderModelValue);
+        unflattener.read(&variant);
+        unflattener.read(&pipelineStageValue);
+        unflattener.read(&offsetValue);
+
+        visitor(ShaderModel(shaderModelValue), variant, ShaderStage(pipelineStageValue));
     }
 }
 

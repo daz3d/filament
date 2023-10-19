@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 51;
+	objectVersion = 52;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -26,11 +26,11 @@
 		1FF7EE9D5DD74F1A740C0D88 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		2B973C3E0FE0EEED37D41D32 /* FILModelView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FILModelView.h; sourceTree = "<group>"; };
 		3B5A2C1598614ED63098A783 /* FILViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = FILViewController.mm; sourceTree = "<group>"; };
-		5271315876D6BC61346DFD97 /* default_env_skybox.ktx */ = {isa = PBXFileReference; path = default_env_skybox.ktx; sourceTree = "<group>"; };
+		5271315876D6BC61346DFD97 /* default_env_skybox.ktx */ = {isa = PBXFileReference; lastKnownFileType = file; path = default_env_skybox.ktx; sourceTree = "<group>"; };
 		6E6BB885F2B193E786CD9F14 /* FILViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FILViewController.h; sourceTree = "<group>"; };
 		7F78E613984102280C822052 /* BusterDrone */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BusterDrone; path = ../../../third_party/models/BusterDrone; sourceTree = SOURCE_ROOT; };
-		9ADEA6DE7305D0B8CCFFA53D /* gltf-viewer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "gltf-viewer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		A027015F6F283E92C379F0B1 /* default_env_ibl.ktx */ = {isa = PBXFileReference; path = default_env_ibl.ktx; sourceTree = "<group>"; };
+		9ADEA6DE7305D0B8CCFFA53D /* gltf-viewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "gltf-viewer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A027015F6F283E92C379F0B1 /* default_env_ibl.ktx */ = {isa = PBXFileReference; lastKnownFileType = file; path = default_env_ibl.ktx; sourceTree = "<group>"; };
 		A0A866F9B1B8D315E88D3D12 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		B9C391BBD90EB54D27F8E4FD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C7ECAA95F4A55C69B948F806 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -119,11 +119,9 @@
 			isa = PBXProject;
 			attributes = {
 				LastUpgradeCheck = 1200;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 90327DE42AE5DF12C4BD2113 /* Build configuration list for PBXProject "gltf-viewer" */;
-			compatibilityVersion = "Xcode 10.0";
+			compatibilityVersion = "Xcode 11.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -175,7 +173,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "#/usr/bin/env/bash\n\nset -e\n\n# Compile resources.\n\n# The gltf-viewer app requires two resources:\n# 1. The IBL image\n# 2. The skybox image\n\nHOST_TOOLS_PATH=\"${HOST_TOOLS_PATH:-../../../out/release/filament/bin}\"\n\ncmgen_path=`find ${HOST_TOOLS_PATH} -name cmgen -type f | head -n 1`\n\n# Ensure that the required tools are present in the out/ directory.\n# These can be built by running ./build.sh -p desktop -i release at Filament's root directory.\n\nif [[ ! -e \"${cmgen_path}\" ]]; then\n  echo \"No cmgen binary could be found in ${HOST_TOOLS_PATH}.\"\n  echo \"Ensure Filament has been built/installed before building this app.\"\n  exit 1\nfi\n\n# cmgen consumes an HDR environment map and generates two mipmapped KTX files (IBL and skybox)\n\"${cmgen_path}\" \\\n    --deploy=\"${PROJECT_DIR}/generated/default_env\" \\\n    --format=ktx --size=256 --extract-blur=0.1 \\\n    \"${PROJECT_DIR}/../../../third_party/environments/lightroom_14b.hdr\"\n";
+			shellScript = "#/usr/bin/env/bash\n\nset -e\n\n# Compile resources.\n\n# The gltf-viewer app requires two resources:\n# 1. The IBL image\n# 2. The skybox image\n\nHOST_TOOLS_PATH=\"${HOST_TOOLS_PATH:-../../../out/release/filament/bin}\"\n\ncmgen_path=`find ${HOST_TOOLS_PATH} -name cmgen -type f | head -n 1`\n\n# Ensure that the required tools are present in the out/ directory.\n# These can be built by running ./build.sh -p desktop -i release at Filament's root directory.\n\nif [[ ! -e \"${cmgen_path}\" ]]; then\n  echo \"No cmgen binary could be found in ${HOST_TOOLS_PATH}.\"\n  echo \"Ensure Filament has been built/installed before building this app.\"\n  exit 1\nfi\n\n# cmgen consumes an HDR environment map and generates two mipmapped KTX files (IBL and skybox)\n\"${cmgen_path}\" \\\n    --quiet \\\n    --deploy=\"${PROJECT_DIR}/generated/default_env\" \\\n    --format=ktx --size=256 --extract-blur=0.1 \\\n    \"${PROJECT_DIR}/../../../third_party/environments/lightroom_14b.hdr\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -389,6 +387,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -413,21 +412,27 @@
 					"-lfilament",
 					"-lbackend",
 					"-lfilaflat",
+					"-lktxreader",
 					"-lfilabridge",
 					"-lutils",
 					"-lsmol-v",
 					"-lgeometry",
 					"-libl",
 					"-lgltfio_core",
-					"-lgltfio_resources",
+					"-luberarchive",
 					"-limage",
-					"-lgeometry",
+					"-lstb",
+					"-lbasis_transcoder",
+					"-lzstd",
 					"-lcamutils",
 					"-ldracodec",
+					"-lmeshoptimizer",
 					"-lviewer",
 					"-lcivetweb",
+					"-luberzlib",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "google.filament.gltf-viewer";
+				PRODUCT_BUNDLE_IDENTIFIER = "${SAMPLE_CODE_DISAMBIGUATOR}.google.filament.gltf-viewer";
+				SAMPLE_CODE_DISAMBIGUATOR = "${DEVELOPMENT_TEAM}";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -437,6 +442,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -461,21 +467,27 @@
 					"-lfilament",
 					"-lbackend",
 					"-lfilaflat",
+					"-lktxreader",
 					"-lfilabridge",
 					"-lutils",
 					"-lsmol-v",
 					"-lgeometry",
 					"-libl",
 					"-lgltfio_core",
-					"-lgltfio_resources",
+					"-luberarchive",
 					"-limage",
-					"-lgeometry",
+					"-lstb",
+					"-lbasis_transcoder",
+					"-lzstd",
 					"-lcamutils",
 					"-ldracodec",
+					"-lmeshoptimizer",
 					"-lviewer",
 					"-lcivetweb",
+					"-luberzlib",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "google.filament.gltf-viewer";
+				PRODUCT_BUNDLE_IDENTIFIER = "${SAMPLE_CODE_DISAMBIGUATOR}.google.filament.gltf-viewer";
+				SAMPLE_CODE_DISAMBIGUATOR = "${DEVELOPMENT_TEAM}";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -547,6 +559,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -571,21 +584,27 @@
 					"-lfilament",
 					"-lbackend",
 					"-lfilaflat",
+					"-lktxreader",
 					"-lfilabridge",
 					"-lutils",
 					"-lsmol-v",
 					"-lgeometry",
 					"-libl",
 					"-lgltfio_core",
-					"-lgltfio_resources",
+					"-luberarchive",
 					"-limage",
-					"-lgeometry",
+					"-lstb",
+					"-lbasis_transcoder",
+					"-lzstd",
 					"-lcamutils",
 					"-ldracodec",
+					"-lmeshoptimizer",
 					"-lviewer",
 					"-lcivetweb",
+					"-luberzlib",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "google.filament.gltf-viewer";
+				PRODUCT_BUNDLE_IDENTIFIER = "${SAMPLE_CODE_DISAMBIGUATOR}.google.filament.gltf-viewer";
+				SAMPLE_CODE_DISAMBIGUATOR = "${DEVELOPMENT_TEAM}";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -595,6 +614,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -619,21 +639,27 @@
 					"-lfilament",
 					"-lbackend",
 					"-lfilaflat",
+					"-lktxreader",
 					"-lfilabridge",
 					"-lutils",
 					"-lsmol-v",
 					"-lgeometry",
 					"-libl",
 					"-lgltfio_core",
-					"-lgltfio_resources",
+					"-luberarchive",
 					"-limage",
-					"-lgeometry",
+					"-lstb",
+					"-lbasis_transcoder",
+					"-lzstd",
 					"-lcamutils",
 					"-ldracodec",
+					"-lmeshoptimizer",
 					"-lviewer",
 					"-lcivetweb",
+					"-luberzlib",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "google.filament.gltf-viewer";
+				PRODUCT_BUNDLE_IDENTIFIER = "${SAMPLE_CODE_DISAMBIGUATOR}.google.filament.gltf-viewer";
+				SAMPLE_CODE_DISAMBIGUATOR = "${DEVELOPMENT_TEAM}";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

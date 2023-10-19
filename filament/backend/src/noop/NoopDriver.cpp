@@ -17,29 +17,30 @@
 #include "noop/NoopDriver.h"
 #include "CommandStreamDispatcher.h"
 
-namespace filament {
-
-using namespace backend;
+namespace filament::backend {
 
 Driver* NoopDriver::create() {
     return new NoopDriver();
 }
 
-NoopDriver::NoopDriver() noexcept : DriverBase(new ConcreteDispatcher<NoopDriver>()) {
-}
+NoopDriver::NoopDriver() noexcept = default;
 
 NoopDriver::~NoopDriver() noexcept = default;
 
-backend::ShaderModel NoopDriver::getShaderModel() const noexcept {
-#if defined(ANDROID) || defined(IOS) || defined(__EMSCRIPTEN__)
-    return ShaderModel::GL_ES_30;
+Dispatcher NoopDriver::getDispatcher() const noexcept {
+    return ConcreteDispatcher<NoopDriver>::make();
+}
+
+ShaderModel NoopDriver::getShaderModel() const noexcept {
+#if defined(__ANDROID__) || defined(IOS) || defined(__EMSCRIPTEN__)
+    return ShaderModel::MOBILE;
 #else
-    return ShaderModel::GL_CORE_41;
+    return ShaderModel::DESKTOP;
 #endif
 }
 
 // explicit instantiation of the Dispatcher
-template class backend::ConcreteDispatcher<NoopDriver>;
+template class ConcreteDispatcher<NoopDriver>;
 
 
 void NoopDriver::terminate() {
@@ -52,12 +53,12 @@ void NoopDriver::beginFrame(int64_t monotonic_clock_ns, uint32_t frameId) {
 }
 
 void NoopDriver::setFrameScheduledCallback(Handle<HwSwapChain> sch,
-        backend::FrameScheduledCallback callback, void* user) {
+        FrameScheduledCallback callback, void* user) {
 
 }
 
 void NoopDriver::setFrameCompletedCallback(Handle<HwSwapChain> sch,
-        backend::FrameCompletedCallback callback, void* user) {
+        CallbackHandler* handler, CallbackHandler::Callback callback, void* user) {
 
 }
 
@@ -106,9 +107,6 @@ void NoopDriver::destroyStream(Handle<HwStream> sh) {
 void NoopDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
 }
 
-void NoopDriver::destroySync(Handle<HwSync> fh) {
-}
-
 Handle<HwStream> NoopDriver::createStreamNative(void* nativeStream) {
     return {};
 }
@@ -117,8 +115,8 @@ Handle<HwStream> NoopDriver::createStreamAcquired() {
     return {};
 }
 
-void NoopDriver::setAcquiredImage(Handle<HwStream> sh, void* image, backend::StreamCallback cb,
-        void* userData) {
+void NoopDriver::setAcquiredImage(Handle<HwStream> sh, void* image,
+        CallbackHandler* handler, StreamCallback cb, void* userData) {
 }
 
 void NoopDriver::setStreamDimensions(Handle<HwStream> sh, uint32_t width, uint32_t height) {
@@ -134,7 +132,7 @@ void NoopDriver::updateStreams(CommandStream* driver) {
 void NoopDriver::destroyFence(Handle<HwFence> fh) {
 }
 
-FenceStatus NoopDriver::wait(Handle<HwFence> fh, uint64_t timeout) {
+FenceStatus NoopDriver::getFenceStatus(Handle<HwFence> fh) {
     return FenceStatus::CONDITION_SATISFIED;
 }
 
@@ -148,7 +146,7 @@ bool NoopDriver::isTextureSwizzleSupported() {
     return true;
 }
 
-bool NoopDriver::isTextureFormatMipmappable(backend::TextureFormat format) {
+bool NoopDriver::isTextureFormatMipmappable(TextureFormat format) {
     return true;
 }
 
@@ -160,16 +158,48 @@ bool NoopDriver::isFrameBufferFetchSupported() {
     return false;
 }
 
+bool NoopDriver::isFrameBufferFetchMultiSampleSupported() {
+    return false; // TODO: add support for MS framebuffer_fetch
+}
+
 bool NoopDriver::isFrameTimeSupported() {
     return true;
 }
 
+bool NoopDriver::isAutoDepthResolveSupported() {
+    return true;
+}
+
+bool NoopDriver::isSRGBSwapChainSupported() {
+    return false;
+}
+
+bool NoopDriver::isStereoSupported() {
+    return false;
+}
+
+bool NoopDriver::isParallelShaderCompileSupported() {
+    return false;
+}
+
+bool NoopDriver::isWorkaroundNeeded(Workaround) {
+    return false;
+}
+
+FeatureLevel NoopDriver::getFeatureLevel() {
+    return FeatureLevel::FEATURE_LEVEL_1;
+}
+
 math::float2 NoopDriver::getClipSpaceParams() {
-    return math::float2{ -1.0f, 0.0f };
+    return math::float2{ 1.0f, 0.0f };
 }
 
 uint8_t NoopDriver::getMaxDrawBuffers() {
-    return backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT;
+    return MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT;
+}
+
+size_t NoopDriver::getMaxUniformBufferSize() {
+    return 16384u;
 }
 
 void NoopDriver::updateIndexBuffer(Handle<HwIndexBuffer> ibh, BufferDescriptor&& p,
@@ -182,14 +212,16 @@ void NoopDriver::updateBufferObject(Handle<HwBufferObject> ibh, BufferDescriptor
     scheduleDestroy(std::move(p));
 }
 
-void NoopDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh, uint32_t index,
-        Handle<HwBufferObject> boh) {
+void NoopDriver::updateBufferObjectUnsynchronized(Handle<HwBufferObject> ibh, BufferDescriptor&& p,
+        uint32_t byteOffset) {
+    scheduleDestroy(std::move(p));
 }
 
-void NoopDriver::update2DImage(Handle<HwTexture> th,
-        uint32_t level, uint32_t xoffset, uint32_t yoffset, uint32_t width, uint32_t height,
-        PixelBufferDescriptor&& data) {
-    scheduleDestroy(std::move(data));
+void NoopDriver::resetBufferObject(Handle<HwBufferObject> boh) {
+}
+
+void NoopDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh, uint32_t index,
+        Handle<HwBufferObject> boh) {
 }
 
 void NoopDriver::setMinMaxLevels(Handle<HwTexture> th, uint32_t minLevel, uint32_t maxLevel) {
@@ -202,23 +234,11 @@ void NoopDriver::update3DImage(Handle<HwTexture> th,
     scheduleDestroy(std::move(data));
 }
 
-void NoopDriver::updateCubeImage(Handle<HwTexture> th, uint32_t level,
-        PixelBufferDescriptor&& data, FaceOffsets faceOffsets) {
-    scheduleDestroy(std::move(data));
-}
-
 void NoopDriver::setupExternalImage(void* image) {
-}
-
-void NoopDriver::cancelExternalImage(void* image) {
 }
 
 bool NoopDriver::getTimerQueryValue(Handle<HwTimerQuery> tqh, uint64_t* elapsedTime) {
     return false;
-}
-
-SyncStatus NoopDriver::getSyncStatus(Handle<HwSync> sh) {
-    return SyncStatus::SIGNALED;
 }
 
 void NoopDriver::setExternalImage(Handle<HwTexture> th, void* image) {
@@ -237,7 +257,15 @@ bool NoopDriver::canGenerateMipmaps() {
 }
 
 void NoopDriver::updateSamplerGroup(Handle<HwSamplerGroup> sbh,
-        SamplerGroup&& samplerGroup) {
+        BufferDescriptor&& data) {
+    scheduleDestroy(std::move(data));
+}
+
+void NoopDriver::compilePrograms(CompilerPriorityQueue priority,
+        CallbackHandler* handler, CallbackHandler::Callback callback, void* user) {
+    if (callback) {
+        scheduleCallback(handler, user, callback);
+    }
 }
 
 void NoopDriver::beginRenderPass(Handle<HwRenderTarget> rth, const RenderPassParams& params) {
@@ -249,15 +277,6 @@ void NoopDriver::endRenderPass(int) {
 void NoopDriver::nextSubpass(int) {
 }
 
-void NoopDriver::setRenderPrimitiveBuffer(Handle<HwRenderPrimitive> rph,
-        Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh) {
-}
-
-void NoopDriver::setRenderPrimitiveRange(Handle<HwRenderPrimitive> rph,
-        PrimitiveType pt, uint32_t offset,
-        uint32_t minIndex, uint32_t maxIndex, uint32_t count) {
-}
-
 void NoopDriver::makeCurrent(Handle<HwSwapChain> drawSch, Handle<HwSwapChain> readSch) {
 }
 
@@ -267,8 +286,11 @@ void NoopDriver::commit(Handle<HwSwapChain> sch) {
 void NoopDriver::bindUniformBuffer(uint32_t index, Handle<HwBufferObject> ubh) {
 }
 
-void NoopDriver::bindUniformBufferRange(uint32_t index, Handle<HwBufferObject> ubh,
-        uint32_t offset, uint32_t size) {
+void NoopDriver::bindBufferRange(BufferObjectBinding bindingType, uint32_t index,
+        Handle<HwBufferObject> ubh, uint32_t offset, uint32_t size) {
+}
+
+void NoopDriver::unbindBuffer(BufferObjectBinding bindingType, uint32_t index) {
 }
 
 void NoopDriver::bindSamplers(uint32_t index, Handle<HwSamplerGroup> sbh) {
@@ -295,24 +317,31 @@ void NoopDriver::readPixels(Handle<HwRenderTarget> src,
     scheduleDestroy(std::move(p));
 }
 
-void NoopDriver::readStreamPixels(Handle<HwStream> sh, uint32_t x, uint32_t y, uint32_t width,
-        uint32_t height, PixelBufferDescriptor&& p) {
+void NoopDriver::readBufferSubData(backend::BufferObjectHandle boh,
+        uint32_t offset, uint32_t size, backend::BufferDescriptor&& p) {
     scheduleDestroy(std::move(p));
 }
 
 void NoopDriver::blit(TargetBufferFlags buffers,
-        Handle<HwRenderTarget> dst, backend::Viewport dstRect,
-        Handle<HwRenderTarget> src, backend::Viewport srcRect,
+        Handle<HwRenderTarget> dst, Viewport dstRect,
+        Handle<HwRenderTarget> src, Viewport srcRect,
         SamplerMagFilter filter) {
 }
 
-void NoopDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> rph) {
+void NoopDriver::draw(PipelineState pipelineState, Handle<HwRenderPrimitive> rph,
+        uint32_t instanceCount) {
+}
+
+void NoopDriver::dispatchCompute(Handle<HwProgram> program, math::uint3 workGroupCount) {
 }
 
 void NoopDriver::beginTimerQuery(Handle<HwTimerQuery> tqh) {
 }
 
 void NoopDriver::endTimerQuery(Handle<HwTimerQuery> tqh) {
+}
+
+void NoopDriver::resetState(int) {
 }
 
 } // namespace filament

@@ -1,4 +1,4 @@
-# Copyright (C) 2020 The Khronos Group Inc.
+# Copyright (C) 2020-2023 The Khronos Group Inc.
 #
 # All rights reserved.
 #
@@ -31,81 +31,109 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-add_library(glslang-default-resource-limits
-            ${CMAKE_CURRENT_SOURCE_DIR}/ResourceLimits.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/resource_limits_c.cpp)
-set_property(TARGET glslang-default-resource-limits PROPERTY FOLDER glslang)
-set_property(TARGET glslang-default-resource-limits PROPERTY POSITION_INDEPENDENT_CODE ON)
+find_host_package(Python3 REQUIRED)
 
-target_include_directories(glslang-default-resource-limits
-                           PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-                           PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
+set(GLSLANG_INTRINSIC_H          "${GLSLANG_GENERATED_INCLUDEDIR}/glslang/glsl_intrinsic_header.h")
+set(GLSLANG_INTRINSIC_PY         "${CMAKE_CURRENT_SOURCE_DIR}/../gen_extension_headers.py")
+set(GLSLANG_INTRINSIC_HEADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../glslang/ExtensionHeaders")
 
-set(SOURCES StandAlone.cpp DirStackFileIncluder.h)
+add_custom_command(
+    OUTPUT  ${GLSLANG_INTRINSIC_H}
+    COMMAND Python3::Interpreter "${GLSLANG_INTRINSIC_PY}"
+            "-i" ${GLSLANG_INTRINSIC_HEADER_DIR}
+            "-o" ${GLSLANG_INTRINSIC_H}
+    DEPENDS ${GLSLANG_INTRINSIC_PY}
+    COMMENT "Generating ${GLSLANG_INTRINSIC_H}")
 
-add_executable(glslangValidator ${SOURCES})
-set_property(TARGET glslangValidator PROPERTY FOLDER tools)
-glslang_set_link_args(glslangValidator)
+set(SOURCES StandAlone.cpp DirStackFileIncluder.h  ${GLSLANG_INTRINSIC_H})
+
+add_executable(glslang-standalone ${SOURCES})
+set_property(TARGET glslang-standalone PROPERTY FOLDER tools)
+set_property(TARGET glslang-standalone PROPERTY OUTPUT_NAME glslang)
+glslang_set_link_args(glslang-standalone)
 
 set(LIBRARIES
     glslang
+    OSDependent
     SPIRV
     glslang-default-resource-limits)
-
-if(ENABLE_SPVREMAPPER)
-    set(LIBRARIES ${LIBRARIES} SPVRemapper)
-endif()
 
 if(WIN32)
     set(LIBRARIES ${LIBRARIES} psapi)
 elseif(UNIX)
-    if(NOT ANDROID)
+    if(NOT ANDROID AND NOT QNX)
         set(LIBRARIES ${LIBRARIES} pthread)
     endif()
-endif(WIN32)
+endif()
 
-target_link_libraries(glslangValidator ${LIBRARIES})
-target_include_directories(glslangValidator PUBLIC
+target_link_libraries(glslang-standalone ${LIBRARIES})
+target_include_directories(glslang-standalone PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../External>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/External>)
 
 if(ENABLE_OPT)
-    target_include_directories(glslangValidator
+    target_include_directories(glslang-standalone
         PRIVATE ${spirv-tools_SOURCE_DIR}/include
     )
-endif(ENABLE_OPT)
+endif()
 
 if(ENABLE_SPVREMAPPER)
     set(REMAPPER_SOURCES spirv-remap.cpp)
     add_executable(spirv-remap ${REMAPPER_SOURCES})
     set_property(TARGET spirv-remap PROPERTY FOLDER tools)
     glslang_set_link_args(spirv-remap)
-    target_link_libraries(spirv-remap ${LIBRARIES})
+    target_link_libraries(spirv-remap SPVRemapper ${LIBRARIES})
 endif()
 
 if(WIN32)
     source_group("Source" FILES ${SOURCES})
-endif(WIN32)
+endif()
 
 if(ENABLE_GLSLANG_INSTALL)
-    install(TARGETS glslangValidator EXPORT glslangValidatorTargets
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    install(EXPORT glslangValidatorTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+    install(TARGETS glslang-standalone EXPORT glslang-targets)
+
+    # Backward compatibility
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/glslang-standaloneTargets.cmake" "
+        message(WARNING \"Using `glslang-standaloneTargets.cmake` is deprecated: use `find_package(glslang)` to find glslang CMake targets.\")
+
+        if (NOT TARGET glslang::glslang-standalone)
+            include(\"${CMAKE_INSTALL_FULL_LIBDIR}/cmake/${PROJECT_NAME}/glslang-targets.cmake\")
+        endif()
+
+        add_library(glslang-standalone ALIAS glslang::glslang-standalone)
+    ")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/glslang-standaloneTargets.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+
+    # Create a symbolic link to glslang named glslangValidator for backwards compatibility
+    set(legacy_glslang_name "glslangValidator${CMAKE_EXECUTABLE_SUFFIX}")
+    set(link_method create_symlink)
+    if (WIN32 OR MINGW)
+        set(link_method copy_if_different)
+    endif()
+    add_custom_command(TARGET glslang-standalone
+                       POST_BUILD
+                       COMMAND ${CMAKE_COMMAND} -E ${link_method} $<TARGET_FILE_NAME:glslang-standalone> ${legacy_glslang_name}
+                       WORKING_DIRECTORY $<TARGET_FILE_DIR:glslang-standalone>)
+
+    # Create the same symlink at install time
+    install(CODE "execute_process( \
+                      COMMAND ${CMAKE_COMMAND} -E ${link_method} $<TARGET_FILE_NAME:glslang-standalone> ${legacy_glslang_name} \
+                      WORKING_DIRECTORY \$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})")
 
     if(ENABLE_SPVREMAPPER)
-        install(TARGETS spirv-remap EXPORT spirv-remapTargets
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-        install(EXPORT spirv-remapTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
+        install(TARGETS spirv-remap EXPORT glslang-targets)
+
+        # Backward compatibility
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/spirv-remapTargets.cmake" "
+            message(WARNING \"Using `spirv-remapTargets.cmake` is deprecated: use `find_package(glslang)` to find glslang CMake targets.\")
+
+            if (NOT TARGET glslang::spirv-remap)
+                include(\"${CMAKE_INSTALL_FULL_LIBDIR}/cmake/${PROJECT_NAME}/glslang-targets.cmake\")
+            endif()
+
+            add_library(spirv-remap ALIAS glslang::spirv-remap)
+        ")
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/spirv-remapTargets.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
     endif()
 
-    if(BUILD_SHARED_LIBS)
-        install(TARGETS glslang-default-resource-limits EXPORT glslang-default-resource-limitsTargets
-                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    else()
-        install(TARGETS glslang-default-resource-limits EXPORT glslang-default-resource-limitsTargets
-                ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-    endif()
-    install(EXPORT glslang-default-resource-limitsTargets DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake)
-endif(ENABLE_GLSLANG_INSTALL)
+endif()

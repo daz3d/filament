@@ -23,21 +23,23 @@ namespace fuzz {
 FuzzerPassAddGlobalVariables::FuzzerPassAddGlobalVariables(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddGlobalVariables::Apply() {
-  SpvStorageClass variable_storage_class = SpvStorageClassPrivate;
+  spv::StorageClass variable_storage_class = spv::StorageClass::Private;
   for (auto& entry_point : GetIRContext()->module()->entry_points()) {
     // If the execution model of some entry point is GLCompute,
     // then the variable storage class may be Workgroup.
-    if (entry_point.GetSingleWordInOperand(0) == SpvExecutionModelGLCompute) {
+    if (spv::ExecutionModel(entry_point.GetSingleWordInOperand(0)) ==
+        spv::ExecutionModel::GLCompute) {
       variable_storage_class =
           GetFuzzerContext()->ChoosePercentage(
               GetFuzzerContext()->GetChanceOfChoosingWorkgroupStorageClass())
-              ? SpvStorageClassWorkgroup
-              : SpvStorageClassPrivate;
+              ? spv::StorageClass::Workgroup
+              : spv::StorageClass::Private;
       break;
     }
   }
@@ -47,6 +49,10 @@ void FuzzerPassAddGlobalVariables::Apply() {
 
   // These are the basic types that are available to this fuzzer pass.
   auto& basic_types = basic_type_ids_and_pointers.first;
+  if (basic_types.empty()) {
+    // There are no basic types, so there is nothing this fuzzer pass can do.
+    return;
+  }
 
   // These are the pointers to those basic types that are *initially* available
   // to the fuzzer pass.  The fuzzer pass might add pointer types in cases where
@@ -82,7 +88,7 @@ void FuzzerPassAddGlobalVariables::Apply() {
     ApplyTransformation(TransformationAddGlobalVariable(
         GetFuzzerContext()->GetFreshId(), pointer_type_id,
         variable_storage_class,
-        variable_storage_class == SpvStorageClassPrivate
+        variable_storage_class == spv::StorageClass::Private
             ? FindOrCreateZeroConstant(basic_type, false)
             : 0,
         true));

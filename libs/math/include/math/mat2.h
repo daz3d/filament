@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef MATH_MAT2_H_
-#define MATH_MAT2_H_
+#ifndef TNT_MATH_MAT2_H
+#define TNT_MATH_MAT2_H
 
 #include <math/TMatHelpers.h>
-#include <math/vec2.h>
 #include <math/compiler.h>
+#include <math/vec2.h>
+
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -234,21 +235,6 @@ public:
         return r;
     }
 
-    // returns false if the two matrices are different. May return false if they're the
-    // same, with some elements only differing by +0 or -0. Behaviour is undefined with NaNs.
-    static constexpr bool fuzzyEqual(TMat22 l, TMat22 r) noexcept {
-        uint64_t const* const li = reinterpret_cast<uint64_t const*>(&l);
-        uint64_t const* const ri = reinterpret_cast<uint64_t const*>(&r);
-        uint64_t result = 0;
-        // For some reason clang is not able to vectoize this loop when the number of iteration
-        // is known and constant (!?!?!). Still this is better than operator==.
-#pragma clang loop vectorize_width(2)
-        for (size_t i = 0; i < sizeof(TMat22) / sizeof(uint64_t); i++) {
-            result |= li[i] ^ ri[i];
-        }
-        return result != 0;
-    }
-
     template<typename A>
     static constexpr TMat22 translation(const TVec2<A>& t) noexcept {
         TMat22 r;
@@ -358,4 +344,4 @@ constexpr void swap(filament::math::details::TMat22<T>& lhs,
 }
 }
 
-#endif  // MATH_MAT2_H_
+#endif  // TNT_MATH_MAT2_H

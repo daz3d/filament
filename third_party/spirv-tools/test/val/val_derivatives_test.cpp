@@ -130,7 +130,7 @@ TEST_F(ValidateDerivatives, OpDPdxWrongResultType) {
 
   CompileSuccessfully(GenerateShaderCode(body).c_str());
   ASSERT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
-  EXPECT_THAT(getDiagnosticString(), HasSubstr("Operand 10[%v4float] cannot "
+  EXPECT_THAT(getDiagnosticString(), HasSubstr("Operand '10[%v4float]' cannot "
                                                "be a type"));
 }
 
@@ -158,6 +158,31 @@ TEST_F(ValidateDerivatives, OpDPdxWrongExecutionModel) {
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("Derivative instructions require Fragment or GLCompute "
                         "execution model: DPdx"));
+}
+
+TEST_F(ValidateDerivatives, NoExecutionModeGLCompute) {
+  const std::string spirv = R"(
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main"
+%void = OpTypeVoid
+%float = OpTypeFloat 32
+%float4 = OpTypeVector %float 4
+%undef = OpUndef %float4
+%void_fn = OpTypeFunction %void
+%main = OpFunction %void None %void_fn
+%entry = OpLabel
+%derivative = OpDPdy %float4 %undef
+OpReturn
+OpFunctionEnd
+)";
+
+  CompileSuccessfully(spirv);
+  EXPECT_EQ(SPV_ERROR_INVALID_ID, ValidateInstructions());
+  EXPECT_THAT(getDiagnosticString(),
+              HasSubstr("Derivative instructions require "
+                        "DerivativeGroupQuadsNV or DerivativeGroupLinearNV "
+                        "execution mode for GLCompute execution model"));
 }
 
 using ValidateHalfDerivatives = spvtest::ValidateBase<std::string>;

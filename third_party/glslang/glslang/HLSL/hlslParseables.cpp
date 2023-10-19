@@ -564,8 +564,8 @@ void TBuiltInParseablesHlsl::initialize(int /*version*/, EProfile /*profile*/, c
         { "GetRenderTargetSamplePosition",    "V2",    "F",       "V1",             "I",             EShLangAll,    false },
         { "GroupMemoryBarrier",               nullptr, nullptr,   "-",              "-",             EShLangCS,     false },
         { "GroupMemoryBarrierWithGroupSync",  nullptr, nullptr,   "-",              "-",             EShLangCS,     false },
-        { "InterlockedAdd",                   "-",     "-",       "SVM,,>",         "UI,,",          EShLangPSCS,   false },
-        { "InterlockedAdd",                   "-",     "-",       "SVM,",           "UI,",           EShLangPSCS,   false },
+        { "InterlockedAdd",                   "-",     "-",       "SVM,,>",         "FUI,,",          EShLangPSCS,   false },
+        { "InterlockedAdd",                   "-",     "-",       "SVM,",           "FUI,",           EShLangPSCS,   false },
         { "InterlockedAnd",                   "-",     "-",       "SVM,,>",         "UI,,",          EShLangPSCS,   false },
         { "InterlockedAnd",                   "-",     "-",       "SVM,",           "UI,",           EShLangPSCS,   false },
         { "InterlockedCompareExchange",       "-",     "-",       "SVM,,,>",        "UI,,,",         EShLangPSCS,   false },
@@ -665,8 +665,8 @@ void TBuiltInParseablesHlsl::initialize(int /*version*/, EProfile /*profile*/, c
         { "Sample",             /*!O*/        "V4",    nullptr,   "%@,S,V",         "FIU,S,F",        EShLangPS,    true },
         { "Sample",             /* O*/        "V4",    nullptr,   "%@,S,V,",        "FIU,S,F,I",      EShLangPS,    true },
 
-        { "SampleBias",         /*!O*/        "V4",    nullptr,   "%@,S,V,S",       "FIU,S,F,",       EShLangPS,    true },
-        { "SampleBias",         /* O*/        "V4",    nullptr,   "%@,S,V,S,V",     "FIU,S,F,,I",     EShLangPS,    true },
+        { "SampleBias",         /*!O*/        "V4",    nullptr,   "%@,S,V,S",       "FIU,S,F,F",      EShLangPS,    true },
+        { "SampleBias",         /* O*/        "V4",    nullptr,   "%@,S,V,S,V",     "FIU,S,F,F,I",    EShLangPS,    true },
 
         // TODO: FXC accepts int/uint samplers here.  unclear what that means.
         { "SampleCmp",          /*!O*/        "S",     "F",       "%@,S,V,S",       "FIU,s,F,",       EShLangPS,    true },

@@ -35,8 +35,10 @@ OpMemoryModel Logical Simple
   ASSERT_EQ(SPV_SUCCESS, AssembleAndLink({body1, body2}, &linked_binary));
   EXPECT_THAT(GetErrorMessage(), std::string());
 
-  EXPECT_EQ(SpvAddressingModelLogical, linked_binary[6]);
-  EXPECT_EQ(SpvMemoryModelSimple, linked_binary[7]);
+  EXPECT_EQ(spv::AddressingModel::Logical,
+            static_cast<spv::AddressingModel>(linked_binary[6]));
+  EXPECT_EQ(spv::MemoryModel::Simple,
+            static_cast<spv::MemoryModel>(linked_binary[7]));
 }
 
 TEST_F(MemoryModel, AddressingMismatch) {
@@ -50,9 +52,9 @@ OpMemoryModel Physical32 Simple
   spvtest::Binary linked_binary;
   EXPECT_EQ(SPV_ERROR_INTERNAL,
             AssembleAndLink({body1, body2}, &linked_binary));
-  EXPECT_THAT(
-      GetErrorMessage(),
-      HasSubstr("Conflicting addressing models: Logical vs Physical32."));
+  EXPECT_THAT(GetErrorMessage(),
+              HasSubstr("Conflicting addressing models: Logical (input modules "
+                        "1 through 1) vs Physical32 (input module 2)."));
 }
 
 TEST_F(MemoryModel, MemoryMismatch) {
@@ -67,7 +69,38 @@ OpMemoryModel Logical GLSL450
   EXPECT_EQ(SPV_ERROR_INTERNAL,
             AssembleAndLink({body1, body2}, &linked_binary));
   EXPECT_THAT(GetErrorMessage(),
-              HasSubstr("Conflicting memory models: Simple vs GLSL450."));
+              HasSubstr("Conflicting memory models: Simple (input modules 1 "
+                        "through 1) vs GLSL450 (input module 2)."));
+}
+
+TEST_F(MemoryModel, FirstLackMemoryModel) {
+  const std::string body1 = R"(
+)";
+  const std::string body2 = R"(
+OpMemoryModel Logical GLSL450
+)";
+
+  spvtest::Binary linked_binary;
+  EXPECT_EQ(SPV_ERROR_INVALID_BINARY,
+            AssembleAndLink({body1, body2}, &linked_binary));
+  EXPECT_THAT(
+      GetErrorMessage(),
+      HasSubstr("Input module 1 is lacking an OpMemoryModel instruction."));
+}
+
+TEST_F(MemoryModel, SecondLackMemoryModel) {
+  const std::string body1 = R"(
+OpMemoryModel Logical GLSL450
+)";
+  const std::string body2 = R"(
+)";
+
+  spvtest::Binary linked_binary;
+  EXPECT_EQ(SPV_ERROR_INVALID_BINARY,
+            AssembleAndLink({body1, body2}, &linked_binary));
+  EXPECT_THAT(
+      GetErrorMessage(),
+      HasSubstr("Input module 2 is lacking an OpMemoryModel instruction."));
 }
 
 }  // namespace

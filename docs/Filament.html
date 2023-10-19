@@ -1850,7 +1850,7 @@ Subsurface scattering is implemented using the wrapped diffuse lighting techniqu
 </p><p>
 
 $$\begin{equation}
-f_{d}(v,h) = \frac{c_{diff}}{\pi}(1 - F(v,h)) \left&lt; \NoL + \frac{w}{(1 + w)^2} \right&gt; \left&lt; c_{subsurface} + \NoL \right&gt;
+f_{d}(v,h) = \frac{c_{diff}}{\pi}(1 - F(v,h)) \left&lt; \frac{\NoL + w}{(1 + w)^2} \right&gt; \left&lt; c_{subsurface} + \NoL \right&gt;
 \end{equation}$$
 
 </p><p>
@@ -2301,7 +2301,7 @@ The term \( \lambda(l) \) in equations \( \ref{spotAbsorber} \) and \( \ref{spot
 </p><p>
 
 $$\begin{equation}\label{spotAngleAtt}
-\lambda(l) = \frac{l \times spotDirection - cos\theta_{outer}}{cos\theta_{inner} - cos\theta_{outer}}
+\lambda(l) = \frac{l \cdot spotDirection - cos\theta_{outer}}{cos\theta_{inner} - cos\theta_{outer}}
 \end{equation}$$
 
 </p>
@@ -3164,7 +3164,7 @@ I(f(n, v, \alpha))        \equiv \frac{1}{N}\sum_{\forall \, i \in image} f(l_i,
 </p><p>
 
 However, in practice we're using <em class="underscore">importance sampling</em> which needs to take the \(pdf\) of the distribution
-into account and adds a term \(\frac{\left&lt;\VoH\right&gt;}{D(h_i, \alpha)\left&lt;\NoH\right&gt;}\).
+into account and adds a term \(\frac{4\left&lt;\VoH\right&gt;}{D(h_i, \alpha)\left&lt;\NoH\right&gt;}\).
 See <a href="#importancesamplingfortheibl">Importance Sampling For The IBL</a> section:
 
 </p><p>
@@ -5274,7 +5274,7 @@ The <em class="underscore">important direction samples</em> \(l_i\) are calculat
 </p><p>
 
 $$\begin{equation}
-p(T_r(x)) = p(x) |J(T_r)|
+p(T_r(x)) = p(x) |J(T_r)|^{-1}
 \end{equation}$$
 
 </p><p>
@@ -5285,8 +5285,8 @@ the transform from \(h_i\) to \(l_i\) and the determinant of its Jacobian is giv
 </p><p>
 
 $$\begin{equation}\label{iblPDF}
-p(l,v,\Theta) = D(h,\alpha) \left&lt; \NoH \right&gt; |J_{h \rightarrow l}| \\
-|J_{h \rightarrow l}| = \frac{1}{4 \left&lt; \VoH \right&gt;}
+p(l,v,\Theta) = D(h,\alpha) \left&lt; \NoH \right&gt; |J_{h \rightarrow l}|^{-1} \\
+|J_{h \rightarrow l}| = 4 \left&lt; \VoH \right&gt;
 \end{equation}$$
 
 </p>
@@ -5605,7 +5605,7 @@ However we only need the real bases:
 
 $$\begin{align*}
 y^{m &gt; 0}_l &amp;= \sqrt{2} K^m_l cos(m \phi) P^m_l(cos \theta) \\
-y^{m &lt; 0}_l &amp;= \sqrt{2} K^m_l sin(m \phi) P^{|m|}_l(cos \theta) \\
+y^{m &lt; 0}_l &amp;= \sqrt{2} K^m_l sin(|m| \phi) P^{|m|}_l(cos \theta) \\
 y^0_l &amp;= K^0_l P^0_l(cos \theta)
 \end{align*}$$
 
@@ -5652,8 +5652,8 @@ It’s also fairly easy to compute the trigonometric terms recursively:
 </p><p>
 
 $$\begin{align*}
-C_m &amp;\equiv cos(m \phi) \\
-S_m &amp;\equiv sin(m \phi) \\
+C_m &amp;\equiv cos(m \phi)sin(\theta)^m \\
+S_m &amp;\equiv sin(m \phi)sin(\theta)^m \\
 \{ x, y, z \} &amp;= \{ cos \phi sin \theta, sin \phi sin \theta, cos \theta \}
 \end{align*}$$
 
@@ -5664,13 +5664,9 @@ Using the angle sum trigonometric identities:
 </p><p>
 
 $$\begin{align*}
-cos(m \phi + \phi) &amp;= cos(m \phi) cos(\phi) - sin(m \phi) sin(\phi) \Leftrightarrow C_{m + 1} = \frac{(x C_m - y S_m)}{sin(\theta)^{|m + 1|}} \\
-sin(m \phi + \phi) &amp;= sin(m \phi) sin(\phi) + cos(m \phi) sin(\phi) \Leftrightarrow S_{m + 1} = \frac{(x S_m - y C_m)}{sin(\theta)^{|m + 1|}}
+cos(m \phi + \phi) &amp;= cos(m \phi) cos(\phi) - sin(m \phi) sin(\phi) \Leftrightarrow C_{m + 1} = x C_m - y S_m \\
+sin(m \phi + \phi) &amp;= sin(m \phi) cos(\phi) + cos(m \phi) sin(\phi) \Leftrightarrow S_{m + 1} = x S_m - y C_m
 \end{align*}$$
-
-</p><p>
-
-The equations above have an extra term \(sin(\theta)^{-|m + 1|}\) but we can compensate for that in the \(P^{|m|}_l(z)\) recursion by multiplying \(P^l_l(z)\) by \(sin(\theta)^{|m + 1|}\) which greatly simplifies the third equation in \(\ref{shRecursions}\) because \(P^l_l(cos \theta) sin(\theta)^{-l} = (-1)^l(2l - 1)!!\).
 
 </p><p>
 
@@ -5780,7 +5776,7 @@ Since \(\left&lt; cos \theta \right&gt;\) does not depend on \(\phi\) (azimuthal
 
 $$\begin{align*}
 C^0_l &amp;= 2\pi \int_0^{\pi} \left&lt; cos \theta \right&gt; y^0_l(\theta) sin \theta d\theta \\
-C^0_l &amp;= 2\pi K^)_l \int_0^{\frac{\pi}{2}} P^0_l(cos \theta) cos \theta sin \theta d\theta \\
+C^0_l &amp;= 2\pi K^m_l \int_0^{\frac{\pi}{2}} P^0_l(cos \theta) cos \theta sin \theta d\theta \\
 C^m_l &amp;= 0, m != 0
 \end{align*}$$
 

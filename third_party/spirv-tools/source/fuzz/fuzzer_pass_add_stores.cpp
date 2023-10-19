@@ -23,9 +23,10 @@ namespace fuzz {
 FuzzerPassAddStores::FuzzerPassAddStores(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddStores::Apply() {
   ForEachInstructionWithInstructionDescriptor(
@@ -33,21 +34,26 @@ void FuzzerPassAddStores::Apply() {
              opt::BasicBlock::iterator inst_it,
              const protobufs::InstructionDescriptor& instruction_descriptor)
           -> void {
-        assert(inst_it->opcode() ==
-                   instruction_descriptor.target_instruction_opcode() &&
-               "The opcode of the instruction we might insert before must be "
-               "the same as the opcode in the descriptor for the instruction");
-
-        // Check whether it is legitimate to insert a store before this
-        // instruction.
-        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(SpvOpStore,
-                                                          inst_it)) {
-          return;
-        }
+        assert(
+            inst_it->opcode() ==
+                spv::Op(instruction_descriptor.target_instruction_opcode()) &&
+            "The opcode of the instruction we might insert before must be "
+            "the same as the opcode in the descriptor for the instruction");
 
         // Randomly decide whether to try inserting a store here.
         if (!GetFuzzerContext()->ChoosePercentage(
                 GetFuzzerContext()->GetChanceOfAddingStore())) {
+          return;
+        }
+
+        // Check whether it is legitimate to insert a store before this
+        // instruction.
+        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(spv::Op::OpStore,
+                                                          inst_it)) {
+          return;
+        }
+        if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(
+                spv::Op::OpAtomicStore, inst_it)) {
           return;
         }
 
@@ -62,7 +68,7 @@ void FuzzerPassAddStores::Apply() {
                   }
                   auto type_inst = context->get_def_use_mgr()->GetDef(
                       instruction->type_id());
-                  if (type_inst->opcode() != SpvOpTypePointer) {
+                  if (type_inst->opcode() != spv::Op::OpTypePointer) {
                     // Not a pointer.
                     return false;
                   }
@@ -71,8 +77,8 @@ void FuzzerPassAddStores::Apply() {
                     return false;
                   }
                   switch (instruction->opcode()) {
-                    case SpvOpConstantNull:
-                    case SpvOpUndef:
+                    case spv::Op::OpConstantNull:
+                    case spv::Op::OpUndef:
                       // Do not allow storing to a null or undefined pointer;
                       // this might be OK if the block is dead, but for now we
                       // conservatively avoid it.
@@ -116,10 +122,49 @@ void FuzzerPassAddStores::Apply() {
           return;
         }
 
-        // Choose a value at random, and create and apply a storing
-        // transformation based on it and the pointer.
+        bool is_atomic_store = false;
+        uint32_t memory_scope_id = 0;
+        uint32_t memory_semantics_id = 0;
+
+        auto storage_class =
+            static_cast<spv::StorageClass>(GetIRContext()
+                                               ->get_def_use_mgr()
+                                               ->GetDef(pointer->type_id())
+                                               ->GetSingleWordInOperand(0));
+
+        switch (storage_class) {
+          case spv::StorageClass::StorageBuffer:
+          case spv::StorageClass::PhysicalStorageBuffer:
+          case spv::StorageClass::Workgroup:
+          case spv::StorageClass::CrossWorkgroup:
+          case spv::StorageClass::AtomicCounter:
+          case spv::StorageClass::Image:
+            if (GetFuzzerContext()->ChoosePercentage(
+                    GetFuzzerContext()->GetChanceOfAddingAtomicStore())) {
+              is_atomic_store = true;
+
+              memory_scope_id = FindOrCreateConstant(
+                  {uint32_t(spv::Scope::Invocation)},
+                  FindOrCreateIntegerType(32, GetFuzzerContext()->ChooseEven()),
+                  false);
+
+              memory_semantics_id = FindOrCreateConstant(
+                  {static_cast<uint32_t>(
+                      fuzzerutil::GetMemorySemanticsForStorageClass(
+                          storage_class))},
+                  FindOrCreateIntegerType(32, GetFuzzerContext()->ChooseEven()),
+                  false);
+            }
+            break;
+
+          default:
+            break;
+        }
+
+        // Create and apply the transformation.
         ApplyTransformation(TransformationStore(
-            pointer->result_id(),
+            pointer->result_id(), is_atomic_store, memory_scope_id,
+            memory_semantics_id,
             relevant_values[GetFuzzerContext()->RandomIndex(relevant_values)]
                 ->result_id(),
             instruction_descriptor));

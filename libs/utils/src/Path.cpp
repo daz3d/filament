@@ -41,13 +41,22 @@ Path::Path(const char* path)
     : Path(std::string(path)) {
 }
 
+Path::Path(std::string_view pathname)
+    : Path(std::string(pathname)) {
+}
+
 Path::Path(const std::string& path)
     : m_path(getCanonicalPath(path)) {
 }
 
 bool Path::exists() const {
+#if defined(_WIN64) || defined(_M_X64)
+    struct _stat64 file;
+    return _stat64(c_str(), &file) == 0;
+#else
     struct stat file;
     return stat(c_str(), &file) == 0;
+#endif
 }
 
 bool Path::isFile() const {

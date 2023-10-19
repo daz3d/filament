@@ -34,12 +34,12 @@ class FeatureManager {
   void RemoveExtension(Extension extension);
 
   // Returns true if |cap| is an enabled capability in the module.
-  bool HasCapability(SpvCapability cap) const {
+  bool HasCapability(spv::Capability cap) const {
     return capabilities_.Contains(cap);
   }
 
   // Removes the given |capability| from the current FeatureManager.
-  void RemoveCapability(SpvCapability capability);
+  void RemoveCapability(spv::Capability capability);
 
   // Analyzes |module| and records enabled extensions and capabilities.
   void Analyze(Module* module);
@@ -55,6 +55,10 @@ class FeatureManager {
     return extinst_importid_OpenCL100DebugInfo_;
   }
 
+  uint32_t GetExtInstImportId_Shader100DebugInfo() const {
+    return extinst_importid_Shader100DebugInfo_;
+  }
+
   friend bool operator==(const FeatureManager& a, const FeatureManager& b);
   friend bool operator!=(const FeatureManager& a, const FeatureManager& b) {
     return !(a == b);
@@ -62,7 +66,7 @@ class FeatureManager {
 
   // Adds the given |capability| and all implied capabilities into the current
   // FeatureManager.
-  void AddCapability(SpvCapability capability);
+  void AddCapability(spv::Capability capability);
 
   // Add the extension |ext| to the feature manager.
   void AddExtension(Instruction* ext);
@@ -92,6 +96,10 @@ class FeatureManager {
   // Common OpenCL100DebugInfo external instruction import ids, cached
   // for performance.
   uint32_t extinst_importid_OpenCL100DebugInfo_ = 0;
+
+  // Common NonSemanticShader100DebugInfo external instruction import ids,
+  // cached for performance.
+  uint32_t extinst_importid_Shader100DebugInfo_ = 0;
 };
 
 }  // namespace opt

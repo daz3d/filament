@@ -45,11 +45,11 @@ TEST_P(ImageOperandsTest, Sample) {
   const std::string input =
       "%2 = OpImageFetch %1 %3 %4" + GetParam().image_operands + "\n";
   EXPECT_THAT(CompiledInstructions(input),
-              Eq(MakeInstruction(SpvOpImageFetch, {1, 2, 3, 4},
+              Eq(MakeInstruction(spv::Op::OpImageFetch, {1, 2, 3, 4},
                                  GetParam().expected_mask_and_operands)));
 }
 
-#define MASK(NAME) SpvImageOperands##NAME##Mask
+#define MASK(NAME) uint32_t(spv::ImageOperandsMask::NAME)
 INSTANTIATE_TEST_SUITE_P(
     TextToBinaryImageOperandsAny, ImageOperandsTest,
     ::testing::ValuesIn(std::vector<ImageOperandsCase>{
@@ -68,7 +68,7 @@ INSTANTIATE_TEST_SUITE_P(
         {" MinLod %5", {MASK(MinLod), 5}},
     }));
 #undef MASK
-#define MASK(NAME) static_cast<uint32_t>(SpvImageOperands##NAME##Mask)
+#define MASK(NAME) static_cast<uint32_t>(spv::ImageOperandsMask::NAME)
 INSTANTIATE_TEST_SUITE_P(
     TextToBinaryImageOperandsCombination, ImageOperandsTest,
     ::testing::ValuesIn(std::vector<ImageOperandsCase>{
@@ -110,7 +110,7 @@ using OpImageTest = TextToBinaryTest;
 TEST_F(OpImageTest, Valid) {
   const std::string input = "%2 = OpImage %1 %3\n";
   EXPECT_THAT(CompiledInstructions(input),
-              Eq(MakeInstruction(SpvOpImage, {1, 2, 3})));
+              Eq(MakeInstruction(spv::Op::OpImage, {1, 2, 3})));
 
   // Test the disassembler.
   EXPECT_THAT(EncodeAndDecodeSuccessfully(input), input);
@@ -123,7 +123,8 @@ TEST_F(OpImageTest, InvalidTypeOperand) {
 
 TEST_F(OpImageTest, MissingSampledImageOperand) {
   EXPECT_THAT(CompileFailure("%2 = OpImage %1"),
-              Eq("Expected operand, found end of stream."));
+              Eq("Expected operand for OpImage instruction, but found the end "
+                 "of the stream."));
 }
 
 TEST_F(OpImageTest, InvalidSampledImageOperand) {
@@ -152,7 +153,7 @@ using OpImageSparseReadTest = TextToBinaryTest;
 TEST_F(OpImageSparseReadTest, OnlyRequiredOperands) {
   const std::string input = "%2 = OpImageSparseRead %1 %3 %4\n";
   EXPECT_THAT(CompiledInstructions(input),
-              Eq(MakeInstruction(SpvOpImageSparseRead, {1, 2, 3, 4})));
+              Eq(MakeInstruction(spv::Op::OpImageSparseRead, {1, 2, 3, 4})));
   // Test the disassembler.
   EXPECT_THAT(EncodeAndDecodeSuccessfully(input), input);
 }
@@ -166,13 +167,13 @@ TEST_P(ImageSparseReadImageOperandsTest, Sample) {
   const std::string input =
       "%2 = OpImageSparseRead %1 %3 %4" + GetParam().image_operands + "\n";
   EXPECT_THAT(CompiledInstructions(input),
-              Eq(MakeInstruction(SpvOpImageSparseRead, {1, 2, 3, 4},
+              Eq(MakeInstruction(spv::Op::OpImageSparseRead, {1, 2, 3, 4},
                                  GetParam().expected_mask_and_operands)));
   // Test the disassembler.
   EXPECT_THAT(EncodeAndDecodeSuccessfully(input), input);
 }
 
-#define MASK(NAME) SpvImageOperands##NAME##Mask
+#define MASK(NAME) uint32_t(spv::ImageOperandsMask::NAME)
 INSTANTIATE_TEST_SUITE_P(ImageSparseReadImageOperandsAny,
                          ImageSparseReadImageOperandsTest,
                          ::testing::ValuesIn(std::vector<ImageOperandsCase>{
@@ -189,7 +190,7 @@ INSTANTIATE_TEST_SUITE_P(ImageSparseReadImageOperandsAny,
                              {" MinLod %5", {MASK(MinLod), 5}},
                          }));
 #undef MASK
-#define MASK(NAME) static_cast<uint32_t>(SpvImageOperands##NAME##Mask)
+#define MASK(NAME) static_cast<uint32_t>(spv::ImageOperandsMask::NAME)
 INSTANTIATE_TEST_SUITE_P(
     ImageSparseReadImageOperandsCombination, ImageSparseReadImageOperandsTest,
     ::testing::ValuesIn(std::vector<ImageOperandsCase>{
@@ -222,7 +223,8 @@ TEST_F(OpImageSparseReadTest, InvalidTypeOperand) {
 
 TEST_F(OpImageSparseReadTest, MissingImageOperand) {
   EXPECT_THAT(CompileFailure("%2 = OpImageSparseRead %1"),
-              Eq("Expected operand, found end of stream."));
+              Eq("Expected operand for OpImageSparseRead instruction, but "
+                 "found the end of the stream."));
 }
 
 TEST_F(OpImageSparseReadTest, InvalidImageOperand) {
@@ -232,7 +234,8 @@ TEST_F(OpImageSparseReadTest, InvalidImageOperand) {
 
 TEST_F(OpImageSparseReadTest, MissingCoordinateOperand) {
   EXPECT_THAT(CompileFailure("%2 = OpImageSparseRead %1 %2"),
-              Eq("Expected operand, found end of stream."));
+              Eq("Expected operand for OpImageSparseRead instruction, but "
+                 "found the end of the stream."));
 }
 
 TEST_F(OpImageSparseReadTest, InvalidCoordinateOperand) {
