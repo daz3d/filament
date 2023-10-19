@@ -84,6 +84,14 @@ import com.google.android.filament.SwapChain;
  *             // The native surface has changed size. This is always called at least once
  *             // after the surface is created (after onNativeWindowChanged() is invoked).
  *             public void onResized(int width, int height) {
+ *
+ *                 // Wait for all pending frames to be processed before returning. This is to
+ *                 // avoid a race between the surface being resized before pending frames are
+ *                 // rendered into it.
+ *                 Fence fence = mEngine.createFence();
+ *                 fence.wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER);
+ *                 mEngine.destroyFence(fence);
+ *
  *                 // Compute camera projection and set the viewport on the view
  *             }
  *         });
@@ -175,7 +183,7 @@ public class UiHelper {
     }
 
     private static class SurfaceViewHandler implements RenderSurface {
-        private SurfaceView mSurfaceView;
+        private final SurfaceView mSurfaceView;
 
         SurfaceViewHandler(SurfaceView surface) {
             mSurfaceView = surface;
@@ -192,7 +200,7 @@ public class UiHelper {
     }
 
     private static class SurfaceHolderHandler implements RenderSurface {
-        private SurfaceHolder mSurfaceHolder;
+        private final SurfaceHolder mSurfaceHolder;
 
         SurfaceHolderHandler(SurfaceHolder surface) {
             mSurfaceHolder = surface;
@@ -209,7 +217,7 @@ public class UiHelper {
     }
 
     private class TextureViewHandler implements RenderSurface {
-        private TextureView mTextureView;
+        private final TextureView mTextureView;
         private Surface mSurface;
 
         TextureViewHandler(TextureView surface) { mTextureView = surface; }
@@ -235,6 +243,10 @@ public class UiHelper {
                 }
             }
             mSurface = surface;
+        }
+
+        public Surface getSurface() {
+            return mSurface;
         }
     }
 
@@ -481,6 +493,14 @@ public class UiHelper {
                     } else {
                         mRenderCallback.onResized(width, height);
                     }
+                    // We must recreate the SwapChain to guarantee that it sees the new size.
+                    // More precisely, for an EGL client, the EGLSurface must be recreated. For
+                    // a Vulkan client, the SwapChain must be recreated. Calling
+                    // onNativeWindowChanged() will accomplish that.
+                    // This requirement comes from SurfaceTexture.setDefaultBufferSize()
+                    // documentation.
+                    TextureViewHandler textureViewHandler = (TextureViewHandler) mRenderSurface;
+                    mRenderCallback.onNativeWindowChanged(textureViewHandler.getSurface());
                 }
 
                 @Override

@@ -105,6 +105,22 @@ TEST(IrBuilder, RoundTripIncompleteFunction) {
   DoRoundTripCheck("%2 = OpFunction %1 None %3\n");
 }
 
+TEST(IrBuilder, RoundTripFunctionPointer) {
+  DoRoundTripCheck(
+      "OpCapability Linkage\n"
+      "OpCapability FunctionPointersINTEL\n"
+      "OpName %some_function \"some_function\"\n"
+      "OpName %ptr_to_function \"ptr_to_function\"\n"
+      "OpDecorate %some_function LinkageAttributes \"some_function\" Import\n"
+      "%float = OpTypeFloat 32\n"
+      "%4 = OpTypeFunction %float %float\n"
+      "%_ptr_Function_4 = OpTypePointer Function %4\n"
+      "%ptr_to_function = OpConstantFunctionPointerINTEL %_ptr_Function_4 "
+      "%some_function\n"
+      "%some_function = OpFunction %float Const %4\n"
+      "%6 = OpFunctionParameter %float\n"
+      "OpFunctionEnd\n");
+}
 TEST(IrBuilder, KeepLineDebugInfo) {
   // #version 310 es
   // void main() {}
@@ -228,10 +244,10 @@ TEST(IrBuilder, DistributeLineDebugInfo) {
     auto& lines = def_use_mgr->GetDef(check.id)->dbg_line_insts();
     for (uint32_t i = 0; i < check.line_numbers.size(); ++i) {
       if (check.line_numbers[i] == kNoLine) {
-        EXPECT_EQ(lines[i].opcode(), SpvOpNoLine);
+        EXPECT_EQ(lines[i].opcode(), spv::Op::OpNoLine);
         continue;
       }
-      EXPECT_EQ(lines[i].opcode(), SpvOpLine);
+      EXPECT_EQ(lines[i].opcode(), spv::Op::OpLine);
       EXPECT_EQ(lines[i].GetSingleWordOperand(kOpLineOperandLineIndex),
                 check.line_numbers[i]);
     }
@@ -270,9 +286,10 @@ OpFunctionEnd
   spvtools::opt::analysis::DefUseManager* def_use_mgr =
       context->get_def_use_mgr();
 
-  std::vector<SpvOp> opcodes;
+  std::vector<spv::Op> opcodes;
   for (auto* inst = def_use_mgr->GetDef(1);
-       inst && (inst->opcode() != SpvOpFunctionEnd); inst = inst->NextNode()) {
+       inst && (inst->opcode() != spv::Op::OpFunctionEnd);
+       inst = inst->NextNode()) {
     inst->ForEachInst(
         [&opcodes](spvtools::opt::Instruction* sub_inst) {
           opcodes.push_back(sub_inst->opcode());
@@ -280,9 +297,9 @@ OpFunctionEnd
         true);
   }
 
-  EXPECT_THAT(opcodes,
-              ContainerEq(std::vector<SpvOp>{SpvOpFAdd, SpvOpLine, SpvOpFMul,
-                                             SpvOpFSub, SpvOpReturn}));
+  EXPECT_THAT(opcodes, ContainerEq(std::vector<spv::Op>{
+                           spv::Op::OpFAdd, spv::Op::OpLine, spv::Op::OpFMul,
+                           spv::Op::OpFSub, spv::Op::OpReturn}));
 }
 
 TEST(IrBuilder, BuildModule_WithExtraLines_IsDefault) {
@@ -317,9 +334,10 @@ OpFunctionEnd
   spvtools::opt::analysis::DefUseManager* def_use_mgr =
       context->get_def_use_mgr();
 
-  std::vector<SpvOp> opcodes;
+  std::vector<spv::Op> opcodes;
   for (auto* inst = def_use_mgr->GetDef(1);
-       inst && (inst->opcode() != SpvOpFunctionEnd); inst = inst->NextNode()) {
+       inst && (inst->opcode() != spv::Op::OpFunctionEnd);
+       inst = inst->NextNode()) {
     inst->ForEachInst(
         [&opcodes](spvtools::opt::Instruction* sub_inst) {
           opcodes.push_back(sub_inst->opcode());
@@ -327,9 +345,10 @@ OpFunctionEnd
         true);
   }
 
-  EXPECT_THAT(opcodes, ContainerEq(std::vector<SpvOp>{
-                           SpvOpFAdd, SpvOpLine, SpvOpFMul, SpvOpLine,
-                           SpvOpFSub, SpvOpLine, SpvOpReturn}));
+  EXPECT_THAT(opcodes, ContainerEq(std::vector<spv::Op>{
+                           spv::Op::OpFAdd, spv::Op::OpLine, spv::Op::OpFMul,
+                           spv::Op::OpLine, spv::Op::OpFSub, spv::Op::OpLine,
+                           spv::Op::OpReturn}));
 }
 
 TEST(IrBuilder, ConsumeDebugInfoInst) {
@@ -1281,8 +1300,9 @@ TEST(IrBuilder, OpUndefOutsideFunction) {
 
   const auto opundef_count = std::count_if(
       context->module()->types_values_begin(),
-      context->module()->types_values_end(),
-      [](const Instruction& inst) { return inst.opcode() == SpvOpUndef; });
+      context->module()->types_values_end(), [](const Instruction& inst) {
+        return inst.opcode() == spv::Op::OpUndef;
+      });
   EXPECT_EQ(3, opundef_count);
 
   std::vector<uint32_t> binary;

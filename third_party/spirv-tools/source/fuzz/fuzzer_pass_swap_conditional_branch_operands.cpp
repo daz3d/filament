@@ -27,9 +27,10 @@ FuzzerPassSwapBranchConditionalOperands::
         opt::IRContext* ir_context,
         TransformationContext* transformation_context,
         FuzzerContext* fuzzer_context,
-        protobufs::TransformationSequence* transformations)
+        protobufs::TransformationSequence* transformations,
+        bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassSwapBranchConditionalOperands::Apply() {
   ForEachInstructionWithInstructionDescriptor(
@@ -38,7 +39,7 @@ void FuzzerPassSwapBranchConditionalOperands::Apply() {
              const protobufs::InstructionDescriptor& instruction_descriptor) {
         const auto& inst = *inst_it;
 
-        if (inst.opcode() != SpvOpBranchConditional) {
+        if (inst.opcode() != spv::Op::OpBranchConditional) {
           return;
         }
 

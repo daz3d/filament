@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef UTILS_PATH_H_
-#define UTILS_PATH_H_
+#ifndef TNT_UTILS_PATH_H
+#define TNT_UTILS_PATH_H
 
 #include <utils/compiler.h>
 
@@ -42,6 +42,13 @@ public:
      * @param pathname a non-null pathname string
      */
     Path(const char* pathname);
+
+    /**
+     * Creates a new path with the specified pathname.
+     *
+     * @param pathname a pathname string view
+     */
+    Path(std::string_view pathname);
 
     /**
      * Creates a new path with the specified pathname.
@@ -247,6 +254,12 @@ public:
     static Path getTemporaryDirectory();
 
     /**
+     * @return a path representing a directory where settings files can be stored,
+     *         it is recommended to append an app specific folder name to that path
+     */
+    static Path getUserSettingsDirectory();
+
+    /**
      * Creates a directory denoted by the given path.
      * This is not recursive and doesn't create intermediate directories.
      *
@@ -287,4 +300,4 @@ private:
 
 } // namespace utils
 
-#endif // UTILS_PATH_H_
+#endif // TNT_UTILS_PATH_H

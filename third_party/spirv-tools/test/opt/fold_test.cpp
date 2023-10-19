@@ -88,12 +88,17 @@ TEST_P(IntegerInstructionFoldingTest, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_TRUE(succeeded);
   if (inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    EXPECT_EQ(inst->opcode(), SpvOpConstant);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpConstant);
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
-    const analysis::IntConstant* result =
-        const_mrg->GetConstantFromInst(inst)->AsIntConstant();
+    const analysis::Constant* constant = const_mrg->GetConstantFromInst(inst);
+    // We expect to see either integer types or 16-bit float types here.
+    EXPECT_TRUE((constant->AsIntConstant() != nullptr) ||
+                ((constant->AsFloatConstant() != nullptr) &&
+                 (constant->type()->AsFloat()->width() == 16)));
+    const analysis::ScalarConstant* result =
+        const_mrg->GetConstantFromInst(inst)->AsScalarConstant();
     EXPECT_NE(result, nullptr);
     if (result != nullptr) {
       EXPECT_EQ(result->GetU32BitValue(), tc.expected_result);
@@ -115,6 +120,7 @@ const std::string& Header() {
   static const std::string header = R"(OpCapability Shader
 OpCapability Float16
 OpCapability Float64
+OpCapability Int8
 OpCapability Int16
 OpCapability Int64
 %1 = OpExtInstImport "GLSL.std.450"
@@ -134,9 +140,13 @@ OpName %main "main"
 %false = OpConstantFalse %bool
 %bool_null = OpConstantNull %bool
 %short = OpTypeInt 16 1
+%ushort = OpTypeInt 16 0
+%byte = OpTypeInt 8 1
+%ubyte = OpTypeInt 8 0
 %int = OpTypeInt 32 1
 %long = OpTypeInt 64 1
 %uint = OpTypeInt 32 0
+%ulong = OpTypeInt 64 0
 %v2int = OpTypeVector %int 2
 %v4int = OpTypeVector %int 4
 %v4float = OpTypeVector %float 4
@@ -146,6 +156,9 @@ OpName %main "main"
 %v2double = OpTypeVector %double 2
 %v2half = OpTypeVector %half 2
 %v2bool = OpTypeVector %bool 2
+%m2x2int = OpTypeMatrix %v2int 2
+%mat4v4float = OpTypeMatrix %v4float 4
+%mat4v4double = OpTypeMatrix %v4double 4
 %struct_v2int_int_int = OpTypeStruct %v2int %int %int
 %_ptr_int = OpTypePointer Function %int
 %_ptr_uint = OpTypePointer Function %uint
@@ -154,6 +167,7 @@ OpName %main "main"
 %_ptr_double = OpTypePointer Function %double
 %_ptr_half = OpTypePointer Function %half
 %_ptr_long = OpTypePointer Function %long
+%_ptr_ulong = OpTypePointer Function %ulong
 %_ptr_v2int = OpTypePointer Function %v2int
 %_ptr_v4int = OpTypePointer Function %v4int
 %_ptr_v4float = OpTypePointer Function %v4float
@@ -164,6 +178,8 @@ OpName %main "main"
 %short_0 = OpConstant %short 0
 %short_2 = OpConstant %short 2
 %short_3 = OpConstant %short 3
+%ubyte_1 = OpConstant %ubyte 1
+%byte_n1 = OpConstant %byte -1
 %100 = OpConstant %int 0 ; Need a def with an numerical id to define id maps.
 %103 = OpConstant %int 7 ; Need a def with an numerical id to define id maps.
 %int_0 = OpConstant %int 0
@@ -171,12 +187,23 @@ OpName %main "main"
 %int_2 = OpConstant %int 2
 %int_3 = OpConstant %int 3
 %int_4 = OpConstant %int 4
+%int_10 = OpConstant %int 10
+%int_1073741824 = OpConstant %int 1073741824
+%int_n1 = OpConstant %int -1
 %int_n24 = OpConstant %int -24
+%int_n858993459 = OpConstant %int -858993459
 %int_min = OpConstant %int -2147483648
 %int_max = OpConstant %int 2147483647
 %long_0 = OpConstant %long 0
+%long_1 = OpConstant %long 1
 %long_2 = OpConstant %long 2
 %long_3 = OpConstant %long 3
+%long_10 = OpConstant %long 10
+%long_4611686018427387904 = OpConstant %long 4611686018427387904
+%long_n1 = OpConstant %long -1
+%long_n3689348814741910323 = OpConstant %long -3689348814741910323
+%long_min = OpConstant %long -9223372036854775808
+%long_max = OpConstant %long 9223372036854775807
 %uint_0 = OpConstant %uint 0
 %uint_1 = OpConstant %uint 1
 %uint_2 = OpConstant %uint 2
@@ -184,7 +211,13 @@ OpName %main "main"
 %uint_4 = OpConstant %uint 4
 %uint_32 = OpConstant %uint 32
 %uint_42 = OpConstant %uint 42
+%uint_2147483649 = OpConstant %uint 2147483649
 %uint_max = OpConstant %uint 4294967295
+%ulong_0 = OpConstant %ulong 0
+%ulong_1 = OpConstant %ulong 1
+%ulong_2 = OpConstant %ulong 2
+%ulong_9223372036854775809 = OpConstant %ulong 9223372036854775809
+%ulong_max = OpConstant %ulong 18446744073709551615
 %v2int_undef = OpUndef %v2int
 %v2int_0_0 = OpConstantComposite %v2int %int_0 %int_0
 %v2int_1_0 = OpConstantComposite %v2int %int_1 %int_0
@@ -199,12 +232,15 @@ OpName %main "main"
 %struct_v2int_int_int_null = OpConstantNull %struct_v2int_int_int
 %v2int_null = OpConstantNull %v2int
 %102 = OpConstantComposite %v2int %103 %103
+%v4int_undef = OpUndef %v4int
 %v4int_0_0_0_0 = OpConstantComposite %v4int %int_0 %int_0 %int_0 %int_0
+%m2x2int_undef = OpUndef %m2x2int
 %struct_undef_0_0 = OpConstantComposite %struct_v2int_int_int %v2int_undef %int_0 %int_0
 %float_n1 = OpConstant %float -1
 %104 = OpConstant %float 0 ; Need a def with an numerical id to define id maps.
 %float_null = OpConstantNull %float
 %float_0 = OpConstant %float 0
+%float_n0 = OpConstant %float -0.0
 %float_1 = OpConstant %float 1
 %float_2 = OpConstant %float 2
 %float_3 = OpConstant %float 3
@@ -230,6 +266,7 @@ OpName %main "main"
 %105 = OpConstant %double 0 ; Need a def with an numerical id to define id maps.
 %double_null = OpConstantNull %double
 %double_0 = OpConstant %double 0
+%double_n0 = OpConstant %double -0.0
 %double_1 = OpConstant %double 1
 %double_2 = OpConstant %double 2
 %double_3 = OpConstant %double 3
@@ -252,13 +289,20 @@ OpName %main "main"
 %v4float_0_0_0_1 = OpConstantComposite %v4float %float_0 %float_0 %float_0 %float_1
 %v4float_0_1_0_0 = OpConstantComposite %v4float %float_0 %float_1 %float_null %float_0
 %v4float_1_1_1_1 = OpConstantComposite %v4float %float_1 %float_1 %float_1 %float_1
+%v4float_1_2_3_4 = OpConstantComposite %v4float %float_1 %float_2 %float_3 %float_4
+%v4float_null = OpConstantNull %v4float
+%mat4v4float_null = OpConstantComposite %mat4v4float %v4float_null %v4float_null %v4float_null %v4float_null
+%mat4v4float_1_2_3_4 = OpConstantComposite %mat4v4float %v4float_1_2_3_4 %v4float_1_2_3_4 %v4float_1_2_3_4 %v4float_1_2_3_4
 %107 = OpConstantComposite %v4double %double_0 %double_0 %double_0 %double_0
 %v4double_0_0_0_0 = OpConstantComposite %v4double %double_0 %double_0 %double_0 %double_0
 %v4double_0_0_0_1 = OpConstantComposite %v4double %double_0 %double_0 %double_0 %double_1
 %v4double_0_1_0_0 = OpConstantComposite %v4double %double_0 %double_1 %double_null %double_0
 %v4double_1_1_1_1 = OpConstantComposite %v4double %double_1 %double_1 %double_1 %double_1
+%v4double_1_2_3_4 = OpConstantComposite %v4double %double_1 %double_2 %double_3 %double_4
 %v4double_1_1_1_0p5 = OpConstantComposite %v4double %double_1 %double_1 %double_1 %double_0p5
 %v4double_null = OpConstantNull %v4double
+%mat4v4double_null = OpConstantComposite %mat4v4double %v4double_null %v4double_null %v4double_null %v4double_null
+%mat4v4double_1_2_3_4 = OpConstantComposite %mat4v4double %v4double_1_2_3_4 %v4double_1_2_3_4 %v4double_1_2_3_4 %v4double_1_2_3_4
 %v4float_n1_2_1_3 = OpConstantComposite %v4float %float_n1 %float_2 %float_1 %float_3
 %uint_0x3f800000 = OpConstant %uint 0x3f800000
 %uint_0xbf800000 = OpConstant %uint 0xbf800000
@@ -269,6 +313,8 @@ OpName %main "main"
 %int_0xC05FD666 = OpConstant %int 0xC05FD666
 %int_0x66666666 = OpConstant %int 0x66666666
 %v4int_0x3FF00000_0x00000000_0xC05FD666_0x66666666 = OpConstantComposite %v4int %int_0x00000000 %int_0x3FF00000 %int_0x66666666 %int_0xC05FD666
+%ushort_0xBC00 = OpConstant %ushort 0xBC00
+%short_0xBC00 = OpConstant %short 0xBC00
 )";
 
   return header;
@@ -743,7 +789,95 @@ INSTANTIATE_TEST_SUITE_P(TestCase, IntegerInstructionFoldingTest,
             "%2 = OpBitcast %uint %float_1\n" +
             "OpReturn\n" +
             "OpFunctionEnd",
-        2, static_cast<uint32_t>(0x3f800000))
+        2, static_cast<uint32_t>(0x3f800000)),
+    // Test case 49: Bit-cast ushort 0xBC00 to ushort
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %ushort %ushort_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xBC00),
+    // Test case 50: Bit-cast short 0xBC00 to ushort
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %ushort %short_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xFFFFBC00),
+    // Test case 51: Bit-cast half 1 to ushort
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %ushort %half_1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0x3C00),
+    // Test case 52: Bit-cast ushort 0xBC00 to short
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %short %ushort_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xBC00),
+    // Test case 53: Bit-cast short 0xBC00 to short
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %short %short_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xFFFFBC00),
+    // Test case 54: Bit-cast half 1 to short
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %short %half_1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0x3C00),
+    // Test case 55: Bit-cast ushort 0xBC00 to half
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %half %ushort_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xBC00),
+    // Test case 56: Bit-cast short 0xBC00 to half
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %half %short_0xBC00\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xFFFFBC00),
+    // Test case 57: Bit-cast half 1 to half
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %half %half_1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0x3C00),
+    // Test case 58: Bit-cast ubyte 1 to byte
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %byte %ubyte_1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 1),
+    // Test case 59: Bit-cast byte -1 to ubyte
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpBitcast %ubyte %byte_n1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, 0xFFFFFFFF)
 ));
 // clang-format on
 
@@ -762,15 +896,15 @@ TEST_P(IntVectorInstructionFoldingTest, Case) {
   // Fold the instruction to test.
   analysis::DefUseManager* def_use_mgr = context->get_def_use_mgr();
   Instruction* inst = def_use_mgr->GetDef(tc.id_to_fold);
-  SpvOp original_opcode = inst->opcode();
+  spv::Op original_opcode = inst->opcode();
   bool succeeded = context->get_instruction_folder().FoldInstruction(inst);
 
   // Make sure the instruction folded as expected.
   EXPECT_EQ(succeeded, inst == nullptr || inst->opcode() != original_opcode);
   if (succeeded && inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    std::vector<SpvOp> opcodes = {SpvOpConstantComposite};
+    std::vector<spv::Op> opcodes = {spv::Op::OpConstantComposite};
     EXPECT_THAT(opcodes, Contains(inst->opcode()));
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::Constant* result = const_mrg->GetConstantFromInst(inst);
@@ -859,9 +993,9 @@ TEST_P(DoubleVectorInstructionFoldingTest, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_TRUE(succeeded);
   if (succeeded && inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    std::vector<SpvOp> opcodes = {SpvOpConstantComposite};
+    std::vector<spv::Op> opcodes = {spv::Op::OpConstantComposite};
     EXPECT_THAT(opcodes, Contains(inst->opcode()));
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::Constant* result = const_mrg->GetConstantFromInst(inst);
@@ -888,7 +1022,61 @@ INSTANTIATE_TEST_SUITE_P(TestCase, DoubleVectorInstructionFoldingTest,
            "%2 = OpBitcast %v2double %v4int_0x3FF00000_0x00000000_0xC05FD666_0x66666666\n" +
            "OpReturn\n" +
            "OpFunctionEnd",
-       2, {1.0,-127.35})
+       2, {1.0,-127.35}),
+   // Test case 1: OpVectorTimesMatrix Non-Zero Zero {{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}} {1.0, 2.0, 3.0, 4.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4double %v4double_1_2_3_4 %mat4v4double_null\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0,0.0,0.0,0.0}),
+   // Test case 2: OpVectorTimesMatrix Zero Non-Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {0.0, 0.0, 0.0, 0.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4double %v4double_null %mat4v4double_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0,0.0,0.0,0.0}),
+   // Test case 3: OpVectorTimesMatrix Non-Zero Non-Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {1.0, 2.0, 3.0, 4.0} {30.0, 30.0, 30.0, 30.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4double %v4double_1_2_3_4 %mat4v4double_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {30.0,30.0,30.0,30.0}),
+   // Test case 4: OpMatrixTimesVector Zero Non-Zero {1.0, 2.0, 3.0, 4.0} {{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4double %mat4v4double_null %v4double_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0,0.0,0.0,0.0}),
+   // Test case 5: OpMatrixTimesVector Non-Zero Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {0.0, 0.0, 0.0, 0.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4double %mat4v4double_1_2_3_4 %v4double_null\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0,0.0,0.0,0.0}),
+   // Test case 6: OpMatrixTimesVector Non-Zero Non-Zero {1.0, 2.0, 3.0, 4.0} {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {10.0, 20.0, 30.0, 40.0}
+   InstructionFoldingCase<std::vector<double>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4double %mat4v4double_1_2_3_4 %v4double_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {10.0,20.0,30.0,40.0})
 ));
 
 using FloatVectorInstructionFoldingTest =
@@ -906,15 +1094,15 @@ TEST_P(FloatVectorInstructionFoldingTest, Case) {
   // Fold the instruction to test.
   analysis::DefUseManager* def_use_mgr = context->get_def_use_mgr();
   Instruction* inst = def_use_mgr->GetDef(tc.id_to_fold);
-  SpvOp original_opcode = inst->opcode();
+  spv::Op original_opcode = inst->opcode();
   bool succeeded = context->get_instruction_folder().FoldInstruction(inst);
 
   // Make sure the instruction folded as expected.
   EXPECT_EQ(succeeded, inst == nullptr || inst->opcode() != original_opcode);
   if (succeeded && inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    std::vector<SpvOp> opcodes = {SpvOpConstantComposite};
+    std::vector<spv::Op> opcodes = {spv::Op::OpConstantComposite};
     EXPECT_THAT(opcodes, Contains(inst->opcode()));
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::Constant* result = const_mrg->GetConstantFromInst(inst);
@@ -957,7 +1145,61 @@ INSTANTIATE_TEST_SUITE_P(TestCase, FloatVectorInstructionFoldingTest,
            "%2 = OpBitcast %v2float %long_0xbf8000003f800000\n" +
            "OpReturn\n" +
            "OpFunctionEnd",
-       2, {1.0f,-1.0f})
+       2, {1.0f,-1.0f}),
+   // Test case 3: OpVectorTimesMatrix Non-Zero Zero {{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}} {1.0, 2.0, 3.0, 4.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4float %v4float_1_2_3_4 %mat4v4float_null\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0f,0.0f,0.0f,0.0f}),
+   // Test case 4: OpVectorTimesMatrix Zero Non-Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {0.0, 0.0, 0.0, 0.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4float %v4float_null %mat4v4float_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0f,0.0f,0.0f,0.0f}),
+   // Test case 5: OpVectorTimesMatrix Non-Zero Non-Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {1.0, 2.0, 3.0, 4.0} {30.0, 30.0, 30.0, 30.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpVectorTimesMatrix %v4float %v4float_1_2_3_4 %mat4v4float_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {30.0f,30.0f,30.0f,30.0f}),
+   // Test case 6: OpMatrixTimesVector Zero Non-Zero {1.0, 2.0, 3.0, 4.0} {{0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0}} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4float %mat4v4float_null %v4float_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0f,0.0f,0.0f,0.0f}),
+   // Test case 7: OpMatrixTimesVector Non-Zero Zero {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {0.0, 0.0, 0.0, 0.0} {0.0, 0.0, 0.0, 0.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4float %mat4v4float_1_2_3_4 %v4float_null\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {0.0f,0.0f,0.0f,0.0f}),
+   // Test case 8: OpMatrixTimesVector Non-Zero Non-Zero {1.0, 2.0, 3.0, 4.0} {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}} {10.0, 20.0, 30.0, 40.0}
+   InstructionFoldingCase<std::vector<float>>(
+       Header() +
+       "%main = OpFunction %void None %void_func\n" +
+       "%main_lab = OpLabel\n" +
+       "%2 = OpMatrixTimesVector %v4float %mat4v4float_1_2_3_4 %v4float_1_2_3_4\n" +
+       "OpReturn\n" +
+       "OpFunctionEnd",
+       2, {10.0f,20.0f,30.0f,40.0f})
 ));
 // clang-format on
 using BooleanInstructionFoldingTest =
@@ -980,9 +1222,10 @@ TEST_P(BooleanInstructionFoldingTest, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_TRUE(succeeded);
   if (inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    std::vector<SpvOp> bool_opcodes = {SpvOpConstantTrue, SpvOpConstantFalse};
+    std::vector<spv::Op> bool_opcodes = {spv::Op::OpConstantTrue,
+                                         spv::Op::OpConstantFalse};
     EXPECT_THAT(bool_opcodes, Contains(inst->opcode()));
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::BoolConstant* result =
@@ -1591,9 +1834,9 @@ TEST_P(FloatInstructionFoldingTest, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_TRUE(succeeded);
   if (inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    EXPECT_EQ(inst->opcode(), SpvOpConstant);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpConstant);
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::FloatConstant* result =
         const_mrg->GetConstantFromInst(inst)->AsFloatConstant();
@@ -1968,7 +2211,39 @@ INSTANTIATE_TEST_SUITE_P(FloatConstantFoldingTest, FloatInstructionFoldingTest,
             "%2 = OpExtInst %float %1 Pow %float_2 %float_3\n" +
             "OpReturn\n" +
             "OpFunctionEnd",
-        2, 8.0)
+        2, 8.0),
+    // Test case 43: Fold 1.0 / -0.0.
+    InstructionFoldingCase<float>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpFDiv %float %float_1 %float_n0\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, -std::numeric_limits<float>::infinity()),
+    // Test case 44: Fold -1.0 / -0.0
+    InstructionFoldingCase<float>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpFDiv %float %float_n1 %float_n0\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, std::numeric_limits<float>::infinity()),
+    // Test case 45: Fold 0.0 / 0.0
+    InstructionFoldingCase<float>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpFDiv %float %float_0 %float_0\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, std::numeric_limits<float>::quiet_NaN()),
+    // Test case 46: Fold 0.0 / -0.0
+    InstructionFoldingCase<float>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpFDiv %float %float_0 %float_n0\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        2, std::numeric_limits<float>::quiet_NaN())
 ));
 // clang-format on
 
@@ -1992,15 +2267,19 @@ TEST_P(DoubleInstructionFoldingTest, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_TRUE(succeeded);
   if (inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     inst = def_use_mgr->GetDef(inst->GetSingleWordInOperand(0));
-    EXPECT_EQ(inst->opcode(), SpvOpConstant);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpConstant);
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::FloatConstant* result =
         const_mrg->GetConstantFromInst(inst)->AsFloatConstant();
     EXPECT_NE(result, nullptr);
     if (result != nullptr) {
-      EXPECT_EQ(result->GetDoubleValue(), tc.expected_result);
+      if (!std::isnan(tc.expected_result)) {
+        EXPECT_EQ(result->GetDoubleValue(), tc.expected_result);
+      } else {
+        EXPECT_TRUE(std::isnan(result->GetDoubleValue()));
+      }
     }
   }
 }
@@ -2203,7 +2482,39 @@ INSTANTIATE_TEST_SUITE_P(DoubleConstantFoldingTest, DoubleInstructionFoldingTest
                 "%2 = OpExtInst %double %1 Pow %double_2 %double_3\n" +
                 "OpReturn\n" +
                 "OpFunctionEnd",
-            2, 8.0)
+            2, 8.0),
+        // Test case 23: Fold 1.0 / -0.0.
+        InstructionFoldingCase<double>(
+            Header() + "%main = OpFunction %void None %void_func\n" +
+                "%main_lab = OpLabel\n" +
+                "%2 = OpFDiv %double %double_1 %double_n0\n" +
+                "OpReturn\n" +
+                "OpFunctionEnd",
+            2, -std::numeric_limits<double>::infinity()),
+        // Test case 24: Fold -1.0 / -0.0
+        InstructionFoldingCase<double>(
+            Header() + "%main = OpFunction %void None %void_func\n" +
+                "%main_lab = OpLabel\n" +
+                "%2 = OpFDiv %double %double_n1 %double_n0\n" +
+                "OpReturn\n" +
+                "OpFunctionEnd",
+            2, std::numeric_limits<double>::infinity()),
+        // Test case 25: Fold 0.0 / 0.0
+        InstructionFoldingCase<double>(
+            Header() + "%main = OpFunction %void None %void_func\n" +
+                "%main_lab = OpLabel\n" +
+                "%2 = OpFDiv %double %double_0 %double_0\n" +
+                "OpReturn\n" +
+                "OpFunctionEnd",
+            2, std::numeric_limits<double>::quiet_NaN()),
+        // Test case 26: Fold 0.0 / -0.0
+        InstructionFoldingCase<double>(
+            Header() + "%main = OpFunction %void None %void_func\n" +
+                "%main_lab = OpLabel\n" +
+                "%2 = OpFDiv %double %double_0 %double_n0\n" +
+                "OpReturn\n" +
+                "OpFunctionEnd",
+            2, std::numeric_limits<double>::quiet_NaN())
 ));
 // clang-format on
 
@@ -2843,7 +3154,7 @@ TEST_P(IntegerInstructionFoldingTestWithMap, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_NE(inst, nullptr);
   if (inst != nullptr) {
-    EXPECT_EQ(inst->opcode(), SpvOpConstant);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpConstant);
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::IntConstant* result =
         const_mrg->GetConstantFromInst(inst)->AsIntConstant();
@@ -2891,7 +3202,8 @@ TEST_P(BooleanInstructionFoldingTestWithMap, Case) {
   // Make sure the instruction folded as expected.
   EXPECT_NE(inst, nullptr);
   if (inst != nullptr) {
-    std::vector<SpvOp> bool_opcodes = {SpvOpConstantTrue, SpvOpConstantFalse};
+    std::vector<spv::Op> bool_opcodes = {spv::Op::OpConstantTrue,
+                                         spv::Op::OpConstantFalse};
     EXPECT_THAT(bool_opcodes, Contains(inst->opcode()));
     analysis::ConstantManager* const_mrg = context->get_constant_mgr();
     const analysis::BoolConstant* result =
@@ -2943,7 +3255,7 @@ TEST_P(GeneralInstructionFoldingTest, Case) {
   EXPECT_EQ(inst->type_id(), original_inst->type_id());
   EXPECT_TRUE((!succeeded) == (tc.expected_result == 0));
   if (succeeded) {
-    EXPECT_EQ(inst->opcode(), SpvOpCopyObject);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpCopyObject);
     EXPECT_EQ(inst->GetSingleWordInOperand(0), tc.expected_result);
   } else {
     EXPECT_EQ(inst->NumInOperands(), original_inst->NumInOperands());
@@ -3589,7 +3901,19 @@ INSTANTIATE_TEST_SUITE_P(CompositeExtractFoldingTest, GeneralInstructionFoldingT
             "%4 = OpCompositeExtract %int %3 2\n" +
             "OpReturn\n" +
             "OpFunctionEnd",
-        4, INT_0_ID)
+        4, INT_0_ID),
+    // Test case 15:
+    // Don't fold extract fed by construct with vector result if the index is
+    // past the last element.
+    InstructionFoldingCase<uint32_t>(
+        Header() + "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeConstruct %v2int %int_0 %int_0\n" +
+            "%3 = OpCompositeConstruct %v4int %2 %100 %int_0\n" +
+            "%4 = OpCompositeExtract %int %3 4\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        4, 0)
 ));
 
 INSTANTIATE_TEST_SUITE_P(CompositeConstructFoldingTest, GeneralInstructionFoldingTest,
@@ -4589,7 +4913,7 @@ TEST_P(ToNegateFoldingTest, Case) {
   EXPECT_EQ(inst->type_id(), original_inst->type_id());
   EXPECT_TRUE((!succeeded) == (tc.expected_result == 0));
   if (succeeded) {
-    EXPECT_EQ(inst->opcode(), SpvOpFNegate);
+    EXPECT_EQ(inst->opcode(), spv::Op::OpFNegate);
     EXPECT_EQ(inst->GetSingleWordInOperand(0), tc.expected_result);
   } else {
     EXPECT_EQ(inst->NumInOperands(), original_inst->NumInOperands());
@@ -5572,7 +5896,109 @@ INSTANTIATE_TEST_SUITE_P(MergeMulTest, MatchingInstructionFoldingTest,
         "%5 = OpFMul %float %4 %2\n" +
         "OpReturn\n" +
         "OpFunctionEnd\n",
-    5, true)
+    5, true),
+  // Test case 25: fold overflowing signed 32 bit imuls
+  // (x * 1073741824) * 2 = x * int_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[int:%\\w+]] = OpTypeInt 32\n" +
+      "; CHECK: [[int_min:%\\w+]] = OpConstant [[int]] -2147483648\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
+      "; CHECK: %4 = OpIMul [[int]] [[ld]] [[int_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_int Function\n" +
+      "%2 = OpLoad %int %var\n" +
+      "%3 = OpIMul %int %2 %int_1073741824\n" +
+      "%4 = OpIMul %int %3 %int_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 26: fold overflowing signed 64 bit imuls
+  // (x * 4611686018427387904) * 2 = x * long_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[long:%\\w+]] = OpTypeInt 64\n" +
+      "; CHECK: [[long_min:%\\w+]] = OpConstant [[long]] -9223372036854775808\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[long]]\n" +
+      "; CHECK: %4 = OpIMul [[long]] [[ld]] [[long_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_long Function\n" +
+      "%2 = OpLoad %long %var\n" +
+      "%3 = OpIMul %long %2 %long_4611686018427387904\n" +
+      "%4 = OpIMul %long %3 %long_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 27: fold overflowing 32 bit unsigned imuls
+  // (x * 2147483649) * 2 = x * 2
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[uint:%\\w+]] = OpTypeInt 32 0\n" +
+      "; CHECK: [[uint_2:%\\w+]] = OpConstant [[uint]] 2\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[uint]]\n" +
+      "; CHECK: %4 = OpIMul [[uint]] [[ld]] [[uint_2]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_uint Function\n" +
+      "%2 = OpLoad %uint %var\n" +
+      "%3 = OpIMul %uint %2 %uint_2147483649\n" +
+      "%4 = OpIMul %uint %3 %uint_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 28: fold overflowing 64 bit unsigned imuls
+  // (x * 9223372036854775809) * 2 = x * 2
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[ulong:%\\w+]] = OpTypeInt 64 0\n" +
+      "; CHECK: [[ulong_2:%\\w+]] = OpConstant [[ulong]] 2\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[ulong]]\n" +
+      "; CHECK: %4 = OpIMul [[ulong]] [[ld]] [[ulong_2]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_ulong Function\n" +
+      "%2 = OpLoad %ulong %var\n" +
+      "%3 = OpIMul %ulong %2 %ulong_9223372036854775809\n" +
+      "%4 = OpIMul %ulong %3 %ulong_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 29: fold underflowing signed 32 bit imuls
+  // (x * (-858993459)) * 10 = x * 2
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[int:%\\w+]] = OpTypeInt 32\n" +
+      "; CHECK: [[int_2:%\\w+]] = OpConstant [[int]] 2\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
+      "; CHECK: %4 = OpIMul [[int]] [[ld]] [[int_2]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_int Function\n" +
+      "%2 = OpLoad %int %var\n" +
+      "%3 = OpIMul %int %2 %int_n858993459\n" +
+      "%4 = OpIMul %int %3 %int_10\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 30: fold underflowing signed 64 bit imuls
+  // (x * (-3689348814741910323)) * 10 = x * 2
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[long:%\\w+]] = OpTypeInt 64\n" +
+      "; CHECK: [[long_2:%\\w+]] = OpConstant [[long]] 2\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[long]]\n" +
+      "; CHECK: %4 = OpIMul [[long]] [[ld]] [[long_2]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_long Function\n" +
+      "%2 = OpLoad %long %var\n" +
+      "%3 = OpIMul %long %2 %long_n3689348814741910323\n" +
+      "%4 = OpIMul %long %3 %long_10\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true)
 ));
 
 INSTANTIATE_TEST_SUITE_P(MergeDivTest, MatchingInstructionFoldingTest,
@@ -5732,15 +6158,11 @@ INSTANTIATE_TEST_SUITE_P(MergeDivTest, MatchingInstructionFoldingTest,
       "OpReturn\n" +
       "OpFunctionEnd\n",
     4, false),
-  // Test case 11: merge sdiv of snegate
-  // (-x) / 2 = x / -2
+  // Test case 11: Do not merge sdiv of snegate.  If %2 is INT_MIN, then the
+  // sign of %3 will be the same as %2.  This cannot be accounted for in OpSDiv.
+  // Specifically, (-INT_MIN) / 2 != INT_MIN / -2.
   InstructionFoldingCase<bool>(
     Header() +
-      "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
-      "; CHECK: OpConstant [[int]] -2147483648\n" +
-      "; CHECK: [[int_n2:%\\w+]] = OpConstant [[int]] -2{{[[:space:]]}}\n" +
-      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
-      "; CHECK: %4 = OpSDiv [[int]] [[ld]] [[int_n2]]\n" +
       "%main = OpFunction %void None %void_func\n" +
       "%main_lab = OpLabel\n" +
       "%var = OpVariable %_ptr_int Function\n" +
@@ -5749,16 +6171,12 @@ INSTANTIATE_TEST_SUITE_P(MergeDivTest, MatchingInstructionFoldingTest,
       "%4 = OpSDiv %int %3 %int_2\n" +
       "OpReturn\n" +
       "OpFunctionEnd\n",
-    4, true),
-  // Test case 12: merge sdiv of snegate
-  // 2 / (-x) = -2 / x
+    4, false),
+  // Test case 12: Do not merge sdiv of snegate.  If %2 is INT_MIN, then the
+  // sign of %3 will be the same as %2.  This cannot be accounted for in OpSDiv.
+  // Specifically, 2 / (-INT_MIN) != -2 / INT_MIN.
   InstructionFoldingCase<bool>(
     Header() +
-      "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
-      "; CHECK: OpConstant [[int]] -2147483648\n" +
-      "; CHECK: [[int_n2:%\\w+]] = OpConstant [[int]] -2{{[[:space:]]}}\n" +
-      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
-      "; CHECK: %4 = OpSDiv [[int]] [[int_n2]] [[ld]]\n" +
       "%main = OpFunction %void None %void_func\n" +
       "%main_lab = OpLabel\n" +
       "%var = OpVariable %_ptr_int Function\n" +
@@ -5767,7 +6185,7 @@ INSTANTIATE_TEST_SUITE_P(MergeDivTest, MatchingInstructionFoldingTest,
       "%4 = OpSDiv %int %int_2 %3\n" +
       "OpReturn\n" +
       "OpFunctionEnd\n",
-    4, true),
+    4, false),
   // Test case 13: Don't merge
   // (x / {null}) / {null}
   InstructionFoldingCase<bool>(
@@ -5818,7 +6236,33 @@ INSTANTIATE_TEST_SUITE_P(MergeDivTest, MatchingInstructionFoldingTest,
         "%5 = OpFDiv %float %4 %2\n" +
         "OpReturn\n" +
         "OpFunctionEnd\n",
-    5, true)
+    5, true),
+  // Test case 16: Do not merge udiv of snegate
+  // (-x) / 2u
+  InstructionFoldingCase<bool>(
+    Header() +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_uint Function\n" +
+      "%2 = OpLoad %uint %var\n" +
+      "%3 = OpSNegate %uint %2\n" +
+      "%4 = OpUDiv %uint %3 %uint_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, false),
+  // Test case 17: Do not merge udiv of snegate
+  // 2u / (-x)
+  InstructionFoldingCase<bool>(
+    Header() +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_uint Function\n" +
+      "%2 = OpLoad %uint %var\n" +
+      "%3 = OpSNegate %uint %2\n" +
+      "%4 = OpUDiv %uint %uint_2 %3\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, false)
 ));
 
 INSTANTIATE_TEST_SUITE_P(MergeAddTest, MatchingInstructionFoldingTest,
@@ -6024,6 +6468,108 @@ INSTANTIATE_TEST_SUITE_P(MergeAddTest, MatchingInstructionFoldingTest,
       "%2 = OpLoad %float %var\n" +
       "%3 = OpFAdd %float %float_1 %2\n" +
       "%4 = OpFAdd %float %float_2 %3\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 12: fold overflowing signed 32 bit iadds
+  // (x + int_max) + 1 = x + int_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[int:%\\w+]] = OpTypeInt 32\n" +
+      "; CHECK: [[int_min:%\\w+]] = OpConstant [[int]] -2147483648\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
+      "; CHECK: %4 = OpIAdd [[int]] [[ld]] [[int_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_int Function\n" +
+      "%2 = OpLoad %int %var\n" +
+      "%3 = OpIAdd %int %2 %int_max\n" +
+      "%4 = OpIAdd %int %3 %int_1\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 13: fold overflowing signed 64 bit iadds
+  // (x + long_max) + 1 = x + long_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[long:%\\w+]] = OpTypeInt 64\n" +
+      "; CHECK: [[long_min:%\\w+]] = OpConstant [[long]] -9223372036854775808\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[long]]\n" +
+      "; CHECK: %4 = OpIAdd [[long]] [[ld]] [[long_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_long Function\n" +
+      "%2 = OpLoad %long %var\n" +
+      "%3 = OpIAdd %long %2 %long_max\n" +
+      "%4 = OpIAdd %long %3 %long_1\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 14: fold overflowing 32 bit unsigned iadds
+  // (x + uint_max) + 2 = x + 1
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[uint:%\\w+]] = OpTypeInt 32 0\n" +
+      "; CHECK: [[uint_1:%\\w+]] = OpConstant [[uint]] 1\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[uint]]\n" +
+      "; CHECK: %4 = OpIAdd [[uint]] [[ld]] [[uint_1]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_uint Function\n" +
+      "%2 = OpLoad %uint %var\n" +
+      "%3 = OpIAdd %uint %2 %uint_max\n" +
+      "%4 = OpIAdd %uint %3 %uint_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 15: fold overflowing 64 bit unsigned iadds
+  // (x + ulong_max) + 2 = x + 1
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[ulong:%\\w+]] = OpTypeInt 64 0\n" +
+      "; CHECK: [[ulong_1:%\\w+]] = OpConstant [[ulong]] 1\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[ulong]]\n" +
+      "; CHECK: %4 = OpIAdd [[ulong]] [[ld]] [[ulong_1]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_ulong Function\n" +
+      "%2 = OpLoad %ulong %var\n" +
+      "%3 = OpIAdd %ulong %2 %ulong_max\n" +
+      "%4 = OpIAdd %ulong %3 %ulong_2\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 16: fold underflowing signed 32 bit iadds
+  // (x + int_min) + (-1) = x + int_max
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[int:%\\w+]] = OpTypeInt 32\n" +
+      "; CHECK: [[int_max:%\\w+]] = OpConstant [[int]] 2147483647\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
+      "; CHECK: %4 = OpIAdd [[int]] [[ld]] [[int_max]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_int Function\n" +
+      "%2 = OpLoad %int %var\n" +
+      "%3 = OpIAdd %int %2 %int_min\n" +
+      "%4 = OpIAdd %int %3 %int_n1\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 17: fold underflowing signed 64 bit iadds
+  // (x + long_min) + (-1) = x + long_max
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[long:%\\w+]] = OpTypeInt 64\n" +
+      "; CHECK: [[long_max:%\\w+]] = OpConstant [[long]] 9223372036854775807\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[long]]\n" +
+      "; CHECK: %4 = OpIAdd [[long]] [[ld]] [[long_max]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_long Function\n" +
+      "%2 = OpLoad %long %var\n" +
+      "%3 = OpIAdd %long %2 %long_min\n" +
+      "%4 = OpIAdd %long %3 %long_n1\n" +
       "OpReturn\n" +
       "OpFunctionEnd\n",
     4, true)
@@ -6394,6 +6940,40 @@ INSTANTIATE_TEST_SUITE_P(MergeSubTest, MatchingInstructionFoldingTest,
       "%4 = OpISub %int %int_2 %3\n" +
       "OpReturn\n" +
       "OpFunctionEnd\n",
+    4, true),
+  // Test case 14: fold overflowing signed 32 bit isubs
+  // (x - int_max) - 1 = x - int_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[int:%\\w+]] = OpTypeInt 32\n" +
+      "; CHECK: [[int_min:%\\w+]] = OpConstant [[int]] -2147483648\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[int]]\n" +
+      "; CHECK: %4 = OpISub [[int]] [[ld]] [[int_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_int Function\n" +
+      "%2 = OpLoad %int %var\n" +
+      "%3 = OpISub %int %2 %int_max\n" +
+      "%4 = OpISub %int %3 %int_1\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
+    4, true),
+  // Test case 15: fold overflowing signed 64 bit isubs
+  // (x - long_max) - 1 = x - long_min
+  InstructionFoldingCase<bool>(
+    Header() +
+      "; CHECK: [[long:%\\w+]] = OpTypeInt 64\n" +
+      "; CHECK: [[long_min:%\\w+]] = OpConstant [[long]] -9223372036854775808\n" +
+      "; CHECK: [[ld:%\\w+]] = OpLoad [[long]]\n" +
+      "; CHECK: %4 = OpISub [[long]] [[ld]] [[long_min]]\n" +
+      "%main = OpFunction %void None %void_func\n" +
+      "%main_lab = OpLabel\n" +
+      "%var = OpVariable %_ptr_long Function\n" +
+      "%2 = OpLoad %long %var\n" +
+      "%3 = OpISub %long %2 %long_max\n" +
+      "%4 = OpISub %long %3 %long_1\n" +
+      "OpReturn\n" +
+      "OpFunctionEnd\n",
     4, true)
 ));
 
@@ -6505,7 +7085,7 @@ INSTANTIATE_TEST_SUITE_P(SelectFoldingTest, MatchingInstructionFoldingTest,
       4, true)
 ));
 
-INSTANTIATE_TEST_SUITE_P(CompositeExtractMatchingTest, MatchingInstructionFoldingTest,
+INSTANTIATE_TEST_SUITE_P(CompositeExtractOrInsertMatchingTest, MatchingInstructionFoldingTest,
 ::testing::Values(
     // Test case 0: Extracting from result of consecutive shuffles of differing
     // size.
@@ -6645,7 +7225,145 @@ INSTANTIATE_TEST_SUITE_P(CompositeExtractMatchingTest, MatchingInstructionFoldin
             "%4 = OpCompositeExtract %int %3 1\n" +
             "OpReturn\n" +
             "OpFunctionEnd",
-        4, true)
+        4, true),
+    // Test case 8: Inserting every element of a vector turns into a composite construct.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK-DAG: [[v4:%\\w+]] = OpTypeVector [[int]] 4\n" +
+            "; CHECK-DAG: [[int1:%\\w+]] = OpConstant [[int]] 1\n" +
+            "; CHECK-DAG: [[int2:%\\w+]] = OpConstant [[int]] 2\n" +
+            "; CHECK-DAG: [[int3:%\\w+]] = OpConstant [[int]] 3\n" +
+            "; CHECK: [[construct:%\\w+]] = OpCompositeConstruct [[v4]] %100 [[int1]] [[int2]] [[int3]]\n" +
+            "; CHECK: %5 = OpCopyObject [[v4]] [[construct]]\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %v4int %100 %v4int_undef 0\n" +
+            "%3 = OpCompositeInsert %v4int %int_1 %2 1\n" +
+            "%4 = OpCompositeInsert %v4int %int_2 %3 2\n" +
+            "%5 = OpCompositeInsert %v4int %int_3 %4 3\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        5, true),
+    // Test case 9: Inserting every element of a vector turns into a composite construct in a different order.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK-DAG: [[v4:%\\w+]] = OpTypeVector [[int]] 4\n" +
+            "; CHECK-DAG: [[int1:%\\w+]] = OpConstant [[int]] 1\n" +
+            "; CHECK-DAG: [[int2:%\\w+]] = OpConstant [[int]] 2\n" +
+            "; CHECK-DAG: [[int3:%\\w+]] = OpConstant [[int]] 3\n" +
+            "; CHECK: [[construct:%\\w+]] = OpCompositeConstruct [[v4]] %100 [[int1]] [[int2]] [[int3]]\n" +
+            "; CHECK: %5 = OpCopyObject [[v4]] [[construct]]\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %v4int %100 %v4int_undef 0\n" +
+            "%4 = OpCompositeInsert %v4int %int_2 %2 2\n" +
+            "%3 = OpCompositeInsert %v4int %int_1 %4 1\n" +
+            "%5 = OpCompositeInsert %v4int %int_3 %3 3\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        5, true),
+    // Test case 10: Check multiple inserts to the same position are handled correctly.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK-DAG: [[v4:%\\w+]] = OpTypeVector [[int]] 4\n" +
+            "; CHECK-DAG: [[int1:%\\w+]] = OpConstant [[int]] 1\n" +
+            "; CHECK-DAG: [[int2:%\\w+]] = OpConstant [[int]] 2\n" +
+            "; CHECK-DAG: [[int3:%\\w+]] = OpConstant [[int]] 3\n" +
+            "; CHECK: [[construct:%\\w+]] = OpCompositeConstruct [[v4]] %100 [[int1]] [[int2]] [[int3]]\n" +
+            "; CHECK: %6 = OpCopyObject [[v4]] [[construct]]\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %v4int %100 %v4int_undef 0\n" +
+            "%3 = OpCompositeInsert %v4int %int_2 %2 2\n" +
+            "%4 = OpCompositeInsert %v4int %int_4 %3 1\n" +
+            "%5 = OpCompositeInsert %v4int %int_1 %4 1\n" +
+            "%6 = OpCompositeInsert %v4int %int_3 %5 3\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        6, true),
+    // Test case 11: The last indexes are 0 and 1, but they have different first indexes.  This should not be folded.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %m2x2int %100 %m2x2int_undef 0 0\n" +
+            "%3 = OpCompositeInsert %m2x2int %int_1 %2 1 1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        3, false),
+    // Test case 12: Don't fold when there is a partial insertion.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %m2x2int %v2int_1_0 %m2x2int_undef 0\n" +
+            "%3 = OpCompositeInsert %m2x2int %int_4 %2 0 0\n" +
+            "%4 = OpCompositeInsert %m2x2int %v2int_2_3 %3 1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        4, false),
+    // Test case 13: Insert into a column of a matrix
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK-DAG: [[v2:%\\w+]] = OpTypeVector [[int]] 2\n" +
+            "; CHECK: [[m2x2:%\\w+]] = OpTypeMatrix [[v2]] 2\n" +
+            "; CHECK-DAG: [[m2x2_undef:%\\w+]] = OpUndef [[m2x2]]\n" +
+            "; CHECK-DAG: [[int1:%\\w+]] = OpConstant [[int]] 1\n" +
+// We keep this insert in the chain.  DeadInsertElimPass should remove it.
+            "; CHECK: [[insert:%\\w+]] = OpCompositeInsert [[m2x2]] %100 [[m2x2_undef]] 0 0\n" +
+            "; CHECK: [[construct:%\\w+]] = OpCompositeConstruct [[v2]] %100 [[int1]]\n" +
+            "; CHECK: %3 = OpCompositeInsert [[m2x2]] [[construct]] [[insert]] 0\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeInsert %m2x2int %100 %m2x2int_undef 0 0\n" +
+            "%3 = OpCompositeInsert %m2x2int %int_1 %2 0 1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        3, true),
+    // Test case 14: Insert all elements of the matrix.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK-DAG: [[v2:%\\w+]] = OpTypeVector [[int]] 2\n" +
+            "; CHECK: [[m2x2:%\\w+]] = OpTypeMatrix [[v2]] 2\n" +
+            "; CHECK-DAG: [[m2x2_undef:%\\w+]] = OpUndef [[m2x2]]\n" +
+            "; CHECK-DAG: [[int1:%\\w+]] = OpConstant [[int]] 1\n" +
+            "; CHECK-DAG: [[int2:%\\w+]] = OpConstant [[int]] 2\n" +
+            "; CHECK-DAG: [[int3:%\\w+]] = OpConstant [[int]] 3\n" +
+            "; CHECK: [[c0:%\\w+]] = OpCompositeConstruct [[v2]] %100 [[int1]]\n" +
+            "; CHECK: [[c1:%\\w+]] = OpCompositeConstruct [[v2]] [[int2]] [[int3]]\n" +
+            "; CHECK: [[matrix:%\\w+]] = OpCompositeConstruct [[m2x2]] [[c0]] [[c1]]\n" +
+            "; CHECK: %5 = OpCopyObject [[m2x2]] [[matrix]]\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpCompositeConstruct %v2int %100 %int_1\n" +
+            "%3 = OpCompositeInsert %m2x2int %2 %m2x2int_undef 0\n" +
+            "%4 = OpCompositeInsert %m2x2int %int_2 %3 1 0\n" +
+            "%5 = OpCompositeInsert %m2x2int %int_3 %4 1 1\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        5, true),
+    // Test case 15: Replace construct with extract when reconstructing a member
+    // of another object.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK: [[v2:%\\w+]] = OpTypeVector [[int]] 2\n" +
+            "; CHECK: [[m2x2:%\\w+]] = OpTypeMatrix [[v2]] 2\n" +
+            "; CHECK: [[m2x2_undef:%\\w+]] = OpUndef [[m2x2]]\n" +
+            "; CHECK: %5 = OpCompositeExtract [[v2]] [[m2x2_undef]]\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%3 = OpCompositeExtract %int %m2x2int_undef 1 0\n" +
+            "%4 = OpCompositeExtract %int %m2x2int_undef 1 1\n" +
+            "%5 = OpCompositeConstruct %v2int %3 %4\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        5, true)
 ));
 
 INSTANTIATE_TEST_SUITE_P(DotProductMatchingTest, MatchingInstructionFoldingTest,
@@ -6730,12 +7448,297 @@ INSTANTIATE_TEST_SUITE_P(DotProductMatchingTest, MatchingInstructionFoldingTest,
         3, true)
 ));
 
+INSTANTIATE_TEST_SUITE_P(VectorShuffleMatchingTest, MatchingInstructionFoldingTest,
+::testing::Values(
+    // Test case 0: Using OpDot to extract last element.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[int:%\\w+]] = OpTypeInt 32 1\n" +
+            "; CHECK: [[v2int:%\\w+]] = OpTypeVector [[int]] 2{{[[:space:]]}}\n" +
+            "; CHECK: [[null:%\\w+]] = OpConstantNull [[v2int]]\n" +
+            "; CHECK: OpVectorShuffle\n" +
+            "; CHECK: %3 = OpVectorShuffle [[v2int]] [[null]] {{%\\w+}} 4294967295 2\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%n = OpVariable %_ptr_int Function\n" +
+            "%load = OpLoad %int %n\n" +
+            "%2 = OpVectorShuffle %v2int %v2int_null %v2int_2_3 3 0xFFFFFFFF \n" +
+            "%3 = OpVectorShuffle %v2int %2 %v2int_2_3 1 2 \n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        3, true)
+ ));
+
+INSTANTIATE_TEST_SUITE_P(FmaGenerationMatchingTest, MatchingInstructionFoldingTest,
+::testing::Values(
+   // Test case 0: (x * y) + a = Fma(x, y, a)
+   InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFAdd %float %mul %la\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+    // Test case 1:  a + (x * y) = Fma(x, y, a)
+   InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFAdd %float %la %mul\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+   // Test case 2: (x * y) + a = Fma(x, y, a) with vectors
+   InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_v4float Function\n" +
+           "%y = OpVariable %_ptr_v4float Function\n" +
+           "%a = OpVariable %_ptr_v4float Function\n" +
+           "%lx = OpLoad %v4float %x\n" +
+           "%ly = OpLoad %v4float %y\n" +
+           "%mul = OpFMul %v4float %lx %ly\n" +
+           "%la = OpLoad %v4float %a\n" +
+           "%3 = OpFAdd %v4float %mul %la\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+    // Test case 3:  a + (x * y) = Fma(x, y, a) with vectors
+   InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFAdd %float %la %mul\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+    // Test 4: that the OpExtInstImport instruction is generated if it is missing.
+   InstructionFoldingCase<bool>(
+           std::string() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "OpCapability Shader\n" +
+           "OpMemoryModel Logical GLSL450\n" +
+           "OpEntryPoint Fragment %main \"main\"\n" +
+           "OpExecutionMode %main OriginUpperLeft\n" +
+           "OpSource GLSL 140\n" +
+           "OpName %main \"main\"\n" +
+           "%void = OpTypeVoid\n" +
+           "%void_func = OpTypeFunction %void\n" +
+           "%bool = OpTypeBool\n" +
+           "%float = OpTypeFloat 32\n" +
+           "%_ptr_float = OpTypePointer Function %float\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFAdd %float %mul %la\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+   // Test 5: Don't fold if the multiple is marked no contract.
+   InstructionFoldingCase<bool>(
+       std::string() +
+           "OpCapability Shader\n" +
+           "OpMemoryModel Logical GLSL450\n" +
+           "OpEntryPoint Fragment %main \"main\"\n" +
+           "OpExecutionMode %main OriginUpperLeft\n" +
+           "OpSource GLSL 140\n" +
+           "OpName %main \"main\"\n" +
+           "OpDecorate %mul NoContraction\n" +
+           "%void = OpTypeVoid\n" +
+           "%void_func = OpTypeFunction %void\n" +
+           "%bool = OpTypeBool\n" +
+           "%float = OpTypeFloat 32\n" +
+           "%_ptr_float = OpTypePointer Function %float\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFAdd %float %mul %la\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, false),
+       // Test 6: Don't fold if the add is marked no contract.
+       InstructionFoldingCase<bool>(
+           std::string() +
+               "OpCapability Shader\n" +
+               "OpMemoryModel Logical GLSL450\n" +
+               "OpEntryPoint Fragment %main \"main\"\n" +
+               "OpExecutionMode %main OriginUpperLeft\n" +
+               "OpSource GLSL 140\n" +
+               "OpName %main \"main\"\n" +
+               "OpDecorate %3 NoContraction\n" +
+               "%void = OpTypeVoid\n" +
+               "%void_func = OpTypeFunction %void\n" +
+               "%bool = OpTypeBool\n" +
+               "%float = OpTypeFloat 32\n" +
+               "%_ptr_float = OpTypePointer Function %float\n" +
+               "%main = OpFunction %void None %void_func\n" +
+               "%main_lab = OpLabel\n" +
+               "%x = OpVariable %_ptr_float Function\n" +
+               "%y = OpVariable %_ptr_float Function\n" +
+               "%a = OpVariable %_ptr_float Function\n" +
+               "%lx = OpLoad %float %x\n" +
+               "%ly = OpLoad %float %y\n" +
+               "%mul = OpFMul %float %lx %ly\n" +
+               "%la = OpLoad %float %a\n" +
+               "%3 = OpFAdd %float %mul %la\n" +
+               "OpStore %a %3\n" +
+               "OpReturn\n" +
+               "OpFunctionEnd",
+           3, false),
+    // Test case 7: (x * y) - a = Fma(x, y, -a)
+    InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[na:%\\w+]] = OpFNegate {{%\\w+}} [[la]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[lx]] [[ly]] [[na]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFSub %float %mul %la\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true),
+   // Test case 8: a - (x * y) = Fma(-x, y, a)
+   InstructionFoldingCase<bool>(
+       Header() +
+           "; CHECK: [[ext:%\\w+]] = OpExtInstImport \"GLSL.std.450\"\n" +
+           "; CHECK: OpFunction\n" +
+           "; CHECK: [[x:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[y:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[a:%\\w+]] = OpVariable {{%\\w+}} Function\n" +
+           "; CHECK: [[lx:%\\w+]] = OpLoad {{%\\w+}} [[x]]\n" +
+           "; CHECK: [[ly:%\\w+]] = OpLoad {{%\\w+}} [[y]]\n" +
+           "; CHECK: [[la:%\\w+]] = OpLoad {{%\\w+}} [[a]]\n" +
+           "; CHECK: [[nx:%\\w+]] = OpFNegate {{%\\w+}} [[lx]]\n" +
+           "; CHECK: [[fma:%\\w+]] = OpExtInst {{%\\w+}} [[ext]] Fma [[nx]] [[ly]] [[la]]\n" +
+           "; CHECK: OpStore {{%\\w+}} [[fma]]\n" +
+           "%main = OpFunction %void None %void_func\n" +
+           "%main_lab = OpLabel\n" +
+           "%x = OpVariable %_ptr_float Function\n" +
+           "%y = OpVariable %_ptr_float Function\n" +
+           "%a = OpVariable %_ptr_float Function\n" +
+           "%lx = OpLoad %float %x\n" +
+           "%ly = OpLoad %float %y\n" +
+           "%mul = OpFMul %float %lx %ly\n" +
+           "%la = OpLoad %float %a\n" +
+           "%3 = OpFSub %float %la %mul\n" +
+           "OpStore %a %3\n" +
+           "OpReturn\n" +
+           "OpFunctionEnd",
+       3, true)
+));
+
 using MatchingInstructionWithNoResultFoldingTest =
 ::testing::TestWithParam<InstructionFoldingCase<bool>>;
 
 // Test folding instructions that do not have a result.  The instruction
 // that will be folded is the last instruction before the return.  If there
-// are multiple returns, there is not guarentee which one is used.
+// are multiple returns, there is not guarantee which one is used.
 TEST_P(MatchingInstructionWithNoResultFoldingTest, Case) {
   const auto& tc = GetParam();
 
@@ -7061,6 +8064,27 @@ INSTANTIATE_TEST_SUITE_P(VectorShuffleMatchingTest, MatchingInstructionWithNoRes
             "%7 = OpLoad %v4double %4\n" +
             "%8 = OpVectorShuffle %v2double %5 %5 0 1\n" +
             "%9 = OpVectorShuffle %v4double %7 %8 2 0 1 4294967295\n" +
+            "OpReturn\n" +
+            "OpFunctionEnd",
+        9, true),
+    // Test case 14: Shuffle with undef literal and change size of first input vector.
+    InstructionFoldingCase<bool>(
+        Header() +
+            "; CHECK: [[double:%\\w+]] = OpTypeFloat 64\n" +
+            "; CHECK: [[v4double:%\\w+]] = OpTypeVector [[double]] 2\n" +
+            "; CHECK: OpVectorShuffle\n" +
+            "; CHECK: OpVectorShuffle {{%\\w+}} %5 %7 0 1 4 4294967295\n" +
+            "; CHECK: OpReturn\n" +
+            "%main = OpFunction %void None %void_func\n" +
+            "%main_lab = OpLabel\n" +
+            "%2 = OpVariable %_ptr_v4double Function\n" +
+            "%3 = OpVariable %_ptr_v4double Function\n" +
+            "%4 = OpVariable %_ptr_v4double Function\n" +
+            "%5 = OpLoad %v4double %2\n" +
+            "%6 = OpLoad %v4double %3\n" +
+            "%7 = OpLoad %v4double %4\n" +
+            "%8 = OpVectorShuffle %v2double %5 %5 0 1\n" +
+            "%9 = OpVectorShuffle %v4double %8 %7 0 1 2 4294967295\n" +
             "OpReturn\n" +
             "OpFunctionEnd",
         9, true)

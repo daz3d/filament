@@ -18,23 +18,31 @@
 
 #include <CivetServer.h>
 
+#include <utils/FixedCapacityVector.h>
 #include <utils/Hash.h>
 #include <utils/Log.h>
 
 #include <spirv_glsl.hpp>
 #include <spirv-tools/libspirv.h>
 
-#include <matdbg/ShaderReplacer.h>
+#include <matdbg/JsonWriter.h>
 #include <matdbg/ShaderExtractor.h>
 #include <matdbg/ShaderInfo.h>
-#include <matdbg/JsonWriter.h>
+#include <matdbg/ShaderReplacer.h>
 
 #include <filaflat/ChunkContainer.h>
 
+#include <tsl/robin_set.h>
+
 #include <backend/DriverEnums.h>
+
+#include "sca/GLSLTools.h"
 
 #include <sstream>
 #include <string>
+#include <string_view>
+
+using utils::FixedCapacityVector;
 
 // If set to 0, this serves HTML from a resgen resource. Use 1 only during local development, which
 // serves files directly from the source code tree.
@@ -53,9 +61,26 @@ using namespace filament::backend;
 using filaflat::ChunkContainer;
 using filamat::ChunkType;
 
-static const StaticString kSuccessHeader =
+static const std::string_view kSuccessHeader =
         "HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
         "Connection: close\r\n\r\n";
+
+static const std::string_view kErrorHeader =
+        "HTTP/1.1 404 Not Found\r\nContent-Type: %s\r\n"
+        "Connection: close\r\n\r\n";
+
+static void spirvToAsm(struct mg_connection *conn, const uint32_t* spirv, size_t size) {
+    auto spirvDisassembly = ShaderExtractor::spirvToText(spirv, size / 4);
+    mg_printf(conn, kSuccessHeader.data(), "application/txt");
+    mg_write(conn, spirvDisassembly.c_str(), spirvDisassembly.size());
+}
+
+static void spirvToGlsl(ShaderModel shaderModel, struct mg_connection *conn,
+        const uint32_t* spirv, size_t size) {
+    auto glsl = ShaderExtractor::spirvToGLSL(shaderModel, spirv, size / 4);
+    mg_printf(conn, kSuccessHeader.data(), "application/txt");
+    mg_printf(conn, glsl.c_str(), glsl.size());
+}
 
 class FileRequestHandler : public CivetHandler {
 public:
@@ -67,7 +92,7 @@ public:
             #if SERVE_FROM_SOURCE_TREE
             mg_send_file(conn, "libs/matdbg/web/index.html");
             #else
-            mg_printf(conn, kSuccessHeader.c_str(), "text/html");
+            mg_printf(conn, kSuccessHeader.data(), "text/html");
             mg_write(conn, mServer->mHtml.c_str(), mServer->mHtml.size());
             #endif
             return true;
@@ -76,7 +101,7 @@ public:
             #if SERVE_FROM_SOURCE_TREE
             mg_send_file(conn, "libs/matdbg/web/style.css");
             #else
-            mg_printf(conn, kSuccessHeader.c_str(), "text/css");
+            mg_printf(conn, kSuccessHeader.data(), "text/css");
             mg_write(conn, mServer->mCss.c_str(), mServer->mCss.size());
             #endif
             return true;
@@ -85,7 +110,7 @@ public:
             #if SERVE_FROM_SOURCE_TREE
             mg_send_file(conn, "libs/matdbg/web/script.js");
             #else
-            mg_printf(conn, kSuccessHeader.c_str(), "text/javascript");
+            mg_printf(conn, kSuccessHeader.data(), "text/javascript");
             mg_write(conn, mServer->mJavascript.c_str(), mServer->mJavascript.size());
             #endif
             return true;
@@ -114,14 +139,30 @@ public:
         std::string uri(request->local_uri);
 
         const auto error = [request](int line) {
-            slog.e << "DebugServer: 404 at " <<  line << ": " << request->query_string << io::endl;
+            slog.e << "DebugServer: 404 at line " <<  line << ": " << request->local_uri
+                    << io::endl;
             return false;
+        };
+
+        const auto softError = [request, conn](const char* msg) {
+            slog.e << "DebugServer: " <<  msg << ": " << request->query_string << io::endl;
+            mg_printf(conn, kErrorHeader.data(), "application/txt");
+            mg_write(conn, msg, strlen(msg));
+            return true;
         };
 
         if (uri == "/api/active") {
             mServer->updateActiveVariants();
-            mg_printf(conn, kSuccessHeader.c_str(), "application/json");
+            mg_printf(conn, kSuccessHeader.data(), "application/json");
             mg_printf(conn, "{");
+
+            // If the backend has not been resolved to Vulkan, Metal, etc., then return an empty
+            // list. This can occur if the server is matinfo rather than an actual Filament session.
+            if (mServer->mBackend == backend::Backend::DEFAULT) {
+                mg_printf(conn, "}");
+                return true;
+            }
+
             int index = 0;
             for (const auto& pair : mServer->mMaterialRecords) {
                 const auto& record = pair.second;
@@ -142,7 +183,7 @@ public:
         }
 
         if (uri == "/api/matids") {
-            mg_printf(conn, kSuccessHeader.c_str(), "application/json");
+            mg_printf(conn, kSuccessHeader.data(), "application/json");
             mg_printf(conn, "[");
             int index = 0;
             for (const auto& record : mServer->mMaterialRecords) {
@@ -154,7 +195,7 @@ public:
         }
 
         if (uri == "/api/materials") {
-            mg_printf(conn, kSuccessHeader.c_str(), "application/json");
+            mg_printf(conn, kSuccessHeader.data(), "application/json");
             mg_printf(conn, "[");
             int index = 0;
             for (const auto& record : mServer->mMaterialRecords) {
@@ -186,7 +227,7 @@ public:
         if (mg_get_var(request->query_string, qlength, "matid", matid, sizeof(matid)) < 0) {
             return error(__LINE__);
         }
-        const uint32_t id = strtol(matid, nullptr, 16);
+        const uint32_t id = strtoul(matid, nullptr, 16);
         const DebugServer::MaterialRecord* result = mServer->getRecord(id);
         if (result == nullptr) {
             return error(__LINE__);
@@ -202,15 +243,21 @@ public:
             if (!writer.writeMaterialInfo(package)) {
                 return error(__LINE__);
             }
-            mg_printf(conn, kSuccessHeader.c_str(), "application/json");
+            mg_printf(conn, kSuccessHeader.data(), "application/json");
             mg_printf(conn, "{ %s }", writer.getJsonString());
             return true;
         }
+
+        const std::string_view glsl("glsl");
+        const std::string_view msl("msl");
+        const std::string_view spirv("spirv");
 
         char type[6] = {};
         if (mg_get_var(request->query_string, qlength, "type", type, sizeof(type)) < 0) {
             return error(__LINE__);
         }
+
+        std::string_view const language(type, strlen(type));
 
         char glindex[4] = {};
         char vkindex[4] = {};
@@ -228,7 +275,11 @@ public:
         }
 
         if (glindex[0]) {
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialGlsl));
+            if (language != glsl) {
+                return softError("Only GLSL is supported.");
+            }
+
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialGlsl));
             if (!getGlShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -244,11 +295,11 @@ public:
             }
 
             const auto& item = info[shaderIndex];
-            filaflat::ShaderBuilder builder;
-            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
+            filaflat::ShaderContent content;
+            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
-            mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
-            mg_write(conn, builder.data(), builder.size() - 1);
+            mg_printf(conn, kSuccessHeader.data(), "application/txt");
+            mg_write(conn, content.data(), content.size() - 1);
             return true;
         }
 
@@ -258,8 +309,8 @@ public:
                 return error(__LINE__);
             }
 
-            filaflat::ShaderBuilder builder;
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialSpirv));
+            filaflat::ShaderContent content;
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialSpirv));
             if (!getVkShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -270,27 +321,19 @@ public:
             }
 
             const auto& item = info[shaderIndex];
-            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
+            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
-            // TODO: Add a transpiler that depends on "type" and add an MSL type instead of
-            // piggybacking on type=GLSL.
-
-            mg_printf(conn, kSuccessHeader.c_str(), "application/text");
-
-            if (true) {
-                auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
-                spv_text text = nullptr;
-                const uint32_t options = SPV_BINARY_TO_TEXT_OPTION_INDENT |
-                        SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
-                const uint32_t* data = (const uint32_t*) builder.data();
-                spvBinaryToText(context, data, builder.size() / 4, options, &text, nullptr);
-
-                mg_write(conn, text->str, text->length);
-                spvTextDestroy(text);
-                spvContextDestroy(context);
+            if (language == spirv) {
+                spirvToAsm(conn, (const uint32_t*) content.data(), content.size());
+                return true;
             }
 
-            return true;
+            if (language == glsl) {
+                spirvToGlsl(item.shaderModel, conn, (const uint32_t*) content.data(), content.size());
+                return true;
+            }
+
+            return softError("Only SPIRV is supported.");
         }
 
         if (metalindex[0]) {
@@ -299,8 +342,8 @@ public:
                 return error(__LINE__);
             }
 
-            filaflat::ShaderBuilder builder;
-            std::vector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialMetal));
+            filaflat::ShaderContent content;
+            FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialMetal));
             if (!getMetalShaderInfo(package, info.data())) {
                 return error(__LINE__);
             }
@@ -311,11 +354,15 @@ public:
             }
 
             const auto& item = info[shaderIndex];
-            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, builder);
+            extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
-            mg_printf(conn, kSuccessHeader.c_str(), "application/txt");
-            mg_write(conn, builder.data(), builder.size() - 1);
-            return true;
+            if (language == msl) {
+                mg_printf(conn, kSuccessHeader.data(), "application/txt");
+                mg_write(conn, content.data(), content.size() - 1);
+                return true;
+            }
+
+            return softError("Only MSL is supported.");
         }
 
         return error(__LINE__);
@@ -334,7 +381,7 @@ public:
     }
 
     void handleReadyState(CivetServer *server, struct mg_connection *conn) override {
-        mConnection = conn;
+        mConnections.insert(conn);
     }
 
     bool handleData(CivetServer *server, struct mg_connection *conn, int bits, char *data,
@@ -385,11 +432,12 @@ public:
         //     EDIT [material id] [api index] [shader index] [shader length] [shader source....]
         //
 
-        const static StaticString kEditCmd = "EDIT ";
+        const static std::string_view kEditCmd = "EDIT ";
         const static size_t kEditCmdLength = kEditCmd.size();
 
-        if (0 == strncmp(data, kEditCmd.c_str(), kEditCmdLength)) {
-            std::istringstream str(data + kEditCmdLength);
+        if (0 == strncmp(data, kEditCmd.data(), kEditCmdLength)) {
+            std::string command(data + kEditCmdLength, size - kEditCmdLength);
+            std::istringstream str(command);
             uint32_t matid;
             int api;
             int shaderIndex;
@@ -417,21 +465,22 @@ public:
     }
 
     void handleClose(CivetServer *server, const struct mg_connection *conn) override {
-        mConnection = nullptr;
+        struct mg_connection *key = const_cast<struct mg_connection *>(conn);
+        mConnections.erase(key);
     }
 
-    // Notify the JavaScript client that a new material package has been loaded.
+    // Notify all JavaScript clients that a new material package has been loaded.
     void addMaterial(const DebugServer::MaterialRecord& material) {
-        if (mConnection) {
+        for (auto connection : mConnections) {
             char matid[9] = {};
             snprintf(matid, sizeof(matid), "%8.8x", material.key);
-            mg_websocket_write(mConnection, MG_WEBSOCKET_OPCODE_TEXT, matid, 8);
+            mg_websocket_write(connection, MG_WEBSOCKET_OPCODE_TEXT, matid, 8);
         }
     }
 
 private:
     DebugServer* mServer;
-    struct mg_connection* mConnection = nullptr;
+    tsl::robin_set<struct mg_connection*> mConnections;
 };
 
 DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
@@ -441,11 +490,13 @@ DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
     mCss = CString((const char*) MATDBG_RESOURCES_STYLE_DATA, MATDBG_RESOURCES_STYLE_SIZE - 1);
     #endif
 
-    // By default the server spawns 50 threads so we override this to 2. This limits the server
-    // to having no more than 2 HTTP clients, which is perfectly fine for debugging purposes.
+    // By default the server spawns 50 threads so we override this to 10. According to the civetweb
+    // documentation, "it is recommended to use num_threads of at least 5, since browsers often
+    /// establish multiple connections to load a single web page, including all linked documents
+    // (CSS, JavaScript, images, ...)."  If this count is too small, the web app basically hangs.
     const char* kServerOptions[] = {
         "listening_ports", "8080",
-        "num_threads", "2",
+        "num_threads", "10",
         "error_log_file", "civetweb.txt",
         nullptr
     };
@@ -469,9 +520,11 @@ DebugServer::DebugServer(Backend backend, int port) : mBackend(backend) {
     mServer->addWebSocketHandler("", mWebSocketHandler);
 
     slog.i << "DebugServer listening at http://localhost:" << port << io::endl;
+    filamat::GLSLTools::init();
 }
 
 DebugServer::~DebugServer() {
+    filamat::GLSLTools::shutdown();
     for (auto& pair : mMaterialRecords) {
         delete [] pair.second.package;
     }
@@ -489,8 +542,7 @@ DebugServer::addMaterial(const CString& name, const void* data, size_t size, voi
     }
 
     const uint32_t seed = 42;
-    auto words = (const uint32_t*) data;
-    MaterialKey key = utils::hash::murmur3(words, size / 4, seed);
+    const MaterialKey key = utils::hash::murmurSlow((const uint8_t*) data, size, seed);
 
     // Retain a copy of the package to permit queries after the client application has
     // freed up the original material package.
@@ -514,9 +566,13 @@ const DebugServer::MaterialRecord* DebugServer::getRecord(const MaterialKey& key
 
 void DebugServer::updateActiveVariants() {
     if (mQueryCallback) {
-        for (auto& pair : mMaterialRecords) {
-            VariantList& result = mMaterialRecords[pair.first].activeVariants;
-            mQueryCallback(pair.second.userdata, &result);
+        auto curr = mMaterialRecords.begin();
+        auto end = mMaterialRecords.end();
+        while (curr != end) {
+            auto& value = curr.value();
+            VariantList& result = value.activeVariants;
+            mQueryCallback(value.userdata, &result);
+            ++curr;
         }
     }
 }
@@ -537,11 +593,12 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         return error(__LINE__);
     }
 
-    std::vector<ShaderInfo> infos;
+    FixedCapacityVector<ShaderInfo> infos;
     size_t shaderCount;
     switch (api) {
         case backend::Backend::OPENGL: {
             shaderCount = getShaderCount(package, ChunkType::MaterialGlsl);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getGlShaderInfo(package, infos.data())) {
                 return error(__LINE__);
@@ -550,6 +607,7 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         }
         case backend::Backend::VULKAN: {
             shaderCount = getShaderCount(package, ChunkType::MaterialSpirv);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getVkShaderInfo(package, infos.data())) {
                 return error(__LINE__);
@@ -558,6 +616,7 @@ bool DebugServer::handleEditCommand(const MaterialKey& key, backend::Backend api
         }
         case backend::Backend::METAL: {
             shaderCount = getShaderCount(package, ChunkType::MaterialMetal);
+            infos.reserve(shaderCount);
             infos.resize(shaderCount);
             if (!getMetalShaderInfo(package, infos.data())) {
                 return error(__LINE__);

@@ -17,21 +17,29 @@
 #ifndef TNT_FILAMENT_FRAMEHISTORY_H
 #define TNT_FILAMENT_FRAMEHISTORY_H
 
-#include <fg2/FrameGraphId.h>
-#include <fg2/FrameGraphTexture.h>
+#include <fg/FrameGraphId.h>
+#include <fg/FrameGraphTexture.h>
 
 #include <math/mat4.h>
 
 namespace filament {
 
 // This is where we store all the history of a frame
+// when adding things here, please update:
+//      FView::commitFrameHistory()
 struct FrameHistoryEntry {
-    FrameGraphTexture color;
-    FrameGraphTexture::Descriptor colorDesc;
-    math::mat4f projection;
-    math::float2 jitter{};
-    uint32_t frameId = 0;
-
+    struct TemporalAA{
+        FrameGraphTexture color;
+        FrameGraphTexture::Descriptor desc;
+        math::mat4 projection;     // world space to clip space
+        math::float2 jitter{};
+        uint32_t frameId = 0;   // used for halton sequence
+    } taa;
+    struct {
+        FrameGraphTexture color;
+        FrameGraphTexture::Descriptor desc;
+        math::mat4 projection;
+    } ssr;
 };
 
 /*
@@ -60,6 +68,18 @@ public:
         return mCurrentEntry;
     }
 
+    const T& getCurrent() const noexcept {
+        return mCurrentEntry;
+    }
+
+    T& getPrevious() noexcept {
+        return mContainer[0];
+    }
+
+    const T& getPrevious() const noexcept {
+        return mContainer[0];
+    }
+
     // This pushes the current frame info to the FIFO, effectively destroying
     // the oldest state (note: only the structure is destroyed, handles stored in it may
     // have to be destroyed prior to calling this).
@@ -81,4 +101,4 @@ using FrameHistory = TFrameHistory<FrameHistoryEntry, 1u>;
 
 } // namespace filament
 
-#endif //TNT_FILAMENT_FRAMEHISTORY_H
+#endif // TNT_FILAMENT_FRAMEHISTORY_H

@@ -14,13 +14,17 @@ identified by an offset and count in the index buffer. Each part can have its ow
 
 ## Usage
 
-```
-$ filamesh source_mesh destination_mesh
+```shell
+filamesh source_mesh destination_mesh
 ```
 
 ## Format
 
 Note: the UV1 attribute cannot be used in interleaved mode
+
+> **Note**
+> If you use the hex editor for macOS called [Hex Fiend](https://hexfiend.com/), you can use the
+> template found in `ide/hexfiend/Templates` to inspect filamesh files.
 
 ### Header
 

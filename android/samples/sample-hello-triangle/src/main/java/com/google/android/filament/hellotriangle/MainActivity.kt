@@ -29,6 +29,7 @@ import com.google.android.filament.RenderableManager.PrimitiveType
 import com.google.android.filament.VertexBuffer.AttributeType
 import com.google.android.filament.VertexBuffer.VertexAttribute
 import com.google.android.filament.android.DisplayHelper
+import com.google.android.filament.android.FilamentHelper
 import com.google.android.filament.android.UiHelper
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -119,8 +120,13 @@ class MainActivity : Activity() {
     private fun setupView() {
         scene.skybox = Skybox.Builder().color(0.035f, 0.035f, 0.035f, 1.0f).build(engine)
 
-        // NOTE: Try to disable post-processing (tone-mapping, etc.) to see the difference
-        // view.isPostProcessingEnabled = false
+        if (engine.activeFeatureLevel == Engine.FeatureLevel.FEATURE_LEVEL_0) {
+            // post-processing is not supported at feature level 0
+            view.isPostProcessingEnabled = false
+        } else {
+            // NOTE: Try to disable post-processing (tone-mapping, etc.) to see the difference
+            // view.isPostProcessingEnabled = false
+        }
 
         // Tell the view which camera we want to use
         view.camera = camera
@@ -304,7 +310,17 @@ class MainActivity : Activity() {
     inner class SurfaceCallback : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
             swapChain?.let { engine.destroySwapChain(it) }
-            swapChain = engine.createSwapChain(surface, uiHelper.swapChainFlags)
+
+            // at feature level 0, we don't have post-processing, so we need to set
+            // the colorspace to sRGB (FIXME: it's not supported everywhere!)
+            var flags = uiHelper.swapChainFlags
+            if (engine.activeFeatureLevel == Engine.FeatureLevel.FEATURE_LEVEL_0) {
+                if (SwapChain.isSRGBSwapChainSupported(engine)) {
+                    flags = flags or SwapChain.CONFIG_SRGB_COLORSPACE
+                }
+            }
+
+            swapChain = engine.createSwapChain(surface, flags)
             displayHelper.attach(renderer, surfaceView.display);
         }
 
@@ -327,6 +343,8 @@ class MainActivity : Activity() {
                     -aspect * zoom, aspect * zoom, -zoom, zoom, 0.0, 10.0)
 
             view.viewport = Viewport(0, 0, width, height)
+
+            FilamentHelper.synchronizePendingFrames(engine)
         }
     }
 

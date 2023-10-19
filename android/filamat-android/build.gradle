@@ -1,4 +1,6 @@
 android {
+    namespace 'com.google.android.filament.filamat'
+
     flavorDimensions "functionality"
     productFlavors {
         full {
@@ -13,6 +15,17 @@ android {
                     arguments.add("-DFILAMAT_LITE=ON")
                 }
             }
+        }
+    }
+
+    publishing {
+        singleVariant("fullRelease") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+        singleVariant("liteRelease") {
+            withSourcesJar()
+            withJavadocJar()
         }
     }
 }

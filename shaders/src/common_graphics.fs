@@ -47,8 +47,8 @@ vec3 ycbcrToRgb(float luminance, vec2 cbcr) {
 /*
  * The input must be in the [0, 1] range.
  */
-vec3 Inverse_Tonemap_Unreal(const vec3 x) {
-    return (x * -0.155) / (x - 1.019);
+vec3 Inverse_Tonemap_Filmic(const vec3 x) {
+    return (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x);
 }
 
 /**
@@ -61,7 +61,7 @@ vec3 Inverse_Tonemap_Unreal(const vec3 x) {
 vec3 inverseTonemapSRGB(vec3 color) {
     // sRGB input
     color = clamp(color, 0.0, 1.0);
-    return Inverse_Tonemap_Unreal(color);
+    return Inverse_Tonemap_Filmic(pow(color, vec3(2.2)));
 }
 
 /**
@@ -73,8 +73,7 @@ vec3 inverseTonemapSRGB(vec3 color) {
  */
 vec3 inverseTonemap(vec3 linear) {
     // Linear input
-    linear = clamp(linear, 0.0, 1.0);
-    return Inverse_Tonemap_Unreal(pow(linear, vec3(1.0 / 2.2)));
+    return Inverse_Tonemap_Filmic(clamp(linear, 0.0, 1.0));
 }
 
 //------------------------------------------------------------------------------
@@ -90,26 +89,24 @@ vec3 decodeRGBM(vec4 c) {
 }
 
 //------------------------------------------------------------------------------
+// Common screen-space operations
+//------------------------------------------------------------------------------
+
+// returns the frag coord in the GL convention with (0, 0) at the bottom-left
+// resolution : width, height
+highp vec2 getFragCoord(const highp vec2 resolution) {
+#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
+    return vec2(gl_FragCoord.x, resolution.y - gl_FragCoord.y);
+#else
+    return gl_FragCoord.xy;
+#endif
+}
+
+//------------------------------------------------------------------------------
 // Common debug
 //------------------------------------------------------------------------------
 
 vec3 heatmap(float v) {
     vec3 r = v * 2.1 - vec3(1.8, 1.14, 0.3);
     return 1.0 - r * r;
-}
-
-vec3 uintToColorDebug(uint v) {
-    if (v == 0u) {
-        return vec3(0.0, 1.0, 0.0);     // green
-    } else if (v == 1u) {
-        return vec3(0.0, 0.0, 1.0);     // blue
-    } else if (v == 2u) {
-        return vec3(1.0, 1.0, 0.0);     // yellow
-    } else if (v == 3u) {
-        return vec3(1.0, 0.0, 0.0);     // red
-    } else if (v == 4u) {
-        return vec3(1.0, 0.0, 1.0);     // purple
-    } else if (v == 5u) {
-        return vec3(0.0, 1.0, 1.0);     // cyan
-    }
 }

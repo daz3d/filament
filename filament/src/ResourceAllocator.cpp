@@ -36,6 +36,17 @@ using namespace backend;
 
 template<typename K, typename V, typename H>
 UTILS_NOINLINE
+ResourceAllocator::AssociativeContainer<K, V, H>::AssociativeContainer() {
+    mContainer.reserve(128);
+}
+
+template<typename K, typename V, typename H>
+UTILS_NOINLINE
+ResourceAllocator::AssociativeContainer<K, V, H>::~AssociativeContainer() noexcept {
+}
+
+template<typename K, typename V, typename H>
+UTILS_NOINLINE
 typename ResourceAllocator::AssociativeContainer<K, V, H>::iterator
 ResourceAllocator::AssociativeContainer<K, V, H>::erase(iterator it) {
     return mContainer.erase(it);
@@ -78,6 +89,8 @@ size_t ResourceAllocator::TextureKey::getSize() const noexcept {
         // if we have mip-maps we assume the full pyramid
         size += size / 3;
     }
+    // TODO: this is not taking into account the potential sidecar MS buffer
+    //  but we have no way to know about its existence at this point.
     return size;
 }
 
@@ -116,26 +129,17 @@ backend::TextureHandle ResourceAllocator::createTexture(const char* name,
         uint32_t width, uint32_t height, uint32_t depth,
         std::array<backend::TextureSwizzle, 4> swizzle,
         backend::TextureUsage usage) noexcept {
-
-    // Some WebGL implementations complain about an incomplete framebuffer when the attachment sizes
-    // are heterogeneous. This merits further investigation.
-#if !defined(__EMSCRIPTEN__)
-    if (!(usage & TextureUsage::SAMPLEABLE)) {
-        // If this texture is not going to be sampled, we can round its size up
-        // this helps prevent many reallocations for small size changes.
-        // We round to 16 pixels, which works for 720p btw.
-        width  = (width  + 15u) & ~15u;
-        height = (height + 15u) & ~15u;
-    }
-#endif
-
     // The frame graph descriptor uses "0" to mean "auto" but the sample count that is passed to the
     // backend should always be 1 or greater.
     samples = samples ? samples : uint8_t(1);
 
+    using TS = backend::TextureSwizzle;
+    constexpr const auto defaultSwizzle = std::array<backend::TextureSwizzle, 4>{
+        TS::CHANNEL_0, TS::CHANNEL_1, TS::CHANNEL_2, TS::CHANNEL_3};
+
     // do we have a suitable texture in the cache?
     TextureHandle handle;
-    if (mEnabled) {
+    if constexpr (mEnabled) {
         auto& textureCache = mTextureCache;
         const TextureKey key{ name, target, levels, format, samples, width, height, depth, usage, swizzle };
         auto it = textureCache.find(key);
@@ -146,9 +150,6 @@ backend::TextureHandle ResourceAllocator::createTexture(const char* name,
             textureCache.erase(it);
         } else {
             // we don't, allocate a new texture and populate the in-use list
-            using TS = backend::TextureSwizzle;
-            constexpr const auto defaultSwizzle = std::array<backend::TextureSwizzle, 4>{
-                TS::CHANNEL_0, TS::CHANNEL_1, TS::CHANNEL_2, TS::CHANNEL_3};
             if (swizzle == defaultSwizzle) {
                 handle = mBackend.createTexture(
                         target, levels, format, samples, width, height, depth, usage);
@@ -160,14 +161,20 @@ backend::TextureHandle ResourceAllocator::createTexture(const char* name,
         }
         mInUseTextures.emplace(handle, key);
     } else {
-        handle = mBackend.createTexture(
-                target, levels, format, samples, width, height, depth, usage);
+        if (swizzle == defaultSwizzle) {
+            handle = mBackend.createTexture(
+                    target, levels, format, samples, width, height, depth, usage);
+        } else {
+            handle = mBackend.createTextureSwizzled(
+                    target, levels, format, samples, width, height, depth, usage,
+                    swizzle[0], swizzle[1], swizzle[2], swizzle[3]);
+        }
     }
     return handle;
 }
 
 void ResourceAllocator::destroyTexture(TextureHandle h) noexcept {
-    if (mEnabled) {
+    if constexpr (mEnabled) {
         // find the texture in the in-use list (it must be there!)
         auto it = mInUseTextures.find(h);
         assert_invariant(it != mInUseTextures.end());

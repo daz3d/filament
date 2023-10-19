@@ -133,7 +133,7 @@ public class MaterialBuilder {
         FADE,                   // material is transparent and color is alpha-pre-multiplied,
                                 // affects specular lighting
         MULTIPLY,               // material darkens what's behind it
-        SCREN                   // material brightens what's behind it
+        SCREEN                  // material brightens what's behind it
     }
 
     public enum VertexDomain {
@@ -361,6 +361,12 @@ public class MaterialBuilder {
     }
 
     @NonNull
+    public MaterialBuilder alphaToCoverage(boolean enable) {
+        nMaterialBuilderAlphaToCoverage(mNativeObject, enable);
+        return this;
+    }
+
+    @NonNull
     public MaterialBuilder shadowMultiplier(boolean shadowMultiplier) {
         nMaterialBuilderShadowMultiplier(mNativeObject, shadowMultiplier);
         return this;
@@ -459,6 +465,19 @@ public class MaterialBuilder {
     @NonNull
     public MaterialBuilder variantFilter(int variantFilter) {
         nMaterialBuilderVariantFilter(mNativeObject, variantFilter);
+        useLegacyMorphing();
+        return this;
+    }
+
+    /**
+     * Legacy morphing uses the data in the {@link VertexBuffer.VertexAttribute} slots
+     * (<code>MORPH_POSITION_0</code>, etc) and is limited to 4 morph targets.
+     *
+     * @see RenderableManager.Builder#morphing()
+     */
+    @NonNull
+    public MaterialBuilder useLegacyMorphing() {
+        nMaterialBuilderUseLegacyMorphing(mNativeObject);
         return this;
     }
 
@@ -571,6 +590,7 @@ public class MaterialBuilder {
     private static native void nMaterialBuilderDepthCulling(long nativeBuilder, boolean enable);
     private static native void nMaterialBuilderDoubleSided(long nativeBuilder, boolean doubleSided);
     private static native void nMaterialBuilderMaskThreshold(long nativeBuilder, float mode);
+    private static native void nMaterialBuilderAlphaToCoverage(long nativeBuilder, boolean enable);
 
     private static native void nMaterialBuilderShadowMultiplier(long mNativeObject,
             boolean shadowMultiplier);
@@ -599,4 +619,5 @@ public class MaterialBuilder {
     private static native void nMaterialBuilderOptimization(long nativeBuilder, int optimization);
     private static native void nMaterialBuilderVariantFilter(long nativeBuilder,
             int variantFilter);
+    private static native void nMaterialBuilderUseLegacyMorphing(long nativeBuilder);
 }

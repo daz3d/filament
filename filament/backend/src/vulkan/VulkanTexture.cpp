@@ -16,6 +16,7 @@
 
 #include "VulkanMemory.h"
 #include "VulkanTexture.h"
+#include "VulkanUtility.h"
 
 #include <private/backend/BackendUtils.h>
 
@@ -25,91 +26,59 @@
 
 using namespace bluevk;
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
-// Issues a barrier that transforms the layout of the image, e.g. from a CPU-writeable
-// layout to a GPU-readable layout.
-static void transitionImageLayout(VkCommandBuffer cmd, VkImage image,
-        VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t miplevel,
-        uint32_t layerCount, uint32_t levelCount, VkImageAspectFlags aspect) {
-    if (oldLayout == newLayout) {
-        return;
-    }
-    VkImageMemoryBarrier barrier = {};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = oldLayout;
-    barrier.newLayout = newLayout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = aspect;
-    barrier.subresourceRange.baseMipLevel = miplevel;
-    barrier.subresourceRange.levelCount = levelCount;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = layerCount;
-    VkPipelineStageFlags sourceStage;
-    VkPipelineStageFlags destinationStage;
-    switch (newLayout) {
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            barrier.srcAccessMask = 0;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            barrier.srcAccessMask = 0;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        case VK_IMAGE_LAYOUT_GENERAL:
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            break;
+using ImgUtil = VulkanImageUtility;
+VulkanTexture::VulkanTexture(VkDevice device, VmaAllocator allocator, VulkanCommands* commands,
+        VkImage image, VkFormat format, uint8_t samples, uint32_t width, uint32_t height,
+        TextureUsage tusage, VulkanStagePool& stagePool, bool heapAllocated)
+    : HwTexture(SamplerType::SAMPLER_2D, 1, samples, width, height, 1, TextureFormat::UNUSED,
+            tusage),
+      VulkanResource(
+              heapAllocated ? VulkanResourceType::HEAP_ALLOCATED : VulkanResourceType::TEXTURE),
+      mVkFormat(format),
+      mViewType(ImgUtil::getViewType(target)),
+      mSwizzle({}),
+      mTextureImage(image),
+      mPrimaryViewRange{
+              .aspectMask = getImageAspect(),
+              .baseMipLevel = 0,
+              .levelCount = 1,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+      },
+      mStagePool(stagePool),
+      mDevice(device),
+      mAllocator(allocator),
+      mCommands(commands) {}
 
-        // We support PRESENT as a target layout to allow blitting from the swap chain.
-        // See also makeSwapChainPresentable().
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            barrier.dstAccessMask = 0;
-            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            destinationStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            break;
-
-        default:
-           PANIC_POSTCONDITION("Unsupported layout transition.");
-    }
-    vkCmdPipelineBarrier(cmd, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1,
-            &barrier);
-}
-
-VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t levels,
-        TextureFormat tformat, uint8_t samples, uint32_t w, uint32_t h, uint32_t depth,
-        TextureUsage tusage, VulkanStagePool& stagePool, VkComponentMapping swizzle) :
-        HwTexture(target, levels, samples, w, h, depth, tformat, tusage),
-
-        // Vulkan does not support 24-bit depth, use the official fallback format.
-        mVkFormat(tformat == TextureFormat::DEPTH24 ? context.finalDepthFormat :
-                backend::getVkFormat(tformat)),
-
-        mSwizzle(swizzle), mContext(context), mStagePool(stagePool) {
+VulkanTexture::VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice,
+        VulkanContext const& context, VmaAllocator allocator, VulkanCommands* commands,
+        SamplerType target, uint8_t levels, TextureFormat tformat, uint8_t samples, uint32_t w,
+        uint32_t h, uint32_t depth, TextureUsage tusage, VulkanStagePool& stagePool,
+        bool heapAllocated, VkComponentMapping swizzle)
+    : HwTexture(target, levels, samples, w, h, depth, tformat, tusage),
+      VulkanResource(
+              heapAllocated ? VulkanResourceType::HEAP_ALLOCATED : VulkanResourceType::TEXTURE),
+      // Vulkan does not support 24-bit depth, use the official fallback format.
+      mVkFormat(tformat == TextureFormat::DEPTH24 ? context.getDepthFormat()
+                                                  : backend::getVkFormat(tformat)),
+      mViewType(ImgUtil::getViewType(target)),
+      mSwizzle(swizzle),
+      mStagePool(stagePool),
+      mDevice(device),
+      mAllocator(allocator),
+      mCommands(commands) {
 
     // Create an appropriately-sized device-only VkImage, but do not fill it yet.
-    VkImageCreateInfo imageInfo {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = target == SamplerType::SAMPLER_3D ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
-        .format = mVkFormat,
-        .extent = { w, h, depth },
-        .mipLevels = levels,
-        .arrayLayers = 1,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = 0
-    };
+    VkImageCreateInfo imageInfo{.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = target == SamplerType::SAMPLER_3D ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D,
+            .format = mVkFormat,
+            .extent = {w, h, depth},
+            .mipLevels = levels,
+            .arrayLayers = 1,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = 0};
     if (target == SamplerType::SAMPLER_CUBEMAP) {
         imageInfo.arrayLayers = 6;
         imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -125,6 +94,10 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
         // In other words, the "arrayness" of the texture is an aspect of the VkImageView,
         // not the VkImage.
     }
+    if (target == SamplerType::SAMPLER_CUBEMAP_ARRAY) {
+        imageInfo.arrayLayers = depth * 6;
+        imageInfo.extent.depth = 1;
+    }
 
     // Filament expects blit() to work with any texture, so we almost always set these usage flags.
     // TODO: investigate performance implications of setting these flags.
@@ -133,10 +106,10 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
 
     if (any(usage & TextureUsage::SAMPLEABLE)) {
 
-#if VK_ENABLE_VALIDATION
+#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
         // Validate that the format is actually sampleable.
         VkFormatProperties props;
-        vkGetPhysicalDeviceFormatProperties(context.physicalDevice, mVkFormat, &props);
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, mVkFormat, &props);
         if (!(props.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
             utils::slog.w << "Texture usage is SAMPLEABLE but format " << mVkFormat << " is not "
                     "sampleable with optimal tiling." << utils::io::endl;
@@ -170,96 +143,113 @@ VulkanTexture::VulkanTexture(VulkanContext& context, SamplerType target, uint8_t
     // Constrain the sample count according to the sample count masks in VkPhysicalDeviceProperties.
     // Note that VulkanRenderTarget holds a single MSAA count, so we play it safe if this is used as
     // any kind of attachment (color or depth).
-    const auto& limits = context.physicalDeviceProperties.limits;
+    const auto& limits = context.getPhysicalDeviceLimits();
     if (imageInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT) {
-        samples = reduceSampleCount(samples, isDepthFormat(mVkFormat) ?
-                limits.sampledImageDepthSampleCounts : limits.sampledImageColorSampleCounts);
+        samples = reduceSampleCount(samples, isDepthFormat(mVkFormat)
+                                                     ? limits.sampledImageDepthSampleCounts
+                                                     : limits.sampledImageColorSampleCounts);
     }
-    if (imageInfo.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
-        samples = reduceSampleCount(samples, limits.framebufferDepthSampleCounts &
-            limits.framebufferColorSampleCounts);
+    if (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
+        samples = reduceSampleCount(samples, limits.framebufferColorSampleCounts);
+    }
+
+    if (imageInfo.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+        samples = reduceSampleCount(samples, limits.sampledImageDepthSampleCounts);
     }
     this->samples = samples;
     imageInfo.samples = (VkSampleCountFlagBits) samples;
 
-    VkResult error = vkCreateImage(context.device, &imageInfo, VKALLOC, &mTextureImage);
-    if (error || FILAMENT_VULKAN_VERBOSE) {
+    VkResult error = vkCreateImage(mDevice, &imageInfo, VKALLOC, &mTextureImage);
+    if (error || FVK_ENABLED_BOOL(FVK_DEBUG_TEXTURE)) {
         utils::slog.d << "vkCreateImage: "
+            << "image = " << mTextureImage << ", "
             << "result = " << error << ", "
             << "handle = " << utils::io::hex << mTextureImage << utils::io::dec << ", "
             << "extent = " << w << "x" << h << "x"<< depth << ", "
             << "mipLevels = " << int(levels) << ", "
+            << "TextureUsage = " << static_cast<int>(usage) << ", "
             << "usage = " << imageInfo.usage << ", "
             << "samples = " << imageInfo.samples << ", "
+            << "type = " << imageInfo.imageType << ", "
+            << "flags = " << imageInfo.flags << ", "
+            << "target = " << static_cast<int>(target) <<", "
             << "format = " << mVkFormat << utils::io::endl;
     }
     ASSERT_POSTCONDITION(!error, "Unable to create image.");
 
     // Allocate memory for the VkImage and bind it.
     VkMemoryRequirements memReqs = {};
-    vkGetImageMemoryRequirements(context.device, mTextureImage, &memReqs);
+    vkGetImageMemoryRequirements(mDevice, mTextureImage, &memReqs);
+
+    uint32_t memoryTypeIndex
+            = context.selectMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    ASSERT_POSTCONDITION(memoryTypeIndex < VK_MAX_MEMORY_TYPES,
+            "VulkanTexture: unable to find a memory type that meets requirements.");
+
     VkMemoryAllocateInfo allocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = memReqs.size,
-        .memoryTypeIndex = context.selectMemoryType(memReqs.memoryTypeBits,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        .memoryTypeIndex = memoryTypeIndex,
     };
-    error = vkAllocateMemory(context.device, &allocInfo, nullptr, &mTextureImageMemory);
+    error = vkAllocateMemory(mDevice, &allocInfo, nullptr, &mTextureImageMemory);
     ASSERT_POSTCONDITION(!error, "Unable to allocate image memory.");
-    error = vkBindImageMemory(context.device, mTextureImage, mTextureImageMemory, 0);
+    error = vkBindImageMemory(mDevice, mTextureImage, mTextureImageMemory, 0);
     ASSERT_POSTCONDITION(!error, "Unable to bind image.");
 
-    mAspect = any(usage & TextureUsage::DEPTH_ATTACHMENT) ? VK_IMAGE_ASPECT_DEPTH_BIT :
-            VK_IMAGE_ASPECT_COLOR_BIT;
-
     // Spec out the "primary" VkImageView that shaders use to sample from the image.
-    mPrimaryViewRange.aspectMask = mAspect;
+    mPrimaryViewRange.aspectMask = getImageAspect();
     mPrimaryViewRange.baseMipLevel = 0;
     mPrimaryViewRange.levelCount = levels;
     mPrimaryViewRange.baseArrayLayer = 0;
     if (target == SamplerType::SAMPLER_CUBEMAP) {
-        mViewType = VK_IMAGE_VIEW_TYPE_CUBE;
         mPrimaryViewRange.layerCount = 6;
+    } else if (target == SamplerType::SAMPLER_CUBEMAP_ARRAY) {
+        mPrimaryViewRange.layerCount = depth * 6;
     } else if (target == SamplerType::SAMPLER_2D_ARRAY) {
-        mViewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         mPrimaryViewRange.layerCount = depth;
     } else if (target == SamplerType::SAMPLER_3D) {
-        mViewType = VK_IMAGE_VIEW_TYPE_3D;
         mPrimaryViewRange.layerCount = 1;
     } else {
-        mViewType = VK_IMAGE_VIEW_TYPE_2D;
         mPrimaryViewRange.layerCount = 1;
     }
 
     // Go ahead and create the primary image view, no need to do it lazily.
-    getImageView(mPrimaryViewRange);
+    getImageView(mPrimaryViewRange, mViewType, mSwizzle);
 
-    // Transition the layout of each image slice.
-    if (any(usage & (TextureUsage::COLOR_ATTACHMENT | TextureUsage::DEPTH_ATTACHMENT))) {
+    // Transition the layout of each image slice that might be used as a render target.
+    // We do not transition images that are merely SAMPLEABLE, this is deferred until upload time
+    // because we do not know how many layers and levels will actually be used.
+    if (imageInfo.usage
+        & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+           | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
         const uint32_t layers = mPrimaryViewRange.layerCount;
-        transitionImageLayout(mContext.commands->get().cmdbuffer, mTextureImage,
-                VK_IMAGE_LAYOUT_UNDEFINED,
-                mContext.getTextureLayout(usage), 0, layers, levels, mAspect);
+        VkImageSubresourceRange range = { getImageAspect(), 0, levels, 0, layers };
+
+        VulkanCommandBuffer& commands = mCommands->get();
+        VkCommandBuffer const cmdbuf = commands.buffer();
+        commands.acquire(this);
+
+        transitionLayout(cmdbuf, range, ImgUtil::getDefaultLayout(imageInfo.usage));
     }
 }
 
 VulkanTexture::~VulkanTexture() {
-    vkDestroyImage(mContext.device, mTextureImage, VKALLOC);
-    vkFreeMemory(mContext.device, mTextureImageMemory, VKALLOC);
+    if (mTextureImageMemory != VK_NULL_HANDLE) {
+        vkDestroyImage(mDevice, mTextureImage, VKALLOC);
+        vkFreeMemory(mDevice, mTextureImageMemory, VKALLOC);
+    }
     for (auto entry : mCachedImageViews) {
-        vkDestroyImageView(mContext.device, entry.second, VKALLOC);
+        vkDestroyImageView(mDevice, entry.second, VKALLOC);
     }
 }
 
-void VulkanTexture::update2DImage(const PixelBufferDescriptor& data, uint32_t width,
-        uint32_t height, int miplevel) {
-    update3DImage(std::move(data), width, height, 1, miplevel);
-}
+void VulkanTexture::updateImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
+        uint32_t depth, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset, uint32_t miplevel) {
+    assert_invariant(width <= this->width && height <= this->height);
+    assert_invariant(depth <= this->depth * ((target == SamplerType::SAMPLER_CUBEMAP ||
+                        target == SamplerType::SAMPLER_CUBEMAP_ARRAY) ? 6 : 1));
 
-void VulkanTexture::update3DImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
-        uint32_t depth, int miplevel) {
-    assert_invariant(width <= this->width && height <= this->height && depth <= this->depth);
     const PixelBufferDescriptor* hostData = &data;
     PixelBufferDescriptor reshapedData;
 
@@ -270,130 +260,134 @@ void VulkanTexture::update3DImage(const PixelBufferDescriptor& data, uint32_t wi
         hostData = &reshapedData;
     }
 
-    // If format conversion is both required and supported, use vkCmdBlitImage. Otherwise, use
-    // vkCmdCopyBufferToImage.
-
+    // If format conversion is both required and supported, use vkCmdBlitImage.
     const VkFormat hostFormat = backend::getVkFormat(hostData->format, hostData->type);
     const VkFormat deviceFormat = getVkFormatLinear(mVkFormat);
-
     if (hostFormat != deviceFormat && hostFormat != VK_FORMAT_UNDEFINED) {
-        updateWithBlitImage(*hostData, width, height, depth, miplevel);
-    } else {
-        updateWithCopyBuffer(*hostData, width, height, depth, miplevel);
+        assert_invariant(xoffset == 0 && yoffset == 0 && zoffset == 0 &&
+                "Offsets not yet supported when format conversion is required.");
+        updateImageWithBlit(*hostData, width, height, depth, miplevel);
+        return;
     }
+
+    // Otherwise, use vkCmdCopyBufferToImage.
+    void* mapped = nullptr;
+    VulkanStage const* stage = mStagePool.acquireStage(hostData->size);
+    assert_invariant(stage->memory);
+    vmaMapMemory(mAllocator, stage->memory, &mapped);
+    memcpy(mapped, hostData->buffer, hostData->size);
+    vmaUnmapMemory(mAllocator, stage->memory);
+    vmaFlushAllocation(mAllocator, stage->memory, 0, hostData->size);
+
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuf = commands.buffer();
+    commands.acquire(this);
+
+    VkBufferImageCopy copyRegion = {
+        .bufferOffset = {},
+        .bufferRowLength = {},
+        .bufferImageHeight = {},
+        .imageSubresource = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = miplevel,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        },
+        .imageOffset = { int32_t(xoffset), int32_t(yoffset), int32_t(zoffset) },
+        .imageExtent = { width, height, depth }
+    };
+
+    VkImageSubresourceRange transitionRange = {
+        .aspectMask = getImageAspect(),
+        .baseMipLevel = miplevel,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1
+    };
+
+    // Vulkan specifies subregions for 3D textures differently than from 2D arrays.
+    if (    target == SamplerType::SAMPLER_2D_ARRAY ||
+            target == SamplerType::SAMPLER_CUBEMAP ||
+            target == SamplerType::SAMPLER_CUBEMAP_ARRAY) {
+        copyRegion.imageOffset.z = 0;
+        copyRegion.imageExtent.depth = 1;
+        copyRegion.imageSubresource.baseArrayLayer = zoffset;
+        copyRegion.imageSubresource.layerCount = depth;
+        transitionRange.baseArrayLayer = zoffset;
+        transitionRange.layerCount = depth;
+    }
+
+    VulkanLayout const newLayout = VulkanLayout::TRANSFER_DST;
+    VulkanLayout nextLayout = getLayout(0, miplevel);
+    VkImageLayout const newVkLayout = ImgUtil::getVkLayout(newLayout);
+
+    if (nextLayout == VulkanLayout::UNDEFINED) {
+        nextLayout = VulkanLayout::READ_WRITE;
+    }
+
+    transitionLayout(cmdbuf, transitionRange, newLayout);
+
+    vkCmdCopyBufferToImage(cmdbuf, stage->buffer, mTextureImage, newVkLayout, 1, &copyRegion);
+
+    transitionLayout(cmdbuf, transitionRange, nextLayout);
 }
 
-void VulkanTexture::updateWithCopyBuffer(const PixelBufferDescriptor& hostData, uint32_t width,
-        uint32_t height, uint32_t depth, int miplevel) {
+void VulkanTexture::updateImageWithBlit(const PixelBufferDescriptor& hostData, uint32_t width,
+        uint32_t height, uint32_t depth, uint32_t miplevel) {
     void* mapped = nullptr;
-    VulkanStage const* stage = mStagePool.acquireStage(hostData.size);
-    vmaMapMemory(mContext.allocator, stage->memory, &mapped);
+    VulkanStageImage const* stage
+            = mStagePool.acquireImage(hostData.format, hostData.type, width, height);
+    vmaMapMemory(mAllocator, stage->memory, &mapped);
     memcpy(mapped, hostData.buffer, hostData.size);
-    vmaUnmapMemory(mContext.allocator, stage->memory);
-    vmaFlushAllocation(mContext.allocator, stage->memory, 0, hostData.size);
+    vmaUnmapMemory(mAllocator, stage->memory);
+    vmaFlushAllocation(mAllocator, stage->memory, 0, hostData.size);
 
-    const VkCommandBuffer cmdbuffer = mContext.commands->get().cmdbuffer;
-    transitionImageLayout(cmdbuffer, mTextureImage, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 1, 1, mAspect);
-
-    copyBufferToImage(cmdbuffer, stage->buffer, mTextureImage, width, height, depth,
-            nullptr, miplevel);
-
-    transitionImageLayout(cmdbuffer, mTextureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            mContext.getTextureLayout(usage), miplevel, 1, 1, mAspect);
-}
-
-void VulkanTexture::updateWithBlitImage(const PixelBufferDescriptor& hostData, uint32_t width,
-        uint32_t height, uint32_t depth, int miplevel) {
-    void* mapped = nullptr;
-    VulkanStageImage const* stage = mStagePool.acquireImage(hostData.format, hostData.type,
-            width, height);
-    vmaMapMemory(mContext.allocator, stage->memory, &mapped);
-    memcpy(mapped, hostData.buffer, hostData.size);
-    vmaUnmapMemory(mContext.allocator, stage->memory);
-    vmaFlushAllocation(mContext.allocator, stage->memory, 0, hostData.size);
-
-    const VkCommandBuffer cmdbuffer = mContext.commands->get().cmdbuffer;
+    VulkanCommandBuffer& commands = mCommands->get();
+    VkCommandBuffer const cmdbuf = commands.buffer();
+    commands.acquire(this);
 
     // TODO: support blit-based format conversion for 3D images and cubemaps.
     const int layer = 0;
 
     const VkOffset3D rect[2] { {0, 0, 0}, {int32_t(width), int32_t(height), 1} };
 
+    const VkImageAspectFlags aspect = getImageAspect();
+
     const VkImageBlit blitRegions[1] = {{
-        .srcSubresource = { mAspect, 0, 0, 1 },
+        .srcSubresource = { aspect, 0, 0, 1 },
         .srcOffsets = { rect[0], rect[1] },
-        .dstSubresource = { mAspect, uint32_t(miplevel), layer, 1 },
+        .dstSubresource = { aspect, uint32_t(miplevel), layer, 1 },
         .dstOffsets = { rect[0], rect[1] }
     }};
 
-    transitionImageLayout(cmdbuffer, stage->image, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, miplevel, 1, 1, mAspect);
+    const VkImageSubresourceRange range = { aspect, miplevel, 1, 0, 1 };
 
-    transitionImageLayout(cmdbuffer, mTextureImage, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 1, 1, mAspect);
+    VulkanLayout const newLayout = VulkanLayout::TRANSFER_DST;
+    VulkanLayout const oldLayout = getLayout(0, miplevel);
+    transitionLayout(cmdbuf, range, newLayout);
 
-    vkCmdBlitImage(cmdbuffer, stage->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mTextureImage,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blitRegions, VK_FILTER_NEAREST);
+    vkCmdBlitImage(cmdbuf, stage->image, ImgUtil::getVkLayout(VulkanLayout::TRANSFER_SRC),
+            mTextureImage, ImgUtil::getVkLayout(newLayout), 1, blitRegions, VK_FILTER_NEAREST);
 
-    transitionImageLayout(cmdbuffer, mTextureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            mContext.getTextureLayout(usage), miplevel, 1, 1, mAspect);
-}
-
-void VulkanTexture::updateCubeImage(const PixelBufferDescriptor& data,
-        const FaceOffsets& faceOffsets, int miplevel) {
-    assert_invariant(this->target == SamplerType::SAMPLER_CUBEMAP);
-    const bool reshape = getBytesPerPixel(format) == 3;
-    const void* cpuData = data.buffer;
-    const uint32_t numSrcBytes = data.size;
-    const uint32_t numDstBytes = reshape ? (4 * numSrcBytes / 3) : numSrcBytes;
-
-    // Create and populate the staging buffer.
-    VulkanStage const* stage = mStagePool.acquireStage(numDstBytes);
-    void* mapped;
-    vmaMapMemory(mContext.allocator, stage->memory, &mapped);
-    if (reshape) {
-        DataReshaper::reshape<uint8_t, 3, 4>(mapped, cpuData, numSrcBytes);
-    } else {
-        memcpy(mapped, cpuData, numSrcBytes);
-    }
-    vmaUnmapMemory(mContext.allocator, stage->memory);
-    vmaFlushAllocation(mContext.allocator, stage->memory, 0, numDstBytes);
-
-    const VkCommandBuffer cmdbuffer = mContext.commands->get().cmdbuffer;
-    const uint32_t width = std::max(1u, this->width >> miplevel);
-    const uint32_t height = std::max(1u, this->height >> miplevel);
-
-    transitionImageLayout(cmdbuffer, mTextureImage, VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, miplevel, 6, 1, mAspect);
-
-    copyBufferToImage(cmdbuffer, stage->buffer, mTextureImage, width, height, 1,
-            &faceOffsets, miplevel);
-
-    transitionImageLayout(cmdbuffer, mTextureImage,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mContext.getTextureLayout(usage), miplevel, 6,
-            1, mAspect);
+    transitionLayout(cmdbuf, range, oldLayout);
 }
 
 void VulkanTexture::setPrimaryRange(uint32_t minMiplevel, uint32_t maxMiplevel) {
     maxMiplevel = filament::math::min(int(maxMiplevel), int(this->levels - 1));
     mPrimaryViewRange.baseMipLevel = minMiplevel;
     mPrimaryViewRange.levelCount = maxMiplevel - minMiplevel + 1;
-    getImageView(mPrimaryViewRange);
+    getImageView(mPrimaryViewRange, mViewType, mSwizzle);
 }
 
-VkImageView VulkanTexture::getAttachmentView(int singleLevel, int singleLayer,
-        VkImageAspectFlags aspect) {
-    return getImageView({
-        .aspectMask = aspect,
-        .baseMipLevel = uint32_t(singleLevel),
-        .levelCount = uint32_t(1),
-        .baseArrayLayer = uint32_t(singleLayer),
-        .layerCount = uint32_t(1),
-    }, true);
+VkImageView VulkanTexture::getAttachmentView(VkImageSubresourceRange range) {
+    // Attachments should only have one mipmap level and one layer.
+    range.levelCount = 1;
+    range.layerCount = 1;
+    return getImageView(range, VK_IMAGE_VIEW_TYPE_2D, {});
 }
 
-VkImageView VulkanTexture::getImageView(VkImageSubresourceRange range, bool isAttachment) {
+VkImageView VulkanTexture::getImageView(VkImageSubresourceRange range, VkImageViewType viewType,
+        VkComponentMapping swizzle) {
     auto iter = mCachedImageViews.find(range);
     if (iter != mCachedImageViews.end()) {
         return iter->second;
@@ -403,43 +397,86 @@ VkImageView VulkanTexture::getImageView(VkImageSubresourceRange range, bool isAt
         .pNext = nullptr,
         .flags = 0,
         .image = mTextureImage,
-        .viewType = isAttachment ? VK_IMAGE_VIEW_TYPE_2D : mViewType,
+        .viewType = viewType,
         .format = mVkFormat,
-        .components = isAttachment ? (VkComponentMapping{}) : mSwizzle,
-        .subresourceRange = range
+        .components = swizzle,
+        .subresourceRange = range,
     };
     VkImageView imageView;
-    vkCreateImageView(mContext.device, &viewInfo, VKALLOC, &imageView);
+    vkCreateImageView(mDevice, &viewInfo, VKALLOC, &imageView);
     mCachedImageViews.emplace(range, imageView);
     return imageView;
 }
 
-void VulkanTexture::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
-        uint32_t width, uint32_t height, uint32_t depth, FaceOffsets const* faceOffsets, uint32_t miplevel) {
-    VkExtent3D extent { width, height, depth };
-    if (target == SamplerType::SAMPLER_CUBEMAP) {
-        assert_invariant(faceOffsets);
-        VkBufferImageCopy regions[6] = {{}};
-        for (size_t face = 0; face < 6; face++) {
-            auto& region = regions[face];
-            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            region.imageSubresource.baseArrayLayer = face;
-            region.imageSubresource.layerCount = 1;
-            region.imageSubresource.mipLevel = miplevel;
-            region.imageExtent = extent;
-            region.bufferOffset = faceOffsets->offsets[face];
-        }
-        vkCmdCopyBufferToImage(cmd, buffer, image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions);
-        return;
-    }
-    VkBufferImageCopy region = {};
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = miplevel;
-    region.imageSubresource.layerCount = 1;
-    region.imageExtent = extent;
-    vkCmdCopyBufferToImage(cmd, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+VkImageAspectFlags VulkanTexture::getImageAspect() const {
+    // Helper function in VulkanUtility
+    return filament::backend::getImageAspect(mVkFormat);
 }
 
-} // namespace filament
-} // namespace backend
+void VulkanTexture::transitionLayout(VkCommandBuffer cmdbuf, const VkImageSubresourceRange& range,
+        VulkanLayout newLayout) {
+    VulkanLayout oldLayout = getLayout(range.baseArrayLayer, range.baseMipLevel);
+
+    #if FVK_ENABLED(FVK_DEBUG_LAYOUT_TRANSITION)
+    utils::slog.i << "transition layout of " << mTextureImage << ",layer=" << range.baseArrayLayer
+                  << ",level=" << range.baseMipLevel << " from=" << oldLayout << " to=" << newLayout
+                  << " format=" << mVkFormat
+                  << " depth=" << isDepthFormat(mVkFormat) << utils::io::endl;
+    #endif
+
+    ImgUtil::transitionLayout(cmdbuf, {
+            .image = mTextureImage,
+            .oldLayout = oldLayout,
+            .newLayout = newLayout,
+            .subresources = range,
+    });
+
+    uint32_t const firstLayer = range.baseArrayLayer;
+    uint32_t const lastLayer = firstLayer + range.layerCount;
+    uint32_t const firstLevel = range.baseMipLevel;
+    uint32_t const lastLevel = firstLevel + range.levelCount;
+
+    assert_invariant(firstLevel <= 0xffff && lastLevel <= 0xffff);
+    assert_invariant(firstLayer <= 0xffff && lastLayer <= 0xffff);
+
+    if (newLayout == VulkanLayout::UNDEFINED) {
+        for (uint32_t layer = firstLayer; layer < lastLayer; ++layer) {
+            uint32_t const first = (layer << 16) | firstLevel;
+            uint32_t const last = (layer << 16) | lastLevel;
+            mSubresourceLayouts.clear(first, last);
+        }
+    } else {
+        for (uint32_t layer = firstLayer; layer < lastLayer; ++layer) {
+            uint32_t const first = (layer << 16) | firstLevel;
+            uint32_t const last = (layer << 16) | lastLevel;
+            mSubresourceLayouts.add(first, last, newLayout);
+        }
+    }
+}
+
+VulkanLayout VulkanTexture::getLayout(uint32_t layer, uint32_t level) const {
+    assert_invariant(level <= 0xffff && layer <= 0xffff);
+    const uint32_t key = (layer << 16) | level;
+    if (!mSubresourceLayouts.has(key)) {
+        return VulkanLayout::UNDEFINED;
+    }
+    return mSubresourceLayouts.get(key);
+}
+
+#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
+void VulkanTexture::print() const {
+    const uint32_t firstLayer = 0;
+    const uint32_t lastLayer = firstLayer + mPrimaryViewRange.layerCount;
+    const uint32_t firstLevel = 0;
+    const uint32_t lastLevel = firstLevel + mPrimaryViewRange.levelCount;
+
+    for (uint32_t layer = firstLayer; layer < lastLayer; ++layer) {
+        for (uint32_t level = firstLevel; level < lastLevel; ++level) {
+            utils::slog.d << "[" << mTextureImage << "]: (" << layer << "," << level
+                          << ")=" << getLayout(layer, level) << utils::io::endl;
+        }
+    }
+}
+#endif
+
+} // namespace filament::backend

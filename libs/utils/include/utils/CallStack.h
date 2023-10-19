@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef UTILS_CALLSTACK_H_
-#define UTILS_CALLSTACK_H_
+#ifndef UTILS_CALLSTACK_H
+#define UTILS_CALLSTACK_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -69,7 +69,7 @@ public:
    /** Demangles a C++ type name */
     static utils::CString demangleTypeName(const char* mangled);
 
-    template <typename T>
+    template<typename T>
     static utils::CString typeName() {
 #if UTILS_HAS_RTTI
         return demangleTypeName(typeid(T).name());
@@ -124,4 +124,4 @@ private:
 
 } // namespace utils
 
-#endif // UTILS_CALLSTACK_H_
+#endif // UTILS_CALLSTACK_H

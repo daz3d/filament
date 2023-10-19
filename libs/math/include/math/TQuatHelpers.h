@@ -14,22 +14,18 @@
  * limitations under the License.
  */
 
-
-#ifndef MATH_TQUATHELPERS_H_
-#define MATH_TQUATHELPERS_H_
-
-#include <math.h>
-#include <stdint.h>
-#include <sys/types.h>
+#ifndef TNT_MATH_TQUATHELPERS_H
+#define TNT_MATH_TQUATHELPERS_H
 
 #include <math/compiler.h>
 #include <math/scalar.h>
 #include <math/vec3.h>
 
-namespace filament {
-namespace math {
-namespace details {
-// -------------------------------------------------------------------------------------
+#include <math.h>
+#include <stdint.h>
+#include <sys/types.h>
+
+namespace filament::math::details {
 
 /*
  * No user serviceable parts here.
@@ -50,7 +46,7 @@ namespace details {
 template<template<typename T> class QUATERNION, typename T>
 class TQuatProductOperators {
 public:
-    /* compound assignment from a another quaternion of the same size but different
+    /* compound assignment from another quaternion of the same size but different
      * element type.
      */
     template<typename OTHER>
@@ -86,7 +82,7 @@ public:
      * (the first one, BASE<T> being known).
      */
 
-    /* The operators below handle operation between quaternion of the same size
+    /* The operators below handle operation between quaternions of the same size
      * but of a different element type.
      */
     template<typename RT>
@@ -128,19 +124,19 @@ public:
      */
     friend inline
     constexpr QUATERNION<T> MATH_PURE operator*(QUATERNION<T> q, T scalar) {
-        // don't pass q by reference because we need a copy anyways
+        // don't pass q by reference because we need a copy anyway
         return q *= scalar;
     }
 
     friend inline
     constexpr QUATERNION<T> MATH_PURE operator*(T scalar, QUATERNION<T> q) {
-        // don't pass q by reference because we need a copy anyways
+        // don't pass q by reference because we need a copy anyway
         return q *= scalar;
     }
 
     friend inline
     constexpr QUATERNION<T> MATH_PURE operator/(QUATERNION<T> q, T scalar) {
-        // don't pass q by reference because we need a copy anyways
+        // don't pass q by reference because we need a copy anyway
         return q /= scalar;
     }
 };
@@ -284,9 +280,6 @@ public:
     }
 };
 
-// -------------------------------------------------------------------------------------
-}  // namespace details
-}  // namespace math
-}  // namespace filament
+}  // namespace filament::math::details
 
-#endif  // MATH_TQUATHELPERS_H_
+#endif  // TNT_MATH_TQUATHELPERS_H

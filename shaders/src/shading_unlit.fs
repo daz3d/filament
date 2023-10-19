@@ -2,7 +2,10 @@ void addEmissive(const MaterialInputs material, inout vec4 color) {
 #if defined(MATERIAL_HAS_EMISSIVE)
     highp vec4 emissive = material.emissive;
     highp float attenuation = mix(1.0, getExposure(), emissive.w);
-    color.rgb += emissive.rgb * (attenuation * color.a);
+#if defined(BLEND_MODE_TRANSPARENT) || defined(BLEND_MODE_FADE)
+    attenuation *= color.a;
+#endif
+    color.rgb += emissive.rgb * attenuation;
 #endif
 }
 
@@ -35,20 +38,26 @@ vec4 evaluateMaterial(const MaterialInputs material) {
     if (color.a <= 0.0) {
         discard;
     }
+
+    // Output 1.0 for translucent view to prevent "punch through" artifacts. We do not do this
+    // for opaque views to enable proper usage of ALPHA_TO_COVERAGE.
+    if (frameUniforms.needsAlphaChannel == 1.0) {
+        color.a = 1.0;
+    }
 #endif
 
-    addEmissive(material, color);
-
-#if defined(HAS_DIRECTIONAL_LIGHTING)
-#if defined(HAS_SHADOWING)
+#if defined(VARIANT_HAS_DIRECTIONAL_LIGHTING)
+#if defined(VARIANT_HAS_SHADOWING)
     float visibility = 1.0;
-    if ((frameUniforms.directionalShadows & 1u) != 0u) {
-        uint cascade = getShadowCascade();
-        uint layer = cascade;
-        visibility = shadow(light_shadowMap, layer, getCascadeLightSpacePosition(cascade));
+    int cascade = getShadowCascade();
+    bool cascadeHasVisibleShadows = bool(frameUniforms.cascades & ((1 << cascade) << 8));
+    bool hasDirectionalShadows = bool(frameUniforms.directionalShadows & 1);
+    if (hasDirectionalShadows && cascadeHasVisibleShadows) {
+        highp vec4 shadowPosition = getShadowPosition(cascade);
+        visibility = shadow(true, light_shadowMap, cascade, shadowPosition, 0.0);
     }
-    if ((frameUniforms.directionalShadows & 0x2u) != 0u && visibility > 0.0) {
-        if (objectUniforms.screenSpaceContactShadows != 0u) {
+    if ((frameUniforms.directionalShadows & 0x2) != 0 && visibility > 0.0) {
+        if ((object_uniforms_flagsChannels & FILAMENT_OBJECT_CONTACT_SHADOWS_BIT) != 0) {
             visibility *= (1.0 - screenSpaceContactShadow(frameUniforms.lightDirection));
         }
     }
@@ -56,9 +65,11 @@ vec4 evaluateMaterial(const MaterialInputs material) {
 #else
     color = vec4(0.0);
 #endif
-#elif defined(HAS_SHADOW_MULTIPLIER)
+#elif defined(MATERIAL_HAS_SHADOW_MULTIPLIER)
     color = vec4(0.0);
 #endif
+
+    addEmissive(material, color);
 
     return color;
 }

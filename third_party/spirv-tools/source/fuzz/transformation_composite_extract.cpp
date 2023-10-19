@@ -67,7 +67,7 @@ bool TransformationCompositeExtract::IsApplicable(
   }
 
   if (!fuzzerutil::CanInsertOpcodeBeforeInstruction(
-          SpvOpCompositeExtract, instruction_to_insert_before)) {
+          spv::Op::OpCompositeExtract, instruction_to_insert_before)) {
     return false;
   }
 
@@ -93,7 +93,7 @@ void TransformationCompositeExtract::Apply(
       FindInstruction(message_.instruction_to_insert_before(), ir_context);
   opt::Instruction* new_instruction =
       insert_before->InsertBefore(MakeUnique<opt::Instruction>(
-          ir_context, SpvOpCompositeExtract, extracted_type,
+          ir_context, spv::Op::OpCompositeExtract, extracted_type,
           message_.fresh_id(), extract_operands));
   ir_context->get_def_use_mgr()->AnalyzeInstDefUse(new_instruction);
   ir_context->set_instr_block(new_instruction,
@@ -125,7 +125,7 @@ void TransformationCompositeExtract::AddDataSynonymFacts(
   // or if the result id into which we are extracting is irrelevant.
   if (!fuzzerutil::CanMakeSynonymOf(
           ir_context, *transformation_context,
-          ir_context->get_def_use_mgr()->GetDef(message_.composite_id())) ||
+          *ir_context->get_def_use_mgr()->GetDef(message_.composite_id())) ||
       transformation_context->GetFactManager()->IdIsIrrelevant(
           message_.fresh_id())) {
     return;

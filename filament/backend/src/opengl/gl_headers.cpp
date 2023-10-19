@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-#if defined(ANDROID) || defined(FILAMENT_USE_EXTERNAL_GLES3) || defined(__EMSCRIPTEN__)
+#include "gl_headers.h"
+
+#if defined(FILAMENT_IMPORT_ENTRY_POINTS)
 
 #include <EGL/egl.h>
-#include <GLES3/gl3.h>
-#include <GLES2/gl2ext.h>
 #include <mutex>
 
+// for non EGL platforms, we'd need to implement this differently. Currently, it's not a problem.
+template<typename T>
+static void getProcAddress(T& pfn, const char* name) noexcept {
+    pfn = (T)eglGetProcAddress(name);
+}
+
 namespace glext {
-#ifdef GL_QCOM_tiled_rendering
-PFNGLSTARTTILINGQCOMPROC glStartTilingQCOM;
-PFNGLENDTILINGQCOMPROC glEndTilingQCOM;
-#endif
 #ifdef GL_OES_EGL_image
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 #endif
@@ -43,74 +45,82 @@ PFNGLDEBUGMESSAGECALLBACKKHRPROC glDebugMessageCallbackKHR;
 PFNGLGETDEBUGMESSAGELOGKHRPROC glGetDebugMessageLogKHR;
 #endif
 #ifdef GL_EXT_disjoint_timer_query
-PFNGLGETQUERYOBJECTUI64VEXTPROC glGetQueryObjectui64v;
+PFNGLGENQUERIESEXTPROC glGenQueriesEXT;
+PFNGLDELETEQUERIESEXTPROC glDeleteQueriesEXT;
+PFNGLBEGINQUERYEXTPROC glBeginQueryEXT;
+PFNGLENDQUERYEXTPROC glEndQueryEXT;
+PFNGLGETQUERYOBJECTUIVEXTPROC glGetQueryObjectuivEXT;
+PFNGLGETQUERYOBJECTUI64VEXTPROC glGetQueryObjectui64vEXT;
+#endif
+#ifdef GL_OES_vertex_array_object
+PFNGLBINDVERTEXARRAYOESPROC glBindVertexArrayOES;
+PFNGLDELETEVERTEXARRAYSOESPROC glDeleteVertexArraysOES;
+PFNGLGENVERTEXARRAYSOESPROC glGenVertexArraysOES;
 #endif
 #ifdef GL_EXT_clip_control
-PFNGLCLIPCONTROLEXTPROC glClipControl;
+PFNGLCLIPCONTROLEXTPROC glClipControlEXT;
+#endif
+#ifdef GL_EXT_discard_framebuffer
+PFNGLDISCARDFRAMEBUFFEREXTPROC glDiscardFramebufferEXT;
+#endif
+#ifdef GL_KHR_parallel_shader_compile
+PFNGLMAXSHADERCOMPILERTHREADSKHRPROC glMaxShaderCompilerThreadsKHR;
+#endif
+
+#if defined(__ANDROID__) && !defined(FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2)
+// On Android, If we want to support a build system less than ANDROID_API 21, we need to
+// use getProcAddress for ES3.1 and above entry points.
+PFNGLDISPATCHCOMPUTEPROC glDispatchCompute;
 #endif
 
 static std::once_flag sGlExtInitialized;
 
 void importGLESExtensionsEntryPoints() {
-    std::call_once(sGlExtInitialized, []() {
-#ifdef GL_QCOM_tiled_rendering
-        glStartTilingQCOM =
-                (PFNGLSTARTTILINGQCOMPROC)eglGetProcAddress(
-                        "glStartTilingQCOM");
-
-        glEndTilingQCOM =
-                (PFNGLENDTILINGQCOMPROC)eglGetProcAddress(
-                        "glEndTilingQCOM");
-#endif
-
+    std::call_once(sGlExtInitialized, +[]() {
 #ifdef GL_OES_EGL_image
-        glEGLImageTargetTexture2DOES =
-                (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress(
-                        "glEGLImageTargetTexture2DOES");
+    getProcAddress(glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");
 #endif
-
 #if GL_EXT_debug_marker
-        glInsertEventMarkerEXT =
-                (PFNGLINSERTEVENTMARKEREXTPROC)eglGetProcAddress(
-                        "glInsertEventMarkerEXT");
-
-        glPushGroupMarkerEXT =
-                (PFNGLPUSHGROUPMARKEREXTPROC)eglGetProcAddress(
-                        "glPushGroupMarkerEXT");
-
-        glPopGroupMarkerEXT =
-                (PFNGLPOPGROUPMARKEREXTPROC)eglGetProcAddress(
-                        "glPopGroupMarkerEXT");
+    getProcAddress(glInsertEventMarkerEXT, "glInsertEventMarkerEXT");
+    getProcAddress(glPushGroupMarkerEXT, "glPushGroupMarkerEXT");
+    getProcAddress(glPopGroupMarkerEXT, "glPopGroupMarkerEXT");
 #endif
 #if GL_EXT_multisampled_render_to_texture
-        glFramebufferTexture2DMultisampleEXT =
-                (PFNGLFRAMEBUFFERTEXTURE2DMULTISAMPLEEXTPROC)eglGetProcAddress(
-                        "glFramebufferTexture2DMultisampleEXT");
-        glRenderbufferStorageMultisampleEXT =
-                (PFNGLRENDERBUFFERSTORAGEMULTISAMPLEEXTPROC)eglGetProcAddress(
-                        "glRenderbufferStorageMultisampleEXT");
+    getProcAddress(glFramebufferTexture2DMultisampleEXT, "glFramebufferTexture2DMultisampleEXT");
+    getProcAddress(glRenderbufferStorageMultisampleEXT, "glRenderbufferStorageMultisampleEXT");
 #endif
 #ifdef GL_KHR_debug
-        glDebugMessageCallbackKHR =
-                (PFNGLDEBUGMESSAGECALLBACKKHRPROC)eglGetProcAddress(
-                        "glDebugMessageCallbackKHR");
-        glGetDebugMessageLogKHR =
-                (PFNGLGETDEBUGMESSAGELOGKHRPROC)eglGetProcAddress(
-                        "glGetDebugMessageLogKHR");
+    getProcAddress(glDebugMessageCallbackKHR, "glDebugMessageCallbackKHR");
+    getProcAddress(glGetDebugMessageLogKHR, "glGetDebugMessageLogKHR");
 #endif
 #ifdef GL_EXT_disjoint_timer_query
-        glGetQueryObjectui64v =
-                (PFNGLGETQUERYOBJECTUI64VEXTPROC)eglGetProcAddress(
-                        "glGetQueryObjectui64vEXT");
+    getProcAddress(glGenQueriesEXT, "glGenQueriesEXT");
+    getProcAddress(glDeleteQueriesEXT, "glDeleteQueriesEXT");
+    getProcAddress(glBeginQueryEXT, "glBeginQueryEXT");
+    getProcAddress(glEndQueryEXT, "glEndQueryEXT");
+    getProcAddress(glGetQueryObjectuivEXT, "glGetQueryObjectuivEXT");
+    getProcAddress(glGetQueryObjectui64vEXT, "glGetQueryObjectui64vEXT");
+#endif
+#if defined(GL_OES_vertex_array_object)
+    getProcAddress(glBindVertexArrayOES, "glBindVertexArrayOES");
+    getProcAddress(glDeleteVertexArraysOES, "glDeleteVertexArraysOES");
+    getProcAddress(glGenVertexArraysOES, "glGenVertexArraysOES");
+#endif
+#ifdef GL_EXT_clip_control
+    getProcAddress(glClipControlEXT, "glClipControlEXT");
+#endif
+#ifdef GL_EXT_discard_framebuffer
+        getProcAddress(glDiscardFramebufferEXT, "glDiscardFramebufferEXT");
+#endif
+#ifdef GL_KHR_parallel_shader_compile
+        getProcAddress(glMaxShaderCompilerThreadsKHR, "glMaxShaderCompilerThreadsKHR");
+#endif
+#if defined(__ANDROID__) && !defined(FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2)
+        getProcAddress(glDispatchCompute, "glDispatchCompute");
 #endif
     });
-#ifdef GL_EXT_clip_control
-    glClipControl =
-            (PFNGLCLIPCONTROLEXTPROC)eglGetProcAddress(
-                    "glClipControlEXT");
-#endif
 }
 
 } // namespace glext
 
-#endif
+#endif // defined(FILAMENT_IMPORT_ENTRY_POINTS)

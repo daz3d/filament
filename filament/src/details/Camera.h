@@ -19,12 +19,15 @@
 
 #include <filament/Camera.h>
 
-#include "upcast.h"
+#include "downcast.h"
 
 #include <filament/Frustum.h>
 
+#include <private/filament/EngineEnums.h>
+
 #include <utils/compiler.h>
 #include <utils/Entity.h>
+#include <utils/Panic.h>
 
 #include <math/mat4.h>
 #include <math/scalar.h>
@@ -45,65 +48,84 @@ public:
 
     void terminate(FEngine& engine) noexcept { }
 
+    void setEyeModelMatrix(uint8_t eyeId, math::mat4 const& model);
+
+    void setCustomEyeProjection(math::mat4 const* projection, size_t count,
+            math::mat4 const& projectionForCulling, double near, double far);
+
     // sets the projection matrix
     void setProjection(Projection projection,
                        double left, double right, double bottom, double top,
-                       double near, double far) noexcept;
+                       double near, double far);
 
     // sets the projection matrix
     void setProjection(double fovInDegrees, double aspect, double near, double far,
-                       Fov direction = Fov::VERTICAL) noexcept;
+                       Fov direction = Fov::VERTICAL);
 
     // sets the projection matrix
     void setLensProjection(double focalLengthInMillimeters,
-            double aspect, double near, double far) noexcept;
+            double aspect, double near, double far);
 
     // Sets a custom projection matrix (sets both the viewing and culling projections).
     void setCustomProjection(math::mat4 const& projection, double near, double far) noexcept;
     void setCustomProjection(math::mat4 const& projection,
             math::mat4 const& projectionForCulling, double near, double far) noexcept;
 
-    void setScaling(math::double2 scaling) noexcept { mScaling = scaling; }
+    void setScaling(math::double2 scaling) noexcept { mScalingCS = scaling; }
 
-    math::double4 getScaling() const noexcept { return math::double4{ mScaling, 1.0, 1.0 }; }
+    math::double4 getScaling() const noexcept { return math::double4{ mScalingCS, 1.0, 1.0 }; }
 
     void setShift(math::double2 shift) noexcept { mShiftCS = shift * 2.0; }
 
-    const math::double2 getShift() const noexcept { return mShiftCS * 0.5; }
+    math::double2 getShift() const noexcept { return mShiftCS * 0.5; }
 
-    // returns the projection matrix
-    math::mat4 getProjectionMatrix() const noexcept;
+    // viewing the projection matrix to be used for rendering, contains scaling/shift and possibly
+    // other transforms needed by the shaders
+    math::mat4 getProjectionMatrix(uint8_t eye = 0) const noexcept;
 
+    // culling the projection matrix to be used for culling, contains scaling/shift
     math::mat4 getCullingProjectionMatrix() const noexcept;
 
-    float getNear() const noexcept { return mNear; }
+    math::mat4 getEyeFromViewMatrix(uint8_t eye) const noexcept { return mEyeFromView[eye]; }
 
-    float getCullingFar() const noexcept { return mFar; }
+    // viewing projection matrix set by the user
+    const math::mat4& getUserProjectionMatrix(uint8_t eyeId) const {
+        ASSERT_PRECONDITION(eyeId < CONFIG_STEREOSCOPIC_EYES,
+                "eyeId must be < CONFIG_STEREOSCOPIC_EYES(%d)", CONFIG_STEREOSCOPIC_EYES);
+        return mEyeProjection[eyeId];
+    }
 
-    // sets the camera's view matrix (must be a rigid transform)
+    // culling projection matrix set by the user
+    math::mat4 getUserCullingProjectionMatrix() const noexcept { return mProjectionForCulling; }
+
+    double getNear() const noexcept { return mNear; }
+
+    double getCullingFar() const noexcept { return mFar; }
+
+    // sets the camera's model matrix (must be a rigid transform)
+    void setModelMatrix(const math::mat4& modelMatrix) noexcept;
     void setModelMatrix(const math::mat4f& modelMatrix) noexcept;
 
-    // sets the camera's view matrix
-    void lookAt(const math::float3& eye, const math::float3& center, const math::float3& up = { 0, 1, 0 })  noexcept;
+    // sets the camera's model matrix
+    void lookAt(math::double3 const& eye, math::double3 const& center, math::double3 const& up) noexcept;
 
-    // returns the view matrix
-    math::mat4f const& getModelMatrix() const noexcept;
+    // returns the model matrix
+    math::mat4 getModelMatrix() const noexcept;
 
-    // returns the inverse of the view matrix
-    math::mat4f getViewMatrix() const noexcept;
+    // returns the view matrix (inverse of the model matrix)
+    math::mat4 getViewMatrix() const noexcept;
 
-    template <typename T>
+    template<typename T>
     static math::details::TMat44<T> rigidTransformInverse(math::details::TMat44<T> const& v) noexcept {
         // The inverse of a rigid transform can be computed from the transpose
         //  | R T |^-1    | Rt -Rt*T |
         //  | 0 1 |     = |  0   1   |
-
-        const math::details::TMat33<T> rt(transpose(v.upperLeft()));
-        const math::details::TVec3<T> t(rt * v[3].xyz);
-        return math::details::TMat44<T>(rt, -t);
+        const auto rt(transpose(v.upperLeft()));
+        const auto t(rt * v[3].xyz);
+        return { rt, -t };
     }
 
-    math::float3 const& getPosition() const noexcept {
+    math::double3 getPosition() const noexcept {
         return getModelMatrix()[3].xyz;
     }
 
@@ -121,7 +143,7 @@ public:
     }
 
     float getFieldOfView(Camera::Fov direction) const noexcept {
-        // note: this is meaning less for an orthographic projection
+        // note: this is meaningless for an orthographic projection
         auto const& p = getProjectionMatrix();
         switch (direction) {
             case Fov::VERTICAL:
@@ -135,8 +157,8 @@ public:
         return getFieldOfView(direction) * math::f::RAD_TO_DEG;
     }
 
-    // returns a Frustum object in world space
-    Frustum getFrustum() const noexcept;
+    // Returns the camera's culling Frustum in world space
+    Frustum getCullingFrustum() const noexcept;
 
     // sets this camera's exposure (default is f/16, 1/125s, 100 ISO)
     void setExposure(float aperture, float shutterSpeed, float sensitivity) noexcept;
@@ -174,20 +196,20 @@ public:
         return mEntity;
     }
 
-    static math::mat4f getViewMatrix(math::mat4f const& model) noexcept;
-    static Frustum getFrustum(math::mat4 const& projection, math::mat4f const& viewMatrix) noexcept;
-
 private:
     FEngine& mEngine;
     utils::Entity mEntity;
 
-    math::mat4 mProjection;                // projection matrix (infinite far)
-    math::mat4 mProjectionForCulling;      // projection matrix (with far plane)
-    math::double2 mScaling = { 1.0f };  // additional scaling applied to projection
-    math::double2 mShiftCS = { 0.0f };  // additional translation applied to projection
+    // For monoscopic cameras, mEyeProjection[0] == mEyeProjection[1].
+    math::mat4 mEyeProjection[CONFIG_STEREOSCOPIC_EYES]; // projection matrix per eye (infinite far)
+    math::mat4 mProjectionForCulling;                    // projection matrix (with far plane)
+    math::mat4 mEyeFromView[CONFIG_STEREOSCOPIC_EYES];   // transforms from the main view (head)
+                                                         // space to each eye's unique view space
+    math::double2 mScalingCS = {1.0};  // additional scaling applied to projection
+    math::double2 mShiftCS = {0.0};    // additional translation applied to projection
 
-    float mNear{};
-    float mFar{};
+    double mNear{};
+    double mFar{};
     // exposure settings
     float mAperture = 16.0f;
     float mShutterSpeed = 1.0f / 125.0f;
@@ -196,29 +218,39 @@ private:
 };
 
 struct CameraInfo {
-    CameraInfo() noexcept = default;
+    CameraInfo() noexcept {}
     explicit CameraInfo(FCamera const& camera) noexcept;
-    CameraInfo(FCamera const& camera, const math::mat4f& worldOriginCamera) noexcept;
+    CameraInfo(FCamera const& camera, const math::mat4& worldOriginCamera) noexcept;
 
-    math::mat4f projection;         // projection matrix for drawing (infinite zfar)
-    math::mat4f cullingProjection;  // projection matrix for culling
-    math::mat4f model;              // camera model matrix
-    math::mat4f view;               // camera view matrix
-    float zn{};                     // distance (positive) to the near plane
-    float zf{};                     // distance (positive) to the far plane
-    float ev100{};                  // exposure
-    float f{};                      // focal length [m]
-    float A{};                      // f-number or f / aperture diameter [m]
-    float d{};                      // focus distance [m]
-    math::float3 worldOffset{};     // world offset, API-level camera position
+    union {
+        // projection matrix for drawing (infinite zfar)
+        // for monoscopic rendering
+        // equivalent to eyeProjection[0], but aliased here for convenience
+        math::mat4f projection;
+
+        // for stereo rendering, one matrix per eye
+        math::mat4f eyeProjection[CONFIG_STEREOSCOPIC_EYES] = {};
+    };
+
+    math::mat4f cullingProjection;                      // projection matrix for culling
+    math::mat4f model;                                  // camera model matrix
+    math::mat4f view;                                   // camera view matrix (inverse(model))
+    math::mat4f eyeFromView[CONFIG_STEREOSCOPIC_EYES];  // eye view matrix (only for stereoscopic)
+    math::mat4 worldOrigin;                             // world origin transform (already applied
+                                                        // to model and view)
+    math::float4 clipTransfrom{1, 1, 0, 0};  // clip-space transform, only for VERTEX_DOMAIN_DEVICE
+    float zn{};                              // distance (positive) to the near plane
+    float zf{};                              // distance (positive) to the far plane
+    float ev100{};                           // exposure
+    float f{};                               // focal length [m]
+    float A{};                               // f-number or f / aperture diameter [m]
+    float d{};                               // focus distance [m]
     math::float3 const& getPosition() const noexcept { return model[3].xyz; }
     math::float3 getForwardVector() const noexcept { return normalize(-model[2].xyz); }
-
-    // for debugging:
-    math::mat4f worldOrigin; // this is already applied to model and view
+    math::mat4 getUserViewMatrix() const noexcept { return view * worldOrigin; }
 };
 
-FILAMENT_UPCAST(Camera)
+FILAMENT_DOWNCAST(Camera)
 
 } // namespace filament
 

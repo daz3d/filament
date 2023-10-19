@@ -14,36 +14,42 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_OPENGLPROGRAM_H
-#define TNT_FILAMENT_DRIVER_OPENGLPROGRAM_H
+#ifndef TNT_FILAMENT_BACKEND_OPENGL_OPENGLPROGRAM_H
+#define TNT_FILAMENT_BACKEND_OPENGL_OPENGLPROGRAM_H
 
 #include "DriverBase.h"
-#include "OpenGLDriver.h"
 
-#include "private/backend/Driver.h"
-#include "private/backend/Program.h"
+#include "OpenGLContext.h"
+#include "ShaderCompilerService.h"
+
+#include <private/backend/Driver.h>
+#include <backend/Program.h>
 
 #include <utils/compiler.h>
-#include <utils/Log.h>
-
-#include <vector>
+#include <utils/FixedCapacityVector.h>
 
 #include <stddef.h>
 #include <stdint.h>
 
+namespace filament::backend {
 
-namespace filament {
+class OpenGLDriver;
 
-class OpenGLProgram : public backend::HwProgram {
+class OpenGLProgram : public HwProgram {
 public:
 
-    OpenGLProgram() noexcept = default;
-    OpenGLProgram(OpenGLDriver* gl, const backend::Program& builder) noexcept;
+    OpenGLProgram() noexcept;
+    OpenGLProgram(OpenGLDriver& gld, Program&& program) noexcept;
     ~OpenGLProgram() noexcept;
 
-    bool isValid() const noexcept { return mIsValid; }
+    bool isValid() const noexcept { return mToken || gl.program != 0; }
 
-    void use(OpenGLDriver* const gl) noexcept {
+    void use(OpenGLDriver* const gld, OpenGLContext& context) noexcept {
+        if (UTILS_UNLIKELY(!gl.program)) {
+            initialize(*gld);
+        }
+
+        context.useProgram(gl.program);
         if (UTILS_UNLIKELY(mUsedBindingsCount)) {
             // We rely on GL state tracking to avoid unnecessary glBindTexture / glBindSampler
             // calls.
@@ -55,55 +61,52 @@ public:
 
             // turns out the former might be relatively cheap to check, the later requires
             // a bit less. Compared to what updateSamplers() actually does, which is
-            // pretty little, I'm not sure we'll get ahead.
+            // pretty little, I'm not sure if we'll get ahead.
 
-            updateSamplers(gl);
+            updateSamplers(gld);
         }
     }
 
     struct {
-        GLuint shaders[backend::Program::SHADER_TYPE_COUNT];
-        GLuint program;
+        GLuint program = 0;
     } gl; // 12 bytes
 
-    static void logCompilationError(utils::io::ostream& out,
-            backend::Program::Shader shaderType, const char* name,
-            GLuint shaderId, char const* source) noexcept;
-
-    static void logProgramLinkError(utils::io::ostream& out,
-            const char* name, GLuint program) noexcept;
+    // For ES2 only
+    void updateUniforms(uint32_t index, void const* buffer, uint16_t age) noexcept;
+    void setRec709ColorSpace(bool rec709) const noexcept;
 
 private:
-    static constexpr uint8_t TEXTURE_UNIT_COUNT = OpenGLContext::MAX_TEXTURE_UNIT_COUNT;
-    static constexpr uint8_t VERTEX_SHADER_BIT   = uint8_t(1) << size_t(backend::Program::Shader::VERTEX);
-    static constexpr uint8_t FRAGMENT_SHADER_BIT = uint8_t(1) << size_t(backend::Program::Shader::FRAGMENT);
+    // keep these away from of other class attributes
+    struct LazyInitializationData;
 
-    struct BlockInfo {
-        uint8_t binding : 3;    // binding (i.e.: index in mSamplerBindings)
-        uint8_t unused  : 1;    // padding / available
-        uint8_t count   : 4;    // number of TMUs actually used minus 1
+    void initialize(OpenGLDriver& gld);
 
-        // if TEXTURE_UNIT_COUNT > 16, the count bitfield must be increased accordingly
-        static_assert(TEXTURE_UNIT_COUNT <= 16, "TEXTURE_UNIT_COUNT must be <= 16");
+    void initializeProgramState(OpenGLContext& context, GLuint program,
+            LazyInitializationData& lazyInitializationData) noexcept;
 
-        // if SAMPLER_BINDING_COUNT > 8, the binding bitfield must be increased accordingly
-        static_assert(backend::Program::BINDING_COUNT <= 8, "BINDING_COUNT must be <= 8");
+    void updateSamplers(OpenGLDriver* gld) const noexcept;
+
+    ShaderCompilerService::program_token_t mToken{};
+
+    // number of bindings actually used by this program
+    uint8_t mUsedBindingsCount = 0u;
+    UTILS_UNUSED uint8_t padding[3] = {};
+    std::array<uint8_t, Program::SAMPLER_BINDING_COUNT> mUsedSamplerBindingPoints;   // 4 bytes
+
+    // only needed for ES2
+    using LocationInfo = utils::FixedCapacityVector<GLint>;
+    struct UniformsRecord {
+        Program::UniformInfo uniforms;
+        LocationInfo locations;
+        mutable uint16_t age = std::numeric_limits<uint16_t>::max();
     };
-
-    uint8_t mUsedBindingsCount = 0;
-    uint8_t mValidShaderSet = 0;
-    bool mIsValid = false;
-
-    // information about each USED sampler buffer (no gaps)
-    std::array<BlockInfo, backend::Program::BINDING_COUNT> mBlockInfos;   // 8 bytes
-
-    // runs of indices into SamplerGroup -- run start index and size given by BlockInfo
-    std::array<uint8_t, TEXTURE_UNIT_COUNT> mIndicesRuns;    // 16 bytes
-
-    void updateSamplers(OpenGLDriver* gld) noexcept;
+    UniformsRecord const* mUniformsRecords = nullptr;
+    GLint mRec709Location = -1;
 };
 
+// if OpenGLProgram is larger tha 64 bytes, it'll fall in a larger Handle bucket.
+static_assert(sizeof(OpenGLProgram) <= 64);
 
-} // namespace filament
+} // namespace filament::backend
 
-#endif // TNT_FILAMENT_DRIVER_OPENGLPROGRAM_H
+#endif // TNT_FILAMENT_BACKEND_OPENGL_OPENGLPROGRAM_H

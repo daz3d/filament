@@ -14,24 +14,17 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_DRIVER_H
-#define TNT_FILAMENT_DRIVER_DRIVER_H
+#ifndef TNT_FILAMENT_BACKEND_PRIVATE_DRIVER_H
+#define TNT_FILAMENT_BACKEND_PRIVATE_DRIVER_H
 
-#include <backend/BufferDescriptor.h>
+#include <backend/CallbackHandler.h>
+#include <backend/DriverApiForward.h>
+#include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 #include <backend/PipelineState.h>
-#include <backend/PixelBufferDescriptor.h>
-#include <backend/PresentCallable.h>
 #include <backend/TargetBufferInfo.h>
 
-#include "private/backend/DriverApiForward.h"
-#include "private/backend/Program.h"
-#include "private/backend/SamplerGroup.h"
-
-#include <backend/DriverEnums.h>
-
 #include <utils/compiler.h>
-#include <utils/Log.h>
 
 #include <functional>
 
@@ -49,8 +42,12 @@
 
 #define FILAMENT_DEBUG_COMMANDS              FILAMENT_DEBUG_COMMANDS_NONE
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
+
+class BufferDescriptor;
+class CallbackHandler;
+class PixelBufferDescriptor;
+class Program;
 
 template<typename T>
 class ConcreteDispatcher;
@@ -59,27 +56,32 @@ class CommandStream;
 
 class Driver {
 public:
-    static size_t getElementTypeSize(ElementType type) noexcept;
-
     virtual ~Driver() noexcept;
 
+    static size_t getElementTypeSize(ElementType type) noexcept;
+
     // called from the main thread (NOT the render-thread) at various intervals, this
-    // is where the driver can free resources consumed by previous commands.
+    // is where the driver can execute user callbacks.
     virtual void purge() noexcept = 0;
 
     virtual ShaderModel getShaderModel() const noexcept = 0;
 
-    virtual Dispatcher& getDispatcher() noexcept = 0;
+    // Returns the dispatcher. This is only called once during initialization of the CommandStream,
+    // so it doesn't matter that it's virtual.
+    virtual Dispatcher getDispatcher() const noexcept = 0;
 
     // called from CommandStream::execute on the render-thread
     // the fn function will execute a batch of driver commands
     // this gives the driver a chance to wrap their execution in a meaningful manner
     // the default implementation simply calls fn
-    virtual void execute(std::function<void(void)> fn) noexcept;
+    virtual void execute(std::function<void(void)> const& fn) noexcept;
 
     // This is called on debug build, or when enabled manually on the backend thread side.
-    virtual void debugCommandBegin(CommandStream* cmds, bool synchronous, const char* methodName) noexcept = 0;
-    virtual void debugCommandEnd(CommandStream* cmds, bool synchronous, const char* methodName) noexcept = 0;
+    virtual void debugCommandBegin(CommandStream* cmds,
+            bool synchronous, const char* methodName) noexcept = 0;
+
+    virtual void debugCommandEnd(CommandStream* cmds,
+            bool synchronous, const char* methodName) noexcept = 0;
 
     //DAZ ADD
     virtual uint32_t getTextureOGLId(const backend::Handle<backend::HwTexture>& handle)noexcept = 0;
@@ -104,46 +106,6 @@ public:
 #include "private/backend/DriverAPI.inc"
 };
 
-} // namespace backend
-} // namespace filament
+} // namespace filament::backend
 
-#if !defined(NDEBUG)
-
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::BufferUsage usage);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::CullingMode mode);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::ElementType type);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::PixelDataFormat format);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::PixelDataType type);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::Precision precision);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::PrimitiveType type);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::TargetBufferFlags f);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerCompareFunc func);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerCompareMode mode);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerFormat format);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerMagFilter filter);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerMinFilter filter);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerParams params);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerType type);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::SamplerWrapMode wrap);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::ShaderModel model);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::TextureCubemapFace face);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::TextureFormat format);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::TextureUsage usage);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::BufferObjectBinding binding);
-utils::io::ostream& operator<<(utils::io::ostream& out, filament::backend::TextureSwizzle swizzle);
-
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::AttributeArray& type);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::FaceOffsets& type);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::PolygonOffset& po);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::PipelineState& ps);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::RasterState& rs);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::TargetBufferInfo& tbi);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::BufferDescriptor& b);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::PixelBufferDescriptor& b);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::RenderPassParams& b);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::Viewport& v);
-utils::io::ostream& operator<<(utils::io::ostream& out, const filament::backend::MRT& mrt);
-
-#endif
-
-#endif // TNT_FILAMENT_DRIVER_DRIVER_H
+#endif // TNT_FILAMENT_BACKEND_PRIVATE_DRIVER_H

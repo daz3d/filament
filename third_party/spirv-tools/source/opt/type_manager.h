@@ -99,7 +99,7 @@ class TypeManager {
   //
   // |id| must be a registered type.
   std::pair<Type*, std::unique_ptr<Pointer>> GetTypeAndPointerType(
-      uint32_t id, SpvStorageClass sc) const;
+      uint32_t id, spv::StorageClass sc) const;
 
   // Returns an id for a declaration representing |type|.  Returns 0 if the type
   // does not exists, and could not be generated.
@@ -112,7 +112,7 @@ class TypeManager {
   // Find pointer to type and storage in module, return its resultId.  If it is
   // not found, a new type is created, and its id is returned.  Returns 0 if the
   // type could not be created.
-  uint32_t FindPointerToType(uint32_t type_id, SpvStorageClass storage_class);
+  uint32_t FindPointerToType(uint32_t type_id, spv::StorageClass storage_class);
 
   // Registers |id| to |type|.
   //
@@ -139,6 +139,11 @@ class TypeManager {
   const Type* GetMemberType(const Type* parent_type,
                             const std::vector<uint32_t>& access_chain);
 
+  // Attaches the decoration encoded in |inst| to |type|. Does nothing if the
+  // given instruction is not a decoration instruction. Assumes the target is
+  // |type| (e.g. should be called in loop of |type|'s decorations).
+  void AttachDecoration(const Instruction& inst, Type* type);
+
   Type* GetUIntType() {
     Integer int_type(32, false);
     return GetRegisteredType(&int_type);
@@ -159,6 +164,13 @@ class TypeManager {
   }
 
   uint32_t GetFloatTypeId() { return GetTypeInstruction(GetFloatType()); }
+
+  Type* GetDoubleType() {
+    Float float_type(64);
+    return GetRegisteredType(&float_type);
+  }
+
+  uint32_t GetDoubleTypeId() { return GetTypeInstruction(GetDoubleType()); }
 
   Type* GetUIntVectorType(uint32_t size) {
     Vector vec_type(GetUIntType(), size);
@@ -236,19 +248,15 @@ class TypeManager {
 
   // Create the annotation instruction.
   //
-  // If |element| is zero, an OpDecorate is created, other an OpMemberDecorate
-  // is created. The annotation is registered with the DefUseManager and the
-  // DecorationManager.
+  // If |is_member| is false, an OpDecorate of |decoration| on |id| is created,
+  // otherwise an OpMemberDecorate is created at |element|. The annotation is
+  // registered with the DefUseManager and the DecorationManager.
   void CreateDecoration(uint32_t id, const std::vector<uint32_t>& decoration,
-                        uint32_t element = 0);
+                        bool is_member = false, uint32_t element = 0);
 
   // Creates and returns a type from the given SPIR-V |inst|. Returns nullptr if
   // the given instruction is not for defining a type.
   Type* RecordIfTypeDefinition(const Instruction& inst);
-  // Attaches the decoration encoded in |inst| to |type|. Does nothing if the
-  // given instruction is not a decoration instruction. Assumes the target is
-  // |type| (e.g. should be called in loop of |type|'s decorations).
-  void AttachDecoration(const Instruction& inst, Type* type);
 
   // Returns an equivalent pointer to |type| built in terms of pointers owned by
   // |type_pool_|. For example, if |type| is a vec3 of bool, it will be rebuilt

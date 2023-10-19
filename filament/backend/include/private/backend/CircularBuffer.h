@@ -14,24 +14,18 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_CIRCULARBUFFER_H
-#define TNT_FILAMENT_DRIVER_CIRCULARBUFFER_H
+#ifndef TNT_FILAMENT_BACKEND_PRIVATE_CIRCULARBUFFER_H
+#define TNT_FILAMENT_BACKEND_PRIVATE_CIRCULARBUFFER_H
+
+#include <utils/compiler.h>
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include <utils/compiler.h>
-
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
 class CircularBuffer {
 public:
-// all allocations are at least one page
-    static constexpr size_t BLOCK_BITS = 12;    // 4KB
-    static constexpr size_t BLOCK_SIZE = 1 << BLOCK_BITS;
-    static constexpr size_t BLOCK_MASK = BLOCK_SIZE - 1;
-
     // bufferSize: total buffer size.
     //      This must be at least 2*requiredSize to avoid blocking on flush, however
     //      because sometimes the display can get ahead of the render() thread, it's good
@@ -67,6 +61,8 @@ public:
     // call at least once every getRequiredSize() bytes allocated from the buffer
     void circularize() noexcept;
 
+    static size_t getBlockSize() noexcept { return sPageSize; }
+
 private:
     void* alloc(size_t size) noexcept;
     void dealloc() noexcept;
@@ -83,9 +79,11 @@ private:
 
     // pointer to the next available command
     void* mHead = nullptr;
+
+    // system page size
+    static size_t sPageSize;
 };
 
-} // namespace backend
-} // namespace filament
+} // namespace filament::backend
 
-#endif // TNT_FILAMENT_DRIVER_CIRCULARBUFFER_H
+#endif // TNT_FILAMENT_BACKEND_PRIVATE_CIRCULARBUFFER_H

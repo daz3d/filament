@@ -32,6 +32,10 @@
 <td align="left">Low level buffer wrapper.</td>
 </tr>
 <tr>
+<td align="left"><a href="#BufferObject">BufferObject</a></td>
+<td align="left">Represents a single GPU buffer.</td>
+</tr>
+<tr>
 <td align="left"><a href="#Camera">Camera</a></td>
 <td align="left">Represents the eye through which the scene is viewed.</td>
 </tr>
@@ -45,7 +49,7 @@
 </tr>
 <tr>
 <td align="left"><a href="#EntityManager">EntityManager</a></td>
-<td align="left">Singleton used for constructing entities in Filament's ECS.</td>
+<td align="left">Singleton used for constructing entities in Filament&#x27;s ECS.</td>
 </tr>
 <tr>
 <td align="left"><a href="#Frustum">Frustum</a></td>
@@ -60,12 +64,12 @@
 <td align="left">Array of 16-bit or 32-bit unsigned integers consumed by the GPU.</td>
 </tr>
 <tr>
-<td align="left"><a href="#KtxBundle">KtxBundle</a></td>
+<td align="left"><a href="#Ktx1Bundle">Ktx1Bundle</a></td>
 <td align="left">In-memory representation of a KTX file.</td>
 </tr>
 <tr>
 <td align="left"><a href="#KtxInfo">KtxInfo</a></td>
-<td align="left">Property accessor for KTX header.</td>
+<td align="left">Property accessor for KTX1 header.</td>
 </tr>
 <tr>
 <td align="left"><a href="#LightManager%24Instance">LightManager$Instance</a></td>
@@ -85,7 +89,7 @@
 </tr>
 <tr>
 <td align="left"><a href="#Renderer">Renderer</a></td>
-<td align="left">Represents the platform's native window.</td>
+<td align="left">Represents the platform&#x27;s native window.</td>
 </tr>
 <tr>
 <td align="left"><a href="#Scene">Scene</a></td>
@@ -93,7 +97,7 @@
 </tr>
 <tr>
 <td align="left"><a href="#SwapChain">SwapChain</a></td>
-<td align="left">Represents the platform's native rendering surface.</td>
+<td align="left">Represents the platform&#x27;s native rendering surface.</td>
 </tr>
 <tr>
 <td align="left"><a href="#Texture">Texture</a></td>
@@ -174,11 +178,19 @@
 </thead>
 <tbody>
 <tr>
+<td align="left"><a href="#BufferObject%24BindingType">BufferObject$BindingType</a></td>
+<td align="left"></td>
+</tr>
+<tr>
 <td align="left"><a href="#Camera%24Fov">Camera$Fov</a></td>
 <td align="left"></td>
 </tr>
 <tr>
 <td align="left"><a href="#Camera%24Projection">Camera$Projection</a></td>
+<td align="left"></td>
+</tr>
+<tr>
+<td align="left"><a href="#ColorGrading%24LutFormat">ColorGrading$LutFormat</a></td>
 <td align="left"></td>
 </tr>
 <tr>
@@ -190,6 +202,14 @@
 <td align="left"></td>
 </tr>
 <tr>
+<td align="left"><a href="#CompareFunc">CompareFunc</a></td>
+<td align="left"></td>
+</tr>
+<tr>
+<td align="left"><a href="#CompareMode">CompareMode</a></td>
+<td align="left"></td>
+</tr>
+<tr>
 <td align="left"><a href="#CompressedPixelDataType">CompressedPixelDataType</a></td>
 <td align="left"></td>
 </tr>
@@ -198,11 +218,23 @@
 <td align="left"></td>
 </tr>
 <tr>
+<td align="left"><a href="#FeatureLevel">FeatureLevel</a></td>
+<td align="left"></td>
+</tr>
+<tr>
 <td align="left"><a href="#Frustum%24Plane">Frustum$Plane</a></td>
 <td align="left"></td>
 </tr>
 <tr>
 <td align="left"><a href="#IndexBuffer%24IndexType">IndexBuffer$IndexType</a></td>
+<td align="left"></td>
+</tr>
+<tr>
+<td align="left"><a href="#Ktx2Reader%24Result">Ktx2Reader$Result</a></td>
+<td align="left"></td>
+</tr>
+<tr>
+<td align="left"><a href="#Ktx2Reader%24TransferFunction">Ktx2Reader$TransferFunction</a></td>
 <td align="left"></td>
 </tr>
 <tr>
@@ -242,6 +274,14 @@
 <td align="left"></td>
 </tr>
 <tr>
+<td align="left"><a href="#StencilFace">StencilFace</a></td>
+<td align="left"></td>
+</tr>
+<tr>
+<td align="left"><a href="#StencilOperation">StencilOperation</a></td>
+<td align="left"></td>
+</tr>
+<tr>
 <td align="left"><a href="#Texture%24CubemapFace">Texture$CubemapFace</a></td>
 <td align="left"></td>
 </tr>
@@ -258,6 +298,10 @@
 <td align="left"></td>
 </tr>
 <tr>
+<td align="left"><a href="#TransparencyMode">TransparencyMode</a></td>
+<td align="left"></td>
+</tr>
+<tr>
 <td align="left"><a href="#VertexAttribute">VertexAttribute</a></td>
 <td align="left"></td>
 </tr>
@@ -267,22 +311,6 @@
 </tr>
 <tr>
 <td align="left"><a href="#View%24AmbientOcclusion">View$AmbientOcclusion</a></td>
-<td align="left"></td>
-</tr>
-<tr>
-<td align="left"><a href="#View%24AntiAliasing">View$AntiAliasing</a></td>
-<td align="left"></td>
-</tr>
-<tr>
-<td align="left"><a href="#View%24BlendMode">View$BlendMode</a></td>
-<td align="left"></td>
-</tr>
-<tr>
-<td align="left"><a href="#View%24BloomOptions%24BlendMode">View$BloomOptions$BlendMode</a></td>
-<td align="left"></td>
-</tr>
-<tr>
-<td align="left"><a href="#View%24QualityLevel">View$QualityLevel</a></td>
 <td align="left"></td>
 </tr>
 <tr>
@@ -304,6 +332,19 @@
 </li>
 </ul>
 <p>Clients should use the <a href="#Buffer">Buffer</a> helper function to contruct BufferDescriptor objects.</p>
+</div>
+<div class='classdoc'>
+<h2>class <a id='BufferObject' href='#BufferObject'>BufferObject</a></h2>
+<p>Represents a single GPU buffer.</p>
+<ul>
+<li><strong>bufferObject.setBuffer(engine, buffer, byteOffset)</strong>
+<ul>
+<li><em>engine</em> <a href="#Engine">Engine</a></li>
+<li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a></li>
+<li><em>byteOffset</em> non-negative integer</li>
+</ul>
+</li>
+</ul>
 </div>
 <div class='classdoc'>
 <h2>class <a id='Camera' href='#Camera'>Camera</a></h2>
@@ -338,7 +379,7 @@
 <li><em>returns</em> an instance of <a href="#Camera">Camera</a></li>
 </ul>
 </li>
-<li><strong>engine.createIblFromKtx(buffer, options)</strong>
+<li><strong>engine.createIblFromKtx1(buffer, options)</strong>
 <ul>
 <li>Utility that creates an [IndirectLight] from a KTX file.</li>
 <li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a> with KTX file contents</li>
@@ -362,7 +403,7 @@
 <li><em>returns</em> an instance of <a href="#Scene">Scene</a></li>
 </ul>
 </li>
-<li><strong>engine.createSkyFromKtx(buffer, options)</strong>
+<li><strong>engine.createSkyFromKtx1(buffer, options)</strong>
 <ul>
 <li>Utility function that creates a [Skybox] from a KTX file.</li>
 <li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a> with KTX file contents</li>
@@ -383,10 +424,18 @@
 <li><em>returns</em> <a href="#Texture">Texture</a></li>
 </ul>
 </li>
-<li><strong>engine.createTextureFromKtx(buffer, options)</strong>
+<li><strong>engine.createTextureFromKtx1(buffer, options)</strong>
 <ul>
-<li>Utility function that creates a [Texture] from a KTX file.</li>
-<li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a> with KTX file contents</li>
+<li>Utility function that creates a [Texture] from a KTX1 file.</li>
+<li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a> with KTX1 file contents</li>
+<li><em>options</em> Options dictionary.</li>
+<li><em>returns</em> <a href="#Texture">Texture</a></li>
+</ul>
+</li>
+<li><strong>engine.createTextureFromKtx2(buffer, options)</strong>
+<ul>
+<li>Utility function that creates a [Texture] from a KTX2 file.</li>
+<li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a> with KTX2 file contents</li>
 <li><em>options</em> Options dictionary.</li>
 <li><em>returns</em> <a href="#Texture">Texture</a></li>
 </ul>
@@ -490,6 +539,7 @@
 <li><em>returns</em> an instance of <a href="#Camera">Camera</a></li>
 </ul>
 </li>
+<li><strong>engine.getEntityManager()</strong></li>
 <li><strong>engine.getLightManager()</strong>
 <ul>
 <li><em>returns</em> an instance of <a href="#LightManager">LightManager</a></li>
@@ -519,42 +569,26 @@
 <li><em>entities</em> array of entities</li>
 </ul>
 </li>
-<li><strong>engine.setAmbientOcclusionOptions(overrides)</strong>
-<ul>
-<li><em>overrides</em> Dictionary with one or more of the following properties: radius, power, bias, resolution, intensity, quality.</li>
-</ul>
-</li>
-<li><strong>engine.setBloomOptions(overrides)</strong>
-<ul>
-<li><em>overrides</em> Dictionary with one or more of the following properties: enabled, strength, resolution, anomorphism, levels, blendMode, threshold, highlight.</li>
-</ul>
-</li>
+<li><strong>engine.setAmbientOcclusionOptions()</strong></li>
+<li><strong>engine.setBloomOptions()</strong></li>
 <li><strong>engine.setClearOptions(overrides)</strong>
 <ul>
 <li><em>overrides</em> Dictionary with one or more of the following properties: clearColor, clear, discard.</li>
 </ul>
 </li>
-<li><strong>engine.setDepthOfFieldOptions(overrides)</strong>
-<ul>
-<li><em>overrides</em> Dictionary with one or more of the following properties: focusDistance, cocScale, maxApertureDiameter, enabled.</li>
-</ul>
-</li>
-<li><strong>engine.setFogOptions(overrides)</strong>
-<ul>
-<li><em>overrides</em> Dictionary with one or more of the following properties: distance, maximumOpacity, height, heightFalloff, color, density, inScatteringStart,</li>
-</ul>
-</li>
+<li><strong>engine.setDepthOfFieldOptions()</strong></li>
+<li><strong>engine.setFogOptions()</strong></li>
+<li><strong>engine.setGuardBandOptions()</strong></li>
+<li><strong>engine.setMultiSampleAntiAliasingOptions()</strong></li>
+<li><strong>engine.setScreenSpaceReflectionsOptions()</strong></li>
 <li><strong>engine.setShadowOptions(instance, overrides)</strong>
 <ul>
 <li><em>instance</em> Instance of a light component obtained from <code>getInstance</code>.</li>
 <li><em>overrides</em> Dictionary with one or more of the following properties: mapSize, shadowCascades, constantBias, normalBias, shadowFar, shadowNearHint, shadowFarHint, stable, polygonOffsetConstant, polygonOffsetSlope, \</li>
 </ul>
 </li>
-<li><strong>engine.setVignetteOptions(overrides)</strong>
-<ul>
-<li><em>overrides</em> Dictionary with one or more of the following properties: midPoint, roundness, feather, color, enabled.</li>
-</ul>
-</li>
+<li><strong>engine.setTemporalAntiAliasingOptions()</strong></li>
+<li><strong>engine.setVignetteOptions()</strong></li>
 </ul>
 </div>
 <div class='classdoc'>
@@ -569,11 +603,11 @@
 </ul>
 <p>To create an entity with no components, use <a href="#EntityManager">EntityManager</a>.
 TODO: It would be better to expose these as JS numbers rather than as JS objects.
-This would also be more consistent with Filament's Java bindings.</p>
+This would also be more consistent with Filament&#x27;s Java bindings.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='EntityManager' href='#EntityManager'>EntityManager</a></h2>
-<p>Singleton used for constructing entities in Filament's ECS.</p>
+<p>Singleton used for constructing entities in Filament&#x27;s ECS.</p>
 <ul>
 <li><strong>entityManager.create()</strong>
 <ul>
@@ -618,75 +652,69 @@ as quaternions.</li>
 </ul>
 </div>
 <div class='classdoc'>
-<h2>class <a id='KtxBundle' href='#KtxBundle'>KtxBundle</a></h2>
+<h2>class <a id='Ktx1Bundle' href='#Ktx1Bundle'>Ktx1Bundle</a></h2>
 <p>In-memory representation of a KTX file.</p>
 <ul>
-<li><strong>ktxBundle.getArrayLength()</strong>
+<li><strong>ktx1Bundle.getArrayLength()</strong>
 <ul>
 <li>Obtains length of the texture array.</li>
 <li><em>returns</em> The number of elements in the texture array</li>
 </ul>
 </li>
-<li><strong>ktxBundle.getCompressedPixelDataType()</strong>
+<li><strong>ktx1Bundle.getCompressedPixelDataType()</strong>
 <ul>
 <li><em>returns</em> <a href="#CompressedPixelDataType">CompressedPixelDataType</a></li>
 </ul>
 </li>
-<li><strong>ktxBundle.getInternalFormat(srgb)</strong>
+<li><strong>ktx1Bundle.getInternalFormat(srgb)</strong>
 <ul>
 <li><em>srgb</em> boolean that forces the resulting format to SRGB if possible.</li>
 <li><em>returns</em> <a href="#Texture%24InternalFormat">Texture$InternalFormat</a></li>
 </ul>
 </li>
-<li><strong>ktxBundle.getMetadata(key)</strong>
+<li><strong>ktx1Bundle.getMetadata(key)</strong>
 <ul>
 <li>Obtains arbitrary metadata from the KTX file.</li>
 <li><em>key</em> string</li>
 <li><em>returns</em> string</li>
 </ul>
 </li>
-<li><strong>ktxBundle.getPixelDataFormat()</strong>
+<li><strong>ktx1Bundle.getPixelDataFormat()</strong>
 <ul>
 <li><em>returns</em> <a href="#PixelDataFormat">PixelDataFormat</a></li>
 </ul>
 </li>
-<li><strong>ktxBundle.getPixelDataType()</strong>
+<li><strong>ktx1Bundle.getPixelDataType()</strong>
 <ul>
 <li><em>returns</em> <a href="#PixelDataType">PixelDataType</a></li>
 </ul>
 </li>
-<li><strong>ktxBundle.info()</strong>
+<li><strong>ktx1Bundle.info()</strong>
 <ul>
 <li>Obtains properties of the KTX header.</li>
 <li><em>returns</em> The <a href="#KtxInfo">KtxInfo</a> property accessor object.</li>
 </ul>
 </li>
-<li><strong>ktxBundle.info()</strong>
+<li><strong>ktx1Bundle.info()</strong>
 <ul>
 <li>Obtains properties of the KTX header.</li>
 <li><em>returns</em> The <a href="#KtxInfo">KtxInfo</a> property accessor object.</li>
 </ul>
 </li>
-<li><strong>ktxBundle.isCompressed()</strong>
+<li><strong>ktx1Bundle.isCompressed()</strong>
 <ul>
 <li><em>returns</em> boolean</li>
 </ul>
 </li>
 </ul>
 <p>Most clients should use one of the <code>create*FromKtx</code> utility methods in the JavaScript <a href="#Engine">Engine</a>
-wrapper rather than interacting with <code>KtxBundle</code> directly.</p>
+wrapper rather than interacting with <code>Ktx1Bundle</code> directly.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='KtxInfo' href='#KtxInfo'>KtxInfo</a></h2>
-<p>Property accessor for KTX header.</p>
+<p>Property accessor for KTX1 header.</p>
 <ul>
-<li><strong>ktxInfo.createAssetFromBinary(buffer)</strong>
-<ul>
-<li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a></li>
-<li><em>returns</em> an instance of <a href="#FilamentAsset">FilamentAsset</a></li>
-</ul>
-</li>
-<li><strong>ktxInfo.createAssetFromJson(buffer)</strong>
+<li><strong>ktxInfo.createAsset(buffer)</strong>
 <ul>
 <li><em>buffer</em> asset string, or Uint8Array, or <a href="#Buffer">Buffer</a></li>
 <li><em>returns</em> an instance of <a href="#FilamentAsset">FilamentAsset</a></li>
@@ -699,7 +727,7 @@ wrapper rather than interacting with <code>KtxBundle</code> directly.</p>
 </ul>
 </li>
 </ul>
-<p>For example, <code>ktxbundle.info().pixelWidth</code>. See the
+<p>For example, <code>Ktx1Bundle.info().pixelWidth</code>. See the
 <a href="https://www.khronos.org/opengles/sdk/tools/KTX/file_format_spec/">KTX spec</a> for the list of
 properties.</p>
 </div>
@@ -713,7 +741,7 @@ properties.</p>
 </ul>
 </li>
 </ul>
-<p>Be sure to call the instance's <code>delete</code> method when you're done with it.</p>
+<p>Be sure to call the instance&#x27;s <code>delete</code> method when you&#x27;re done with it.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='PixelBufferDescriptor' href='#PixelBufferDescriptor'>PixelBufferDescriptor</a></h2>
@@ -751,11 +779,11 @@ properties.</p>
 </ul>
 </li>
 </ul>
-<p>Be sure to call the instance's <code>delete</code> method when you're done with it.</p>
+<p>Be sure to call the instance&#x27;s <code>delete</code> method when you&#x27;re done with it.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='Renderer' href='#Renderer'>Renderer</a></h2>
-<p>Represents the platform's native window.</p>
+<p>Represents the platform&#x27;s native window.</p>
 <ul>
 <li><strong>renderer.render(swapChain, view)</strong>
 <ul>
@@ -774,7 +802,7 @@ properties.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='SwapChain' href='#SwapChain'>SwapChain</a></h2>
-<p>Represents the platform's native rendering surface.</p>
+<p>Represents the platform&#x27;s native rendering surface.</p>
 <p>See also the <a href="#Engine">Engine</a> methods <code>createSwapChain</code> and <code>destroySwapChain</code>.</p>
 </div>
 <div class='classdoc'>
@@ -818,7 +846,7 @@ properties.</p>
 </ul>
 </li>
 </ul>
-<p>Be sure to call the instance's <code>delete</code> method when you're done with it.</p>
+<p>Be sure to call the instance&#x27;s <code>delete</code> method when you&#x27;re done with it.</p>
 </div>
 <div class='classdoc'>
 <h2>class <a id='VertexBuffer' href='#VertexBuffer'>VertexBuffer</a></h2>
@@ -915,7 +943,7 @@ See also the <a href="#Engine">Engine</a> methods <code>createView</code> and <c
 <ul>
 <li><strong>assets</strong>
 <ul>
-<li>Array of strings containing URL's of required assets.</li>
+<li>Array of strings containing URL&#x27;s of required assets.</li>
 </ul>
 </li>
 <li><strong>onDone</strong>
@@ -925,7 +953,7 @@ See also the <a href="#Engine">Engine</a> methods <code>createView</code> and <c
 </li>
 <li><strong>onFetched</strong>
 <ul>
-<li>optional callback that's invoked after each asset is downloaded.</li>
+<li>optional callback that&#x27;s invoked after each asset is downloaded.</li>
 </ul>
 </li>
 </ul>
@@ -972,7 +1000,7 @@ useful for compressed textures. For example, some platforms accept ETC and other
 <ul>
 <li><strong>assets</strong>
 <ul>
-<li>Array of strings containing URL's of required assets.</li>
+<li>Array of strings containing URL&#x27;s of required assets.</li>
 </ul>
 </li>
 <li><strong>onready</strong>
@@ -981,12 +1009,12 @@ useful for compressed textures. For example, some platforms accept ETC and other
 </ul>
 </li>
 </ul>
-<p>All JavaScript clients must call the init function, passing in a list of asset URL's and a
+<p>All JavaScript clients must call the init function, passing in a list of asset URL&#x27;s and a
 callback. This callback gets invoked only after all assets have been downloaded and the Filament
-WebAssembly module has been loaded. Clients should only pass asset URL's that absolutely must
+WebAssembly module has been loaded. Clients should only pass asset URL&#x27;s that absolutely must
 be ready at initialization time.
 When the callback is called, each downloaded asset is available in the <code>Filament.assets</code> global
-object, which contains a mapping from URL's to Uint8Array objects.</p>
+object, which contains a mapping from URL&#x27;s to Uint8Array objects.</p>
 </div>
 <div class='funcdoc'>
 <h2>function <a id='loadMathExtensions' href='#loadMathExtensions'>loadMathExtensions</a>()</h2>
@@ -1016,6 +1044,12 @@ This defines the following functions:</p>
 </ul>
 </div>
 <div class='enumdoc'>
+<h2>enum <a id='BufferObject$BindingType' href='#BufferObject$BindingType'>BufferObject$BindingType</a></h2>
+<ul>
+<li>VERTEX</li>
+</ul>
+</div>
+<div class='enumdoc'>
 <h2>enum <a id='Camera$Fov' href='#Camera$Fov'>Camera$Fov</a></h2>
 <ul>
 <li>VERTICAL</li>
@@ -1027,6 +1061,13 @@ This defines the following functions:</p>
 <ul>
 <li>PERSPECTIVE</li>
 <li>ORTHO</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='ColorGrading$LutFormat' href='#ColorGrading$LutFormat'>ColorGrading$LutFormat</a></h2>
+<ul>
+<li>INTEGER</li>
+<li>FLOAT</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1045,9 +1086,27 @@ This defines the following functions:</p>
 <li>ACES_LEGACY</li>
 <li>ACES</li>
 <li>FILMIC</li>
-<li>UCHIMURA</li>
-<li>REINHARD</li>
 <li>DISPLAY_RANGE</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='CompareFunc' href='#CompareFunc'>CompareFunc</a></h2>
+<ul>
+<li>LESS_EQUAL</li>
+<li>GREATER_EQUAL</li>
+<li>LESS</li>
+<li>GREATER</li>
+<li>EQUAL</li>
+<li>NOT_EQUAL</li>
+<li>ALWAYS</li>
+<li>NEVER</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='CompareMode' href='#CompareMode'>CompareMode</a></h2>
+<ul>
+<li>NONE</li>
+<li>COMPARE_TO_TEXTURE</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1067,6 +1126,10 @@ This defines the following functions:</p>
 <li>DXT1_RGBA</li>
 <li>DXT3_RGBA</li>
 <li>DXT5_RGBA</li>
+<li>DXT1_SRGB</li>
+<li>DXT1_SRGBA</li>
+<li>DXT3_SRGBA</li>
+<li>DXT5_SRGBA</li>
 <li>RGBA_ASTC_4x4</li>
 <li>RGBA_ASTC_5x4</li>
 <li>RGBA_ASTC_5x5</li>
@@ -1107,6 +1170,13 @@ This defines the following functions:</p>
 </ul>
 </div>
 <div class='enumdoc'>
+<h2>enum <a id='FeatureLevel' href='#FeatureLevel'>FeatureLevel</a></h2>
+<ul>
+<li>FEATURE_LEVEL_1</li>
+<li>FEATURE_LEVEL_2</li>
+</ul>
+</div>
+<div class='enumdoc'>
 <h2>enum <a id='Frustum$Plane' href='#Frustum$Plane'>Frustum$Plane</a></h2>
 <ul>
 <li>LEFT</li>
@@ -1122,6 +1192,23 @@ This defines the following functions:</p>
 <ul>
 <li>USHORT</li>
 <li>UINT</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='Ktx2Reader$Result' href='#Ktx2Reader$Result'>Ktx2Reader$Result</a></h2>
+<ul>
+<li>SUCCESS</li>
+<li>COMPRESSED_TRANSCODE_FAILURE</li>
+<li>UNCOMPRESSED_TRANSCODE_FAILURE</li>
+<li>FORMAT_UNSUPPORTED</li>
+<li>FORMAT_ALREADY_REQUESTED</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='Ktx2Reader$TransferFunction' href='#Ktx2Reader$TransferFunction'>Ktx2Reader$TransferFunction</a></h2>
+<ul>
+<li>LINEAR</li>
+<li>sRGB</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1186,6 +1273,10 @@ This defines the following functions:</p>
 <div class='enumdoc'>
 <h2>enum <a id='RenderTarget$AttachmentPoint' href='#RenderTarget$AttachmentPoint'>RenderTarget$AttachmentPoint</a></h2>
 <ul>
+<li>COLOR0</li>
+<li>COLOR1</li>
+<li>COLOR2</li>
+<li>COLOR3</li>
 <li>COLOR</li>
 <li>DEPTH</li>
 </ul>
@@ -1195,8 +1286,9 @@ This defines the following functions:</p>
 <ul>
 <li>POINTS</li>
 <li>LINES</li>
+<li>LINE_STRIP</li>
 <li>TRIANGLES</li>
-<li>NONE</li>
+<li>TRIANGLE_STRIP</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1213,6 +1305,27 @@ This defines the following functions:</p>
 <li>LINEAR</li>
 <li>PREMULTIPLIED_sRGB</li>
 <li>PREMULTIPLIED_LINEAR</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='StencilFace' href='#StencilFace'>StencilFace</a></h2>
+<ul>
+<li>FRONT</li>
+<li>BACK</li>
+<li>FRONT_AND_BACK</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='StencilOperation' href='#StencilOperation'>StencilOperation</a></h2>
+<ul>
+<li>KEEP</li>
+<li>ZERO</li>
+<li>REPLACE</li>
+<li>INCR_CLAMP</li>
+<li>INCR_WRAP</li>
+<li>DECR_CLAMP</li>
+<li>DECR_WRAP</li>
+<li>INVERT</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1298,6 +1411,10 @@ This defines the following functions:</p>
 <li>DXT1_RGBA</li>
 <li>DXT3_RGBA</li>
 <li>DXT5_RGBA</li>
+<li>DXT1_SRGB</li>
+<li>DXT1_SRGBA</li>
+<li>DXT3_SRGBA</li>
+<li>DXT5_SRGBA</li>
 <li>RGBA_ASTC_4x4</li>
 <li>RGBA_ASTC_5x4</li>
 <li>RGBA_ASTC_5x5</li>
@@ -1346,6 +1463,14 @@ This defines the following functions:</p>
 <li>UPLOADABLE</li>
 <li>SAMPLEABLE</li>
 <li>SUBPASS_INPUT</li>
+</ul>
+</div>
+<div class='enumdoc'>
+<h2>enum <a id='TransparencyMode' href='#TransparencyMode'>TransparencyMode</a></h2>
+<ul>
+<li>DEFAULT</li>
+<li>TWO_PASSES_ONE_SIDE</li>
+<li>TWO_PASSES_TWO_SIDES</li>
 </ul>
 </div>
 <div class='enumdoc'>
@@ -1412,36 +1537,6 @@ This defines the following functions:</p>
 <ul>
 <li>NONE</li>
 <li>SSAO</li>
-</ul>
-</div>
-<div class='enumdoc'>
-<h2>enum <a id='View$AntiAliasing' href='#View$AntiAliasing'>View$AntiAliasing</a></h2>
-<ul>
-<li>NONE</li>
-<li>FXAA</li>
-</ul>
-</div>
-<div class='enumdoc'>
-<h2>enum <a id='View$BlendMode' href='#View$BlendMode'>View$BlendMode</a></h2>
-<ul>
-<li>OPAQUE</li>
-<li>TRANSLUCENT</li>
-</ul>
-</div>
-<div class='enumdoc'>
-<h2>enum <a id='View$BloomOptions$BlendMode' href='#View$BloomOptions$BlendMode'>View$BloomOptions$BlendMode</a></h2>
-<ul>
-<li>ADD</li>
-<li>INTERPOLATE</li>
-</ul>
-</div>
-<div class='enumdoc'>
-<h2>enum <a id='View$QualityLevel' href='#View$QualityLevel'>View$QualityLevel</a></h2>
-<ul>
-<li>LOW</li>
-<li>MEDIUM</li>
-<li>HIGH</li>
-<li>ULTRA</li>
 </ul>
 </div>
 <div class='enumdoc'>

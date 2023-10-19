@@ -25,6 +25,7 @@
 #include <utils/EntityInstance.h>
 
 #include <math/mathfwd.h>
+#include <math/quat.h>
 
 namespace utils {
     class Entity;
@@ -226,7 +227,7 @@ public:
          * @see ShadowCascades::computeLogSplits
          * @see ShadowCascades::computePracticalSplits
          */
-        float cascadeSplitPositions[3] = { 0.25f, 0.50f, 0.75f };
+        float cascadeSplitPositions[3] = { 0.125f, 0.25f, 0.50f };
 
         /** Constant bias in world units (e.g. meters) by which shadows are moved away from the
          * light. 1mm by default.
@@ -244,6 +245,7 @@ public:
          * shadows that are too far and wouldn't contribute to the scene much, improving
          * performance and quality. This value is always positive.
          * Use 0.0f to use the camera far distance.
+         * This only affect directional lights.
          */
         float shadowFar = 0.0f;
 
@@ -266,13 +268,34 @@ public:
          * Controls whether the shadow map should be optimized for resolution or stability.
          * When set to true, all resolution enhancing features that can affect stability are
          * disabling, resulting in significantly lower resolution shadows, albeit stable ones.
+         *
+         * Setting this flag to true always disables LiSPSM (see below).
+         *
+         * @see lispsm
          */
         bool stable = false;
+
+        /**
+         * LiSPSM, or light-space perspective shadow-mapping is a technique allowing to better
+         * optimize the use of the shadow-map texture. When enabled the effective resolution of
+         * shadows is greatly improved and yields result similar to using cascades without the
+         * extra cost. LiSPSM comes with some drawbacks however, in particular it is incompatible
+         * with blurring because it effectively affects the blur kernel size.
+         *
+         * Blurring is only an issue when using ShadowType::VSM with a large blur or with
+         * ShadowType::PCSS however.
+         *
+         * If these blurring artifacts become problematic, this flag can be used to disable LiSPSM.
+         *
+         * @see stable
+         */
+        bool lispsm = true;
 
         /**
          * Constant bias in depth-resolution units by which shadows are moved away from the
          * light. The default value of 0.5 is used to round depth values up.
          * Generally this value shouldn't be changed or at least be small and positive.
+         * This is ignored when the View's ShadowType is set to VSM.
          */
         float polygonOffsetConstant = 0.5f;
 
@@ -281,6 +304,7 @@ public:
          * away from the light. The default value of 2.0 works well with SHADOW_SAMPLING_PCF_LOW.
          * Generally this value is between 0.5 and the size in texel of the PCF filter.
          * Setting this value correctly is essential for LISPSM shadow-maps.
+         * This is ignored when the View's ShadowType is set to VSM.
          */
         float polygonOffsetSlope = 2.0f;
 
@@ -309,7 +333,7 @@ public:
          *          all other lights use the same value set for the directional/sun light.
          *
          */
-        float maxShadowDistance = 0.3;
+        float maxShadowDistance = 0.3f;
 
         /**
          * Options available when the View's ShadowType is set to VSM.
@@ -319,12 +343,12 @@ public:
          */
         struct Vsm {
             /**
-             * The number of MSAA samples to use when rendering VSM shadow maps.
-             * Must be a power-of-two and greater than or equal to 1. A value of 1 effectively turns
-             * off MSAA.
-             * Higher values may not be available depending on the underlying hardware.
+             * When elvsm is set to true, "Exponential Layered VSM without Layers" are used. It is
+             * an improvement to the default EVSM which suffers important light leaks. Enabling
+             * ELVSM for a single shadowmap doubles the memory usage of all shadow maps.
+             * ELVSM is mostly useful when large blurs are used.
              */
-            uint8_t msaaSamples = 1;
+            bool elvsm = false;
 
             /**
              * Blur width for the VSM blur. Zero do disable.
@@ -332,6 +356,19 @@ public:
              */
             float blurWidth = 0.0f;
         } vsm;
+
+        /**
+         * Light bulb radius used for soft shadows. Currently this is only used when DPCF or PCSS is
+         * enabled. (2cm by default).
+         */
+        float shadowBulbRadius = 0.02f;
+
+        /**
+         * Transforms the shadow direction. Must be a unit quaternion.
+         * The default is identity.
+         * Ignored if the light type isn't directional. For artistic use. Use with caution.
+         */
+        math::quatf transform{ 1.0f };
     };
 
     struct ShadowCascades {
@@ -396,14 +433,20 @@ public:
         Builder& operator=(Builder&& rhs) noexcept;
 
         /**
+         * Enables or disables a light channel. Light channel 0 is enabled by default.
+         *
+         * @param channel Light channel to enable or disable, between 0 and 7.
+         * @param enable Whether to enable or disable the light channel.
+         * @return This Builder, for chaining calls.
+         */
+        Builder& lightChannel(unsigned int channel, bool enable = true) noexcept;
+
+        /**
          * Whether this Light casts shadows (disabled by default)
          *
          * @param enable Enables or disables casting shadows from this Light.
          *
          * @return This Builder, for chaining calls.
-         *
-         * @warning
-         * - Only a Type.DIRECTIONAL, Type.SUN, Type.SPOT, or Type.FOCUSED_SPOT light can cast shadows
          */
         Builder& castShadows(bool enable) noexcept;
 
@@ -549,10 +592,11 @@ public:
          * and are defined by the angle from the center axis to where the falloff begins (i.e.
          * cones are defined by their half-angle).
          *
-         * @param inner inner cone angle in *radians* between 0 and @f$ \pi/2 @f$
+         * Both inner and outer are silently clamped to a minimum value of 0.5 degrees
+         * (~0.00873 radians) to avoid floating-point precision issues during rendering.
          *
-         * @param outer outer cone angle in *radians* between \p inner and @f$ \pi/2 @f$
-         *
+         * @param inner inner cone angle in *radians* between 0.00873 and \p outer
+         * @param outer outer cone angle in *radians* between 0.00873 inner and @f$ \pi/2 @f$
          * @return This Builder, for chaining calls.
          *
          * @note
@@ -636,7 +680,7 @@ public:
      * @return      true is this light is a type of directional light
      */
     inline bool isDirectional(Instance i) const noexcept {
-        Type type = getType(i);
+        Type const type = getType(i);
         return type == Type::DIRECTIONAL || type == Type::SUN;
     }
 
@@ -657,9 +701,24 @@ public:
      * @return      true is this light is a type of spot light
      */
     inline bool isSpotLight(Instance i) const noexcept {
-        Type type = getType(i);
+        Type const type = getType(i);
         return type == Type::SPOT || type == Type::FOCUSED_SPOT;
     }
+
+    /**
+     * Enables or disables a light channel. Light channel 0 is enabled by default.
+     * @param channel light channel to enable or disable, between 0 and 7.
+     * @param enable whether to enable (true) or disable (false) the specified light channel.
+     */
+    void setLightChannel(Instance i, unsigned int channel, bool enable = true) noexcept;
+
+    /**
+     * Returns whether a light channel is enabled on a specified light.
+     * @param i        Instance of the component obtained from getInstance().
+     * @param channel  Light channel to query
+     * @return         true if the light channel is enabled, false otherwise
+     */
+    bool getLightChannel(Instance i, unsigned int channel) const noexcept;
 
     /**
      * Dynamically updates the light's position.
@@ -788,8 +847,8 @@ public:
      * Dynamically updates a spot light's cone as angles
      *
      * @param i     Instance of the component obtained from getInstance().
-     * @param inner inner cone angle in *radians* between 0 and pi/2
-     * @param outer outer cone angle in *radians* between inner and pi/2
+     * @param inner inner cone angle in *radians* between 0.00873 and outer
+     * @param outer outer cone angle in *radians* between 0.00873 and pi/2
      *
      * @see Builder.spotLightCone()
      */

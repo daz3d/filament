@@ -4,12 +4,6 @@ project(math)
 set(TARGET mathio)
 set(PUBLIC_HDR_DIR include)
 
-if (MSVC)
-    set(OPTIMIZATION_FLAGS /fp:fast)
-else()
-    set(OPTIMIZATION_FLAGS -ffast-math -ffp-contract=fast)
-endif()
-
 # ==================================================================================================
 # Sources and headers
 # ==================================================================================================
@@ -27,6 +21,7 @@ include_directories(${PUBLIC_HDR_DIR})
 add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
 target_compile_options(${TARGET} PRIVATE ${OPTIMIZATION_FLAGS})
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
 target_link_libraries(${TARGET} PRIVATE math)
 
 # ==================================================================================================

@@ -16,11 +16,9 @@
 
 #include <matdbg/ShaderExtractor.h>
 
-#include <filaflat/BlobDictionary.h>
 #include <filaflat/ChunkContainer.h>
 #include <filaflat/DictionaryReader.h>
 #include <filaflat/MaterialChunk.h>
-#include <filaflat/ShaderBuilder.h>
 #include <filaflat/Unflattener.h>
 
 #include <filament/MaterialChunkType.h>
@@ -35,7 +33,6 @@ using namespace filament;
 using namespace backend;
 using namespace filaflat;
 using namespace filamat;
-using namespace std;
 using namespace utils;
 
 namespace filament {
@@ -63,7 +60,7 @@ ShaderExtractor::ShaderExtractor(Backend backend, const void* data, size_t size)
 
 bool ShaderExtractor::parse() noexcept {
     if (mChunkContainer.parse()) {
-        return mMaterialChunk.readIndex(mMaterialTag);
+        return mMaterialChunk.initialize(mMaterialTag);
     }
     return false;
 }
@@ -73,7 +70,7 @@ bool ShaderExtractor::getDictionary(BlobDictionary& dictionary) noexcept {
 }
 
 bool ShaderExtractor::getShader(ShaderModel shaderModel,
-        uint8_t variant, ShaderType stage, ShaderBuilder& shader) noexcept {
+        Variant variant, ShaderStage stage, ShaderContent& shader) noexcept {
 
     ChunkContainer const& cc = mChunkContainer;
     if (!cc.hasChunk(mMaterialTag) || !cc.hasChunk(mDictionaryTag)) {
@@ -85,18 +82,27 @@ bool ShaderExtractor::getShader(ShaderModel shaderModel,
         return false;
     }
 
-    return mMaterialChunk.getShader(shader, blobDictionary, (uint8_t)shaderModel, variant, stage);
+    return mMaterialChunk.getShader(shader, blobDictionary, shaderModel, variant, stage);
 }
 
-CString ShaderExtractor::spirvToGLSL(const uint32_t* data, size_t wordCount) {
+CString ShaderExtractor::spirvToGLSL(ShaderModel shaderModel, const uint32_t* data,
+        size_t wordCount) {
     using namespace spirv_cross;
 
     CompilerGLSL::Options emitOptions;
-    emitOptions.es = true;
+    if (shaderModel == ShaderModel::MOBILE) {
+        emitOptions.es = true;
+        emitOptions.version = 310;
+        emitOptions.fragment.default_float_precision = CompilerGLSL::Options::Precision::Mediump;
+        emitOptions.fragment.default_int_precision = CompilerGLSL::Options::Precision::Mediump;
+    } else if (shaderModel == ShaderModel::DESKTOP) {
+        emitOptions.es = false;
+        emitOptions.version = 450;
+    }
     emitOptions.vulkan_semantics = true;
 
-    vector<uint32_t> spirv(data, data + wordCount);
-    CompilerGLSL glslCompiler(move(spirv));
+    std::vector<uint32_t> spirv(data, data + wordCount);
+    CompilerGLSL glslCompiler(std::move(spirv));
     glslCompiler.set_common_options(emitOptions);
 
     return CString(glslCompiler.compile().c_str());
@@ -106,8 +112,9 @@ CString ShaderExtractor::spirvToGLSL(const uint32_t* data, size_t wordCount) {
 // but please do not submit. We prefer to use the syntax that the standalone "spirv-dis" tool
 // uses, which lets us easily generate test cases for the spirv-cross project.
 CString ShaderExtractor::spirvToText(const uint32_t* begin, size_t wordCount) {
-    spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_0);
-    if (SPV_SUCCESS != spvValidateBinary(context, begin, wordCount, nullptr)) {
+    spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
+
+    if (spvValidateBinary(context, begin, wordCount, nullptr) != SPV_SUCCESS) {
         spvContextDestroy(context);
         return CString("Validation failure.");
     }

@@ -17,6 +17,10 @@
 #ifndef TNT_FILAMAT_SHADER_ENTRY_H
 #define TNT_FILAMAT_SHADER_ENTRY_H
 
+#include <private/filament/Variant.h>
+
+#include <backend/DriverEnums.h>
+
 #include <string>
 #include <vector>
 
@@ -24,16 +28,16 @@ namespace filamat {
 
 // TextEntry stores a shader in ASCII text format, like GLSL.
 struct TextEntry {
-    uint8_t shaderModel;
-    uint8_t variant;
-    uint8_t stage;
+    filament::backend::ShaderModel shaderModel;
+    filament::Variant variant;
+    filament::backend::ShaderStage stage;
     std::string shader;
 };
 
 struct SpirvEntry {
-    uint8_t shaderModel;
-    uint8_t variant;
-    uint8_t stage;
+    filament::backend::ShaderModel shaderModel;
+    filament::Variant variant;
+    filament::backend::ShaderStage stage;
     size_t dictionaryIndex;
 
 #ifndef FILAMAT_LITE

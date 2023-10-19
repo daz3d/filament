@@ -111,14 +111,14 @@ opt::BasicBlock::iterator GetIteratorForInstruction(
 // Determines whether it is OK to insert an instruction with opcode |opcode|
 // before |instruction_in_block|.
 bool CanInsertOpcodeBeforeInstruction(
-    SpvOp opcode, const opt::BasicBlock::iterator& instruction_in_block);
+    spv::Op opcode, const opt::BasicBlock::iterator& instruction_in_block);
 
 // Determines whether it is OK to make a synonym of |inst|.
 // |transformation_context| is used to verify that the result id of |inst|
 // does not participate in IdIsIrrelevant fact.
 bool CanMakeSynonymOf(opt::IRContext* ir_context,
                       const TransformationContext& transformation_context,
-                      opt::Instruction* inst);
+                      const opt::Instruction& inst);
 
 // Determines whether the given type is a composite; that is: an array, matrix,
 // struct or vector.
@@ -168,6 +168,10 @@ uint32_t GetArraySize(const opt::Instruction& array_type_instruction,
 // matrix. |composite_type_inst| must be the type of a composite.
 uint32_t GetBoundForCompositeIndex(const opt::Instruction& composite_type_inst,
                                    opt::IRContext* ir_context);
+
+// Returns memory semantics mask for specific storage class.
+spv::MemorySemanticsMask GetMemorySemanticsForStorageClass(
+    spv::StorageClass storage_class);
 
 // Returns true if and only if |context| is valid, according to the validator
 // instantiated with |validator_options|.  |consumer| is used for error
@@ -254,18 +258,18 @@ uint32_t GetPointeeTypeIdFromPointerType(opt::IRContext* context,
 
 // Given |pointer_type_inst|, which must be an OpTypePointer instruction,
 // returns the associated storage class.
-SpvStorageClass GetStorageClassFromPointerType(
+spv::StorageClass GetStorageClassFromPointerType(
     opt::Instruction* pointer_type_inst);
 
 // Given |pointer_type_id|, which must be the id of a pointer type, returns the
 // associated storage class.
-SpvStorageClass GetStorageClassFromPointerType(opt::IRContext* context,
-                                               uint32_t pointer_type_id);
+spv::StorageClass GetStorageClassFromPointerType(opt::IRContext* context,
+                                                 uint32_t pointer_type_id);
 
 // Returns the id of a pointer with pointee type |pointee_type_id| and storage
 // class |storage_class|, if it exists, and 0 otherwise.
 uint32_t MaybeGetPointerType(opt::IRContext* context, uint32_t pointee_type_id,
-                             SpvStorageClass storage_class);
+                             spv::StorageClass storage_class);
 
 // Given an instruction |inst| and an operand absolute index |absolute_index|,
 // returns the index of the operand restricted to the input operands.
@@ -273,8 +277,10 @@ uint32_t InOperandIndexFromOperandIndex(const opt::Instruction& inst,
                                         uint32_t absolute_index);
 
 // Returns true if and only if |type| is one of the types for which it is legal
-// to have an OpConstantNull value.
-bool IsNullConstantSupported(const opt::analysis::Type& type);
+// to have an OpConstantNull value. This may depend on the capabilities declared
+// in |context|.
+bool IsNullConstantSupported(opt::IRContext* context,
+                             const opt::Instruction& type);
 
 // Returns true if and only if the SPIR-V version being used requires that
 // global variables accessed in the static call graph of an entry point need
@@ -303,7 +309,7 @@ void AddVariableIdToEntryPointInterfaces(opt::IRContext* context, uint32_t id);
 // Returns a pointer to the new global variable instruction.
 opt::Instruction* AddGlobalVariable(opt::IRContext* context, uint32_t result_id,
                                     uint32_t type_id,
-                                    SpvStorageClass storage_class,
+                                    spv::StorageClass storage_class,
                                     uint32_t initializer_id);
 
 // Adds an instruction to the start of |function_id|, of the form:
@@ -535,7 +541,7 @@ MapToRepeatedUInt32Pair(const std::map<uint32_t, uint32_t>& data);
 // opcode |opcode| can be inserted, or nullptr if there is no such instruction.
 opt::Instruction* GetLastInsertBeforeInstruction(opt::IRContext* ir_context,
                                                  uint32_t block_id,
-                                                 SpvOp opcode);
+                                                 spv::Op opcode);
 
 // Checks whether various conditions hold related to the acceptability of
 // replacing the id use at |use_in_operand_index| of |use_instruction| with a
@@ -597,6 +603,21 @@ bool NewTerminatorPreservesDominationRules(opt::IRContext* ir_context,
 // module()->end().
 opt::Module::iterator GetFunctionIterator(opt::IRContext* ir_context,
                                           uint32_t function_id);
+
+// Returns true if the instruction with opcode |opcode| does not change its
+// behaviour depending on the signedness of the operand at
+// |use_in_operand_index|.
+// Assumes that the operand must be the id of an integer scalar or vector.
+bool IsAgnosticToSignednessOfOperand(spv::Op opcode,
+                                     uint32_t use_in_operand_index);
+
+// Returns true if |type_id_1| and |type_id_2| represent compatible types
+// given the context of the instruction with |opcode| (i.e. we can replace
+// an operand of |opcode| of the first type with an id of the second type
+// and vice-versa).
+bool TypesAreCompatible(opt::IRContext* ir_context, spv::Op opcode,
+                        uint32_t use_in_operand_index, uint32_t type_id_1,
+                        uint32_t type_id_2);
 
 }  // namespace fuzzerutil
 }  // namespace fuzz

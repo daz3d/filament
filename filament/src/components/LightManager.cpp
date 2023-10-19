@@ -24,6 +24,8 @@
 #include <math/scalar.h>
 
 #include <utils/debug.h>
+#include <filament/LightManager.h>
+
 
 using namespace filament::math;
 using namespace utils;
@@ -36,13 +38,14 @@ struct LightManager::BuilderDetails {
     Type mType = Type::DIRECTIONAL;
     bool mCastShadows = false;
     bool mCastLight = true;
+    uint8_t mChannels = 1u;
     float3 mPosition = {};
     float mFalloff = 1.0f;
     LinearColor mColor = LinearColor{ 1.0f };
     float mIntensity = 100000.0f;
     FLightManager::IntensityUnit mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;
     float3 mDirection = { 0.0f, -1.0f, 0.0f };
-    float2 mSpotInnerOuter = { f::PI, f::PI };
+    float2 mSpotInnerOuter = { f::PI_4 * 0.75f, f::PI_4 };
     float mSunAngle = 0.00951f; // 0.545° in radians
     float mSunHaloSize = 10.0f;
     float mSunHaloFalloff = 80.0f;
@@ -134,8 +137,17 @@ LightManager::Builder& LightManager::Builder::sunHaloFalloff(float haloFalloff) 
     return *this;
 }
 
+LightManager::Builder& LightManager::Builder::lightChannel(unsigned int channel, bool enable) noexcept {
+    if (channel < 8) {
+        const uint8_t mask = 1u << channel;
+        mImpl->mChannels &= ~mask;
+        mImpl->mChannels |= enable ? mask : 0u;
+    }
+    return *this;
+}
+
 LightManager::Builder::Result LightManager::Builder::build(Engine& engine, Entity entity) {
-    upcast(engine).createLight(*this, entity);
+    downcast(engine).createLight(*this, entity);
     return Success;
 }
 
@@ -151,7 +163,7 @@ FLightManager::~FLightManager() {
     assert_invariant(mManager.getComponentCount() == 0);
 }
 
-void FLightManager::init(FEngine& engine) noexcept {
+void FLightManager::init(FEngine&) noexcept {
 }
 
 void FLightManager::create(const FLightManager::Builder& builder, utils::Entity entity) {
@@ -160,7 +172,7 @@ void FLightManager::create(const FLightManager::Builder& builder, utils::Entity 
     if (UTILS_UNLIKELY(manager.hasComponent(entity))) {
         destroy(entity);
     }
-    Instance i = manager.addComponent(entity);
+    Instance const i = manager.addComponent(entity);
     assert_invariant(i);
 
     if (i) {
@@ -170,6 +182,8 @@ void FLightManager::create(const FLightManager::Builder& builder, utils::Entity 
         lightType.type = builder->mType;
         lightType.shadowCaster = builder->mCastShadows;
         lightType.lightCaster = builder->mCastLight;
+
+        mManager[i].channels = builder->mChannels;
 
         // set default values by calling the setters
         setShadowOptions(i, builder->mShadowOptions);
@@ -188,11 +202,11 @@ void FLightManager::create(const FLightManager::Builder& builder, utils::Entity 
     }
 }
 
-void FLightManager::prepare(backend::DriverApi& driver) const noexcept {
+void FLightManager::prepare(backend::DriverApi&) const noexcept {
 }
 
 void FLightManager::destroy(utils::Entity e) noexcept {
-    Instance i = getInstance(e);
+    Instance const i = getInstance(e);
     if (i) {
         auto& manager = mManager;
         manager.removeComponent(e);
@@ -207,10 +221,13 @@ void FLightManager::terminate() noexcept {
                << " leaked Light components" << io::endl;
 #endif
         while (!manager.empty()) {
-            Instance ci = manager.end() - 1;
+            Instance const ci = manager.end() - 1;
             manager.removeComponent(manager.getEntity(ci));
         }
     }
+}
+void FLightManager::gc(utils::EntityManager& em) noexcept {
+    mManager.gc(em);
 }
 
 void FLightManager::setShadowOptions(Instance i, ShadowOptions const& options) noexcept {
@@ -223,20 +240,43 @@ void FLightManager::setShadowOptions(Instance i, ShadowOptions const& options) n
     params.options.shadowFar = std::max(options.shadowFar, 0.0f);
     params.options.shadowNearHint = std::max(options.shadowNearHint, 0.0f);
     params.options.shadowFarHint = std::max(options.shadowFarHint, 0.0f);
-    params.options.vsm.msaaSamples = std::max(uint8_t(0), options.vsm.msaaSamples);
     params.options.vsm.blurWidth = std::max(0.0f, options.vsm.blurWidth);
 }
 
+void FLightManager::setLightChannel(Instance i, unsigned int channel, bool enable) noexcept {
+    if (i) {
+        if (channel < 8) {
+            auto& manager = mManager;
+            const uint8_t mask = 1u << channel;
+            manager[i].channels &= ~mask;
+            manager[i].channels |= enable ? mask : 0u;
+        }
+    }
+}
+
+bool FLightManager::getLightChannel(Instance i, unsigned int channel) const noexcept {
+    if (i) {
+        if (channel < 8) {
+            auto& manager = mManager;
+            const uint8_t mask = 1u << channel;
+            return bool(manager[i].channels & mask);
+        }
+    }
+    return false;
+}
+
 void FLightManager::setLocalPosition(Instance i, const float3& position) noexcept {
-    assert_invariant(i);
-    auto& manager = mManager;
-    manager[i].position = position;
+    if (i) {
+        auto& manager = mManager;
+        manager[i].position = position;
+    }
 }
 
 void FLightManager::setLocalDirection(Instance i, float3 direction) noexcept {
-    assert_invariant(i);
-    auto& manager = mManager;
-    manager[i].direction = direction;
+    if (i) {
+        auto& manager = mManager;
+        manager[i].direction = direction;
+    }
 }
 
 void FLightManager::setColor(Instance i, const LinearColor& color) noexcept {
@@ -249,7 +289,7 @@ void FLightManager::setColor(Instance i, const LinearColor& color) noexcept {
 void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit) noexcept {
     auto& manager = mManager;
     if (i) {
-        Type type = getLightType(i).type;
+        Type const type = getLightType(i).type;
         float luminousPower = intensity;
         float luminousIntensity;
         switch (type) {
@@ -272,7 +312,7 @@ void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit
 
             case Type::FOCUSED_SPOT: {
                 SpotParams& spotParams = manager[i].spotParams;
-                float cosOuter = std::sqrt(spotParams.cosOuterSquared);
+                float const cosOuter = std::sqrt(spotParams.cosOuterSquared);
                 if (unit == IntensityUnit::LUMEN_LUX) {
                     // li = lp / (2 * pi * (1 - cos(cone_outer / 2)))
                     luminousIntensity = luminousPower / (f::TAU * (1.0f - cosOuter));
@@ -304,7 +344,7 @@ void FLightManager::setIntensity(Instance i, float intensity, IntensityUnit unit
 void FLightManager::setFalloff(Instance i, float falloff) noexcept {
     auto& manager = mManager;
     if (i && !isDirectionalLight(i)) {
-        float sqFalloff = falloff * falloff;
+        float const sqFalloff = falloff * falloff;
         SpotParams& spotParams = manager[i].spotParams;
         manager[i].squaredFallOffInv = sqFalloff > 0.0f ? (1 / sqFalloff) : 0;
         spotParams.radius = falloff;
@@ -314,31 +354,31 @@ void FLightManager::setFalloff(Instance i, float falloff) noexcept {
 void FLightManager::setSpotLightCone(Instance i, float inner, float outer) noexcept {
     auto& manager = mManager;
     if (i && isSpotLight(i)) {
-        // clamp the inner/outer angles to pi
-        float innerClamped = std::min(std::abs(inner), f::PI_2);
-        float outerClamped = std::min(std::abs(outer), f::PI_2);
+        // clamp the inner/outer angles to [0.5 degrees, 90 degrees]
+        float innerClamped = std::clamp(std::abs(inner), 0.5f * f::DEG_TO_RAD, f::PI_2);
+        float const outerClamped = std::clamp(std::abs(outer), 0.5f * f::DEG_TO_RAD, f::PI_2);
 
-        // outer must always be bigger than inner
-        outerClamped = std::max(innerClamped, outerClamped);
+        // inner must always be smaller than outer
+        innerClamped = std::min(innerClamped, outerClamped);
 
-        float cosOuter = fast::cos(outerClamped);
-        float cosInner = fast::cos(innerClamped);
-        float cosOuterSquared = cosOuter * cosOuter;
-        float scale = 1 / std::max(1.0f / 1024.0f, cosInner - cosOuter);
-        float offset = -cosOuter * scale;
+        float const cosOuter = fast::cos(outerClamped);
+        float const cosInner = fast::cos(innerClamped);
+        float const cosOuterSquared = cosOuter * cosOuter;
+        float const scale = 1.0f / std::max(1.0f / 1024.0f, cosInner - cosOuter);
+        float const offset = -cosOuter * scale;
 
         SpotParams& spotParams = manager[i].spotParams;
         spotParams.outerClamped = outerClamped;
         spotParams.cosOuterSquared = cosOuterSquared;
-        spotParams.sinInverse = 1 / std::sqrt(1 - cosOuterSquared);
+        spotParams.sinInverse = 1.0f / std::sin(outerClamped);
         spotParams.scaleOffset = { scale, offset };
 
         // we need to recompute the luminous intensity
-        Type type = getLightType(i).type;
+        Type const type = getLightType(i).type;
         if (type == Type::FOCUSED_SPOT) {
             // li = lp / (2 * pi * (1 - cos(cone_outer / 2)))
-            float luminousPower = spotParams.luminousPower;
-            float luminousIntensity = luminousPower / (f::TAU * (1.0f - cosOuter));
+            float const luminousPower = spotParams.luminousPower;
+            float const luminousIntensity = luminousPower / (f::TAU * (1.0f - cosOuter));
             manager[i].intensity = luminousIntensity;
         }
     }
@@ -372,9 +412,9 @@ void FLightManager::setShadowCaster(Instance i, bool shadowCaster) noexcept {
 
 float FLightManager::getSpotLightInnerCone(Instance i) const noexcept {
     const auto& spotParams = getSpotParams(i);
-    float cosOuter = std::cos(spotParams.outerClamped);
-    float scale = spotParams.scaleOffset.x;
-    float inner = std::acos((1.0f / scale) + cosOuter);
+    float const cosOuter = std::cos(spotParams.outerClamped);
+    float const scale = spotParams.scaleOffset.x;
+    float const inner = std::acos((1.0f / scale) + cosOuter);
     return inner;
 }
 
@@ -386,7 +426,7 @@ void LightManager::ShadowCascades::computeUniformSplits(float splitPositions[3],
     size_t s = 0;
     cascades = max(cascades, (uint8_t) 4u);
     for (size_t c = 1; c < cascades; c++) {
-        splitPositions[s++] = (float) c / cascades;
+        splitPositions[s++] = float(c) / float(cascades);
     }
 }
 
@@ -396,7 +436,7 @@ void LightManager::ShadowCascades::computeLogSplits(float splitPositions[3], uin
     cascades = max(cascades, (uint8_t) 4u);
     for (size_t c = 1; c < cascades; c++) {
         splitPositions[s++] =
-            (near * std::pow(far / near, (float) c / cascades) - near) / (far - near);
+            (near * std::pow(far / near, float(c) / float(cascades)) - near) / (far - near);
     }
 }
 
@@ -412,131 +452,6 @@ void LightManager::ShadowCascades::computePracticalSplits(float splitPositions[3
         splitPositions[s] = lambda * logSplits[s] + (1.0f - lambda) * uniformSplits[s];
         s++;
     }
-}
-
-// ------------------------------------------------------------------------------------------------
-// Trampoline calling into private implementation
-// ------------------------------------------------------------------------------------------------
-
-size_t LightManager::getComponentCount() const noexcept {
-    return upcast(this)->getComponentCount();
-}
-
-utils::Entity const* LightManager::getEntities() const noexcept {
-    return upcast(this)->getEntities();
-}
-
-bool LightManager::hasComponent(Entity e) const noexcept {
-    return upcast(this)->hasComponent(e);
-}
-
-LightManager::Instance LightManager::getInstance(Entity e) const noexcept {
-    return upcast(this)->getInstance(e);
-}
-
-void LightManager::destroy(Entity e) noexcept {
-    return upcast(this)->destroy(e);
-}
-
-void LightManager::setPosition(Instance i, const float3& position) noexcept {
-    return upcast(this)->setLocalPosition(i, position);
-}
-
-const float3& LightManager::getPosition(Instance i) const noexcept {
-    return upcast(this)->getLocalPosition(i);
-}
-
-void LightManager::setDirection(Instance i, const float3& direction) noexcept {
-    upcast(this)->setLocalDirection(i, direction);
-}
-
-const float3& LightManager::getDirection(Instance i) const noexcept {
-    return upcast(this)->getLocalDirection(i);
-}
-
-void LightManager::setColor(Instance i, const LinearColor& color) noexcept {
-    upcast(this)->setColor(i, color);
-}
-
-const float3& LightManager::getColor(Instance i) const noexcept {
-    return upcast(this)->getColor(i);
-}
-
-void LightManager::setIntensity(Instance i, float intensity) noexcept {
-    upcast(this)->setIntensity(i, intensity, FLightManager::IntensityUnit::LUMEN_LUX);
-}
-
-void LightManager::setIntensityCandela(Instance i, float intensity) noexcept {
-    upcast(this)->setIntensity(i, intensity, FLightManager::IntensityUnit::CANDELA);
-}
-
-float LightManager::getIntensity(Instance i) const noexcept {
-    return upcast(this)->getIntensity(i);
-}
-
-void LightManager::setFalloff(Instance i, float radius) noexcept {
-    upcast(this)->setFalloff(i, radius);
-}
-
-float LightManager::getFalloff(Instance i) const noexcept {
-    return upcast(this)->getFalloff(i);
-}
-
-void LightManager::setSpotLightCone(Instance i, float inner, float outer) noexcept {
-    upcast(this)->setSpotLightCone(i, inner, outer);
-}
-
-float LightManager::getSpotLightOuterCone(Instance i) const noexcept {
-    return upcast(this)->getSpotParams(i).outerClamped;
-}
-
-float LightManager::getSpotLightInnerCone(Instance i) const noexcept {
-    return upcast(this)->getSpotLightInnerCone(i);
-}
-
-void LightManager::setSunAngularRadius(Instance i, float angularRadius) noexcept {
-    upcast(this)->setSunAngularRadius(i, angularRadius);
-}
-
-float LightManager::getSunAngularRadius(Instance i) const noexcept {
-    float radius = upcast(this)->getSunAngularRadius(i);
-    return radius * f::RAD_TO_DEG;
-}
-
-void LightManager::setSunHaloSize(Instance i, float haloSize) noexcept {
-    upcast(this)->setSunHaloSize(i, haloSize);
-}
-
-float LightManager::getSunHaloSize(Instance i) const noexcept {
-    return upcast(this)->getSunHaloSize(i);
-}
-
-void LightManager::setSunHaloFalloff(Instance i, float haloFalloff) noexcept {
-    upcast(this)->setSunHaloFalloff(i, haloFalloff);
-}
-
-float LightManager::getSunHaloFalloff(Instance i) const noexcept {
-    return upcast(this)->getSunHaloFalloff(i);
-}
-
-LightManager::Type LightManager::getType(LightManager::Instance i) const noexcept {
-    return upcast(this)->getType(i);
-}
-
-const LightManager::ShadowOptions& LightManager::getShadowOptions(Instance i) const noexcept {
-    return upcast(this)->getShadowOptions(i);
-}
-
-void LightManager::setShadowOptions(Instance i, ShadowOptions const& options) noexcept {
-    upcast(this)->setShadowOptions(i, options);
-}
-
-bool LightManager::isShadowCaster(Instance i) const noexcept {
-    return upcast(this)->isShadowCaster(i);
-}
-
-void LightManager::setShadowCaster(Instance i, bool castShadows) noexcept {
-    upcast(this)->setShadowCaster(i, castShadows);
 }
 
 } // namespace filament

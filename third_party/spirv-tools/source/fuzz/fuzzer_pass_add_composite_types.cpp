@@ -24,9 +24,10 @@ namespace fuzz {
 FuzzerPassAddCompositeTypes::FuzzerPassAddCompositeTypes(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddCompositeTypes::Apply() {
   MaybeAddMissingVectorTypes();
@@ -113,15 +114,15 @@ uint32_t FuzzerPassAddCompositeTypes::ChooseScalarOrCompositeType() {
   std::vector<uint32_t> candidates;
   for (auto& inst : GetIRContext()->types_values()) {
     switch (inst.opcode()) {
-      case SpvOpTypeArray:
-      case SpvOpTypeBool:
-      case SpvOpTypeFloat:
-      case SpvOpTypeInt:
-      case SpvOpTypeMatrix:
-      case SpvOpTypeVector:
+      case spv::Op::OpTypeArray:
+      case spv::Op::OpTypeBool:
+      case spv::Op::OpTypeFloat:
+      case spv::Op::OpTypeInt:
+      case spv::Op::OpTypeMatrix:
+      case spv::Op::OpTypeVector:
         candidates.push_back(inst.result_id());
         break;
-      case SpvOpTypeStruct: {
+      case spv::Op::OpTypeStruct: {
         if (!fuzzerutil::MembersHaveBuiltInDecoration(GetIRContext(),
                                                       inst.result_id()) &&
             !fuzzerutil::HasBlockOrBufferBlockDecoration(GetIRContext(),

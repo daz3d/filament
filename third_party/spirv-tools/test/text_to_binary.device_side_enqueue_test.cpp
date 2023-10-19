@@ -44,7 +44,7 @@ TEST_P(OpEnqueueKernelGood, Sample) {
       " %wait_events %ret_event %invoke %param %param_size %param_align " +
       GetParam().local_size_source;
   EXPECT_THAT(CompiledInstructions(input),
-              Eq(MakeInstruction(SpvOpEnqueueKernel,
+              Eq(MakeInstruction(spv::Op::OpEnqueueKernel,
                                  {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
                                  GetParam().local_size_operands)));
 }
@@ -83,7 +83,8 @@ TEST_F(OpKernelEnqueueBad, MissingLastOperand) {
       CompileFailure(
           "%result = OpEnqueueKernel %type %queue %flags %NDRange %num_events"
           " %wait_events %ret_event %invoke %param %param_size"),
-      Eq("Expected operand, found end of stream."));
+      Eq("Expected operand for OpEnqueueKernel instruction, but found the end "
+         "of the stream."));
 }
 
 TEST_F(OpKernelEnqueueBad, InvalidLastOperand) {

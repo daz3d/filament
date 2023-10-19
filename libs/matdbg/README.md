@@ -1,6 +1,9 @@
 # matdbg
 
-1. [User Instructions](#user-instructions)
+1. [Capabilities](#capabilities)
+1. [Setup for Desktop](#setup-for-desktop)
+1. [Setup for Android](#setup-for-android)
+1. [Debugger Usage](#debugger-usage)
 1. [Architecture Overview](#architecture-overview)
 1. [C++ Server](#c-server)
 1. [JavaScript Client](#javascript-client)
@@ -9,6 +12,20 @@
 1. [Wish List](#wish-list)
 1. [Screenshot](#screenshot)
 1. [Material Chunks](#material-chunks)
+
+## Capabilities
+
+matdbg is a library and web application that enables debugging and live-editing of Filament shaders.
+At the time of this writing, the following capabilities are supported.
+
+- OpenGL: Editing GLSL
+- Metal: Editing MSL
+- Vulkan: Editing transpiled GLSL, displaying disassembled SPIR-V
+
+Note that a given material can be built with multiple backends, even though only one backend
+is active in a particular session. For example, if the current app is using Vulkan, it is still
+possible to inspect the Metal shaders, as long as the material has been built with Metal support
+included.
 
 ## Setup for Desktop
 
@@ -46,6 +63,10 @@ following:
     adb forward tcp:8081 tcp:8081
 
 This lets you go to http://localhost:8081 in Chrome on your host machine.
+
+Note that we generally use a release build of Filament when running on Android, so the shaders
+are optimized and very unreadable. This can be avoided by modifying the build such that `-g` is
+passed to matc even in release builds.
 
 ## Debugger Usage
 
@@ -146,8 +167,8 @@ Returns an array with all information (except shader source) for all known mater
     "shading": { "model": "unlit", "vertex_domain": "object", ... },
     "raster":  { "blending": "transparent", "color_write": "true", ... },
     "opengl": [
-        { "index": " 0", "shaderModel": "gl41", "pipelineStage": "vertex  ", "variantString": "", "variant": "0" },
-        { "index": " 1", "shaderModel": "gl41", "pipelineStage": "fragment", "variantString": "", "variant": "0" },
+        { "index": " 0", "shaderModel": "gl41", "pipelineStage": "vertex  ", "variantString": "", "variant": 0 },
+        { "index": " 1", "shaderModel": "gl41", "pipelineStage": "fragment", "variantString": "", "variant": 0 },
     ],
     "vulkan": [],
     "metal": [],
@@ -162,6 +183,8 @@ Returns an array with all information (except shader source) for all known mater
 Some of the returned data may seem redundant (e.g. the `index` and `variantString` fields) but
 these allow the client to be very simple by passing the raw JSON into [mustache][4] templates.
 Moreover it helps prevent duplication of knowledge between C++ and JavaScript.
+
+This format of this message is also used for the in-browser "database" of materials.
 
 ---
 
@@ -185,7 +208,7 @@ Filament has 7-bit mask, so each number in the list is between 0 and 127.
 
 ---
 
-`/api/shader?matid={id}&type=[glsl|spirv]&[glindex|vkindex|metalindex]={index}`
+`/api/shader?matid={id}&type=[glsl|spirv|msl]&[glindex|vkindex|metalindex]={index}`
 
 Returns the entire shader code for the given variant. This is the only HTTP request that returns
 text instead of JSON.
@@ -219,14 +242,16 @@ not including the terminating null.
 
 ## Wish List
 
-- Allow viewing and editing GLSL for Metal and Vulkan (use filamat or spirv-cross for this)
-- Stop piggybacking on `type=glsl` for Metal Shading Language.
+- Allow editing of the original GLSL, perhaps by enhancing the `-g` option in matc and adding new chunk types.
+- Port the web side to TypeScript
+    - This will clarify the structure of the pseudo-database, which is currently a total hack.
+    - Allows us to use enums instead of strings in several places (e.g. getShaderAPI)
+    - Try using https://github.com/basarat/typescript-script because webpack etc is painful.
+    - If the above idea is too slow then use https://github.com/evanw/esbuild.
 - Expose the entire `engine.debug` struct in the web UI.
 - When shader errors occur, send them back over the wire to the web client.
 - Resizing the Chrome window causes layout issues.
 - The sidebar in the web app is not resizeable.
-- Refactor shader selection stuff to have "index" and "stage" attributes instead of glindex/vkindex/metalindex.
-    - Alternatively do something similar to makeKey in `MaterialChunk`.
 - For the material ids, SHA-1 would be better than murmur since the latter can easily have collisions.
 - It would be easy to add diff decorations to the editor in our `onEdit` function:
      1. Examine "changes" (IModelContentChange) to get a set of line numbers.
@@ -236,80 +261,6 @@ not including the terminating null.
 ## Screenshot
 
 <img width="600px" src="https://user-images.githubusercontent.com/1288904/63553241-b043ba80-c4ee-11e9-816c-c6acb1d6cdf7.png">
-
-## Material Chunks
-
-This section exists only to provide a reference for the `ShaderExtractor` and `ShaderReplacer`
-features.
-
-The relevant chunk types are listed here. These types are defined in the `filabridge` lib, in
-the `filamat` namespace.
-
-```c++
-enum UTILS_PUBLIC ChunkType : uint64_t {
-    ...
-    MaterialGlsl = charTo64bitNum("MAT_GLSL"),    // MaterialTextChunk
-    MaterialSpirv = charTo64bitNum("MAT_SPIR"),   // MaterialSpirvChunk
-    MaterialMetal = charTo64bitNum("MAT_METL"),   // MaterialTextChunk
-    ...
-    DictionaryGlsl = charTo64bitNum("DIC_GLSL"),  // DictionaryTextChunk
-    DictionarySpirv = charTo64bitNum("DIC_SPIR"), // DictionarySpirvChunk
-    DictionaryMetal = charTo64bitNum("DIC_METL"), // DictionaryTextChunk
-    ...
-}
-```
-
-### MaterialTextChunk
-
-These chunks have the following layout.
-
-    [u64] ChunkType magic string
-    [u32] Remaining chunk size in bytes
-    [u64] Shader count
-    for each shader:
-        [u8]  Shader model
-        [u8]  Shader variant
-        [u8]  Shader stage
-        [u32] Offset in bytes from (and including) "Shader count" up to "Total string size"
-    for each unique shader:
-        [u32] Total string size (including null terminator)
-        [u32] Number of line indices
-        [u16 u16 u16...] Line indices
-
-### MaterialSpirvChunk
-
-These chunks have the following layout.
-
-    [u64] ChunkType magic string
-    [u32] Remaining chunk size in bytes
-    [u64] Shader count
-    for each shader:
-        [u8]  Shader model
-        [u8]  Shader variant
-        [u8]  Shader stage
-        [u32] Index into the blob list in DictionarySpirvChunk
-
-### DictionaryTextChunk
-
-These chunks have the following layout.
-
-    [u64] ChunkType magic string
-    [u32] Remaining chunk size in bytes
-    [u32] Number of strings
-    for each string:
-        [u8 u8 u8 u8...] include null terminator after each string
-
-### DictionarySpirvChunk
-
-These chunks have the following layout.
-
-    [u64] ChunkType magic string
-    [u32] Remaining chunk size in bytes
-    [u32] Compression
-    [u32] Blob count
-    for each blob:
-        [u64] Byte count
-        [u8 u8 u8 ...]
 
 [1]: https://github.com/civetweb/civetweb
 [2]: https://microsoft.github.io/monaco-editor/

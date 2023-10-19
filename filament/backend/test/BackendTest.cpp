@@ -16,9 +16,13 @@
 
 #include <gtest/gtest.h>
 
+#include <private/backend/PlatformFactory.h>
+
 #include "BackendTest.h"
 
 #include <utils/Hash.h>
+
+#include <fstream>
 
 #include "ShaderGenerator.h"
 #include "TrianglePrimitive.h"
@@ -26,10 +30,17 @@
 static constexpr size_t CONFIG_MIN_COMMAND_BUFFERS_SIZE = 1 * 1024 * 1024;
 static constexpr size_t CONFIG_COMMAND_BUFFERS_SIZE     = 3 * CONFIG_MIN_COMMAND_BUFFERS_SIZE;
 
-namespace test {
-
 using namespace filament;
 using namespace filament::backend;
+
+#ifndef IOS
+#include <imageio/ImageEncoder.h>
+#include <image/ColorTransform.h>
+
+using namespace image;
+#endif
+
+namespace test {
 
 Backend BackendTest::sBackend = Backend::NOOP;
 bool BackendTest::sIsMobilePlatform = false;
@@ -56,10 +67,11 @@ BackendTest::~BackendTest() {
 
 void BackendTest::initializeDriver() {
     auto backend = static_cast<filament::backend::Backend>(sBackend);
-    DefaultPlatform* platform = DefaultPlatform::create(&backend);
+    Platform* platform = PlatformFactory::create(&backend);
     assert_invariant(static_cast<uint8_t>(backend) == static_cast<uint8_t>(sBackend));
-    driver = platform->createDriver(nullptr);
-    commandStream = CommandStream(*driver, commandBufferQueue.getCircularBuffer());
+    Platform::DriverConfig const driverConfig;
+    driver = platform->createDriver(nullptr, driverConfig);
+    commandStream = std::make_unique<CommandStream>(*driver, commandBufferQueue.getCircularBuffer());
 }
 
 void BackendTest::executeCommands() {
@@ -67,24 +79,21 @@ void BackendTest::executeCommands() {
     auto buffers = commandBufferQueue.waitForCommands();
     for (auto& item : buffers) {
         if (UTILS_LIKELY(item.begin)) {
-            commandStream.execute(item.begin);
+            getDriverApi().execute(item.begin);
             commandBufferQueue.releaseBuffer(item);
         }
     }
 }
 
-void BackendTest::flushAndWait(uint64_t timeout) {
+void BackendTest::flushAndWait() {
     auto& api = getDriverApi();
-    auto fence = api.createFence();
     api.finish();
     executeCommands();
-    api.wait(fence, timeout);
-    api.destroyFence(fence);
 }
 
 Handle<HwSwapChain> BackendTest::createSwapChain() {
     const NativeView& view = getNativeView();
-    return commandStream.createSwapChain(view.ptr, 0);
+    return getDriverApi().createSwapChain(view.ptr, 0);
 }
 
 void BackendTest::fullViewport(RenderPassParams& params) {
@@ -99,12 +108,10 @@ void BackendTest::fullViewport(Viewport& viewport) {
     viewport.height = view.height;
 }
 
-void BackendTest::renderTriangle(Handle<HwRenderTarget> renderTarget,
-        Handle<HwSwapChain> swapChain, Handle<HwProgram> program) {
-    auto& api = getDriverApi();
-
-    TrianglePrimitive triangle(api);
-
+void BackendTest::renderTriangle(
+        filament::backend::Handle<filament::backend::HwRenderTarget> renderTarget,
+        filament::backend::Handle<filament::backend::HwSwapChain> swapChain,
+        filament::backend::Handle<filament::backend::HwProgram> program) {
     RenderPassParams params = {};
     fullViewport(params);
     params.flags.clear = TargetBufferFlags::COLOR;
@@ -113,6 +120,14 @@ void BackendTest::renderTriangle(Handle<HwRenderTarget> renderTarget,
     params.flags.discardEnd = TargetBufferFlags::NONE;
     params.viewport.height = 512;
     params.viewport.width = 512;
+    renderTriangle(renderTarget, swapChain, program, params);
+}
+
+void BackendTest::renderTriangle(Handle<HwRenderTarget> renderTarget,
+        Handle<HwSwapChain> swapChain, Handle<HwProgram> program, const RenderPassParams& params) {
+    auto& api = getDriverApi();
+
+    TrianglePrimitive triangle(api);
 
     api.makeCurrent(swapChain, swapChain);
 
@@ -125,26 +140,44 @@ void BackendTest::renderTriangle(Handle<HwRenderTarget> renderTarget,
     state.rasterState.depthFunc = RasterState::DepthFunc::A;
     state.rasterState.culling = CullingMode::NONE;
 
-    api.draw(state, triangle.getRenderPrimitive());
+    api.draw(state, triangle.getRenderPrimitive(), 1);
 
     api.endRenderPass();
 }
 
 void BackendTest::readPixelsAndAssertHash(const char* testName, size_t width, size_t height,
-        Handle<HwRenderTarget> rt, uint32_t expectedHash) {
+        Handle<HwRenderTarget> rt, uint32_t expectedHash, bool exportScreenshot) {
     void* buffer = calloc(1, width * height * 4);
 
     struct Capture {
         uint32_t expectedHash;
         char* name;
+        bool exportScreenshot;
+        size_t width, height;
     };
-    Capture* c = new Capture();
+    auto* c = new Capture();
     c->expectedHash = expectedHash;
     c->name = strdup(testName);
+    c->exportScreenshot = exportScreenshot;
+    c->width = width;
+    c->height = height;
 
     PixelBufferDescriptor pbd(buffer, width * height * 4, PixelDataFormat::RGBA, PixelDataType::UBYTE,
             1, 0, 0, width, [](void* buffer, size_t size, void* user) {
-                Capture* c = (Capture*)user;
+                auto* c = (Capture*)user;
+
+                // Export a screenshot, if requested.
+                if (c->exportScreenshot) {
+#ifndef IOS
+                    LinearImage image(c->width, c->height, 4);
+                    image = toLinearWithAlpha<uint8_t>(c->width, c->height, c->width * 4,
+                            (uint8_t*) buffer);
+                    const std::string png = std::string(c->name) + ".png";
+                    std::ofstream outputStream(png.c_str(), std::ios::binary | std::ios::trunc);
+                    ImageEncoder::encode(outputStream, ImageEncoder::Format::PNG, image, "",
+                            png);
+#endif
+                }
 
                 // Hash the contents of the buffer and check that they match.
                 uint32_t hash = utils::hash::murmur3((const uint32_t*) buffer, size / 4, 0);
@@ -154,7 +187,7 @@ void BackendTest::readPixelsAndAssertHash(const char* testName, size_t width, si
                 free(c->name);
                 free(c);
             }, (void*)c);
-    getDriverApi().readPixels(rt, 0, 0, 512, 512, std::move(pbd));
+    getDriverApi().readPixels(rt, 0, 0, width, height, std::move(pbd));
 }
 
 class Environment : public ::testing::Environment {

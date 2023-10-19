@@ -20,6 +20,10 @@
 #include <utils/compiler.h>
 #include <utils/CString.h>
 
+#include <private/filament/Variant.h>
+
+#include <type_traits>
+
 #include <stdint.h>
 
 namespace filaflat {
@@ -29,79 +33,52 @@ namespace filaflat {
 // never assume a read will succeed.
 class UTILS_PUBLIC Unflattener {
 public:
+    Unflattener() noexcept = default;
+
     Unflattener(const uint8_t* src, const uint8_t* end)
             : mSrc(src), mCursor(src), mEnd(end) {
+        assert_invariant(src && end);
     }
 
-    Unflattener(Unflattener const&) = default;
+    Unflattener(Unflattener const& rhs) = default;
 
-    ~Unflattener() = default;
+    ~Unflattener() noexcept = default;
 
     bool hasData() const noexcept {
         return mCursor < mEnd;
     }
 
-    inline bool willOverflow(size_t size) const noexcept {
+    bool willOverflow(size_t size) const noexcept {
         return (mCursor + size) > mEnd;
     }
 
-    bool read(bool* b) noexcept {
-        if (willOverflow(1)) {
+    void skipAlignmentPadding() {
+        const uint8_t padSize = (8 - (intptr_t(mCursor) % 8)) % 8;
+        mCursor += padSize;
+        assert_invariant(0 == (intptr_t(mCursor) % 8));
+    }
+
+    template<typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+    bool read(T* const out) noexcept {
+        if (UTILS_UNLIKELY(willOverflow(sizeof(T)))) {
             return false;
         }
-        *b = mCursor[0];
-        mCursor += 1;
+        auto const* const cursor = mCursor;
+        mCursor += sizeof(T);
+        T v = 0;
+        for (size_t i = 0; i < sizeof(T); i++) {
+            v |= T(cursor[i]) << (8 * i);
+        }
+        *out = v;
         return true;
     }
 
-    bool read(uint8_t* i) noexcept {
-        if (willOverflow(1)) {
-            return false;
-        }
-        *i = mCursor[0];
-        mCursor += 1;
-        return true;
+    bool read(float* f) noexcept {
+        return read(reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(f)));
     }
 
-    bool read(uint16_t* i) noexcept {
-        if (willOverflow(2)) {
-            return false;
-        }
-        *i = 0;
-        *i |= mCursor[0];
-        *i |= mCursor[1] << 8;
-        mCursor += 2;
-        return true;
-    }
-
-    bool read(uint32_t* i) noexcept {
-        if (willOverflow(4)) {
-            return false;
-        }
-        *i = 0;
-        *i |= mCursor[0];
-        *i |= mCursor[1] << 8;
-        *i |= mCursor[2] << 16;
-        *i |= mCursor[3] << 24;
-        mCursor += 4;
-        return true;
-    }
-
-    bool read(uint64_t* i) noexcept {
-        if (willOverflow(8)) {
-            return false;
-        }
-        *i = 0;
-        *i |= static_cast<int64_t>(mCursor[0]);
-        *i |= static_cast<int64_t>(mCursor[1]) << 8;
-        *i |= static_cast<int64_t>(mCursor[2]) << 16;
-        *i |= static_cast<int64_t>(mCursor[3]) << 24;
-        *i |= static_cast<int64_t>(mCursor[4]) << 32;
-        *i |= static_cast<int64_t>(mCursor[5]) << 40;
-        *i |= static_cast<int64_t>(mCursor[6]) << 48;
-        *i |= static_cast<int64_t>(mCursor[7]) << 56;
-        mCursor += 8;
-        return true;
+    bool read(filament::Variant* v) noexcept {
+        return read(&v->key);
     }
 
     bool read(utils::CString* s) noexcept;
@@ -110,37 +87,18 @@ public:
 
     bool read(const char** s) noexcept;
 
-    bool read(float* f) noexcept {
-        if (willOverflow(4)) {
-            return false;
-        }
-        uint32_t i;
-        i = 0;
-        i |= mCursor[0];
-        i |= mCursor[1] << 8;
-        i |= mCursor[2] << 16;
-        i |= mCursor[3] << 24;
-        *f = reinterpret_cast<float&>(i);
-        mCursor += 4;
-        return true;
-    }
-
     const uint8_t* getCursor() const noexcept {
         return mCursor;
     }
 
     void setCursor(const uint8_t* cursor) noexcept {
-        if (mSrc <= cursor && cursor < mEnd) {
-            mCursor = cursor;
-        } else {
-            mCursor = mEnd;
-        }
+        mCursor = (cursor >= mSrc && cursor < mEnd) ? cursor : mEnd;
     }
 
 private:
-    const uint8_t* mSrc;
-    const uint8_t* mCursor;
-    const uint8_t* mEnd;
+    const uint8_t* mSrc = nullptr;
+    const uint8_t* mCursor = nullptr;
+    const uint8_t* mEnd = nullptr;
 };
 
 } //namespace filaflat

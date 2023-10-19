@@ -24,15 +24,7 @@
 
 using namespace bluevk;
 
-namespace filament {
-namespace backend {
-
-void createSemaphore(VkDevice device, VkSemaphore *semaphore) {
-    VkSemaphoreCreateInfo createInfo = {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    VkResult result = vkCreateSemaphore(device, &createInfo, nullptr, semaphore);
-    ASSERT_POSTCONDITION(result == VK_SUCCESS, "vkCreateSemaphore error.");
-}
+namespace filament::backend {
 
 VkFormat getVkFormat(ElementType type, bool normalized, bool integer) {
     using ElementType = ElementType;
@@ -185,6 +177,16 @@ VkFormat getVkFormat(TextureFormat format) {
         case TextureFormat::DXT5_RGBA:         return VK_FORMAT_BC3_UNORM_BLOCK;
         case TextureFormat::DXT5_SRGBA:        return VK_FORMAT_BC3_SRGB_BLOCK;
 
+        case TextureFormat::RED_RGTC1:              return VK_FORMAT_BC4_UNORM_BLOCK;
+        case TextureFormat::SIGNED_RED_RGTC1:       return VK_FORMAT_BC4_SNORM_BLOCK;
+        case TextureFormat::RED_GREEN_RGTC2:        return VK_FORMAT_BC5_UNORM_BLOCK;
+        case TextureFormat::SIGNED_RED_GREEN_RGTC2: return VK_FORMAT_BC5_SNORM_BLOCK;
+
+        case TextureFormat::RGB_BPTC_SIGNED_FLOAT:      return VK_FORMAT_BC6H_SFLOAT_BLOCK;
+        case TextureFormat::RGB_BPTC_UNSIGNED_FLOAT:    return VK_FORMAT_BC6H_UFLOAT_BLOCK;
+        case TextureFormat::RGBA_BPTC_UNORM:            return VK_FORMAT_BC7_UNORM_BLOCK;
+        case TextureFormat::SRGB_ALPHA_BPTC_UNORM:      return VK_FORMAT_BC7_SRGB_BLOCK;
+
         case TextureFormat::RGBA_ASTC_4x4:     return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
         case TextureFormat::RGBA_ASTC_5x4:     return VK_FORMAT_ASTC_5x4_UNORM_BLOCK;
         case TextureFormat::RGBA_ASTC_5x5:     return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
@@ -333,7 +335,7 @@ uint32_t getBytesPerPixel(TextureFormat format) {
 }
 
 VkCompareOp getCompareOp(SamplerCompareFunc func) {
-    using Compare = backend::SamplerCompareFunc;
+    using Compare = SamplerCompareFunc;
     switch (func) {
         case Compare::LE: return VK_COMPARE_OP_LESS_OR_EQUAL;
         case Compare::GE: return VK_COMPARE_OP_GREATER_OR_EQUAL;
@@ -347,7 +349,6 @@ VkCompareOp getCompareOp(SamplerCompareFunc func) {
 }
 
 VkBlendFactor getBlendFactor(BlendFunction mode) {
-    using BlendFunction = filament::backend::BlendFunction;
     switch (mode) {
         case BlendFunction::ZERO:                  return VK_BLEND_FACTOR_ZERO;
         case BlendFunction::ONE:                   return VK_BLEND_FACTOR_ONE;
@@ -364,7 +365,6 @@ VkBlendFactor getBlendFactor(BlendFunction mode) {
 }
 
 VkCullModeFlags getCullMode(CullingMode mode) {
-    using CullingMode = filament::backend::CullingMode;
     switch (mode) {
         case CullingMode::NONE:           return VK_CULL_MODE_NONE;
         case CullingMode::FRONT:          return VK_CULL_MODE_FRONT_BIT;
@@ -474,6 +474,109 @@ PixelDataType getComponentType(VkFormat format) {
     return {};
 }
 
+uint32_t getComponentCount(VkFormat format) {
+    switch (format) {
+        case VK_FORMAT_R8_UNORM:
+        case VK_FORMAT_R8_SNORM:
+        case VK_FORMAT_R8_USCALED:
+        case VK_FORMAT_R8_SSCALED:
+        case VK_FORMAT_R8_UINT:
+        case VK_FORMAT_R8_SINT:
+        case VK_FORMAT_R8_SRGB:
+        case VK_FORMAT_R16_UNORM:
+        case VK_FORMAT_R16_SNORM:
+        case VK_FORMAT_R16_USCALED:
+        case VK_FORMAT_R16_SSCALED:
+        case VK_FORMAT_R16_UINT:
+        case VK_FORMAT_R16_SINT:
+        case VK_FORMAT_R16_SFLOAT:
+        case VK_FORMAT_R32_UINT:
+        case VK_FORMAT_R32_SINT:
+        case VK_FORMAT_R32_SFLOAT:
+            return 1;
+
+        case VK_FORMAT_R8G8_UNORM:
+        case VK_FORMAT_R8G8_SNORM:
+        case VK_FORMAT_R8G8_USCALED:
+        case VK_FORMAT_R8G8_SSCALED:
+        case VK_FORMAT_R8G8_UINT:
+        case VK_FORMAT_R8G8_SINT:
+        case VK_FORMAT_R8G8_SRGB:
+        case VK_FORMAT_R16G16_UNORM:
+        case VK_FORMAT_R16G16_SNORM:
+        case VK_FORMAT_R16G16_USCALED:
+        case VK_FORMAT_R16G16_SSCALED:
+        case VK_FORMAT_R16G16_UINT:
+        case VK_FORMAT_R16G16_SINT:
+        case VK_FORMAT_R16G16_SFLOAT:
+        case VK_FORMAT_R32G32_UINT:
+        case VK_FORMAT_R32G32_SINT:
+        case VK_FORMAT_R32G32_SFLOAT:
+            return 2;
+
+        case VK_FORMAT_R8G8B8_UNORM:
+        case VK_FORMAT_R8G8B8_SNORM:
+        case VK_FORMAT_R8G8B8_USCALED:
+        case VK_FORMAT_R8G8B8_SSCALED:
+        case VK_FORMAT_R8G8B8_UINT:
+        case VK_FORMAT_R8G8B8_SINT:
+        case VK_FORMAT_R8G8B8_SRGB:
+        case VK_FORMAT_B8G8R8_UNORM:
+        case VK_FORMAT_B8G8R8_SNORM:
+        case VK_FORMAT_B8G8R8_USCALED:
+        case VK_FORMAT_B8G8R8_SSCALED:
+        case VK_FORMAT_B8G8R8_UINT:
+        case VK_FORMAT_B8G8R8_SINT:
+        case VK_FORMAT_B8G8R8_SRGB:
+        case VK_FORMAT_R16G16B16_UNORM:
+        case VK_FORMAT_R16G16B16_SNORM:
+        case VK_FORMAT_R16G16B16_USCALED:
+        case VK_FORMAT_R16G16B16_SSCALED:
+        case VK_FORMAT_R16G16B16_UINT:
+        case VK_FORMAT_R16G16B16_SINT:
+        case VK_FORMAT_R16G16B16_SFLOAT:
+        case VK_FORMAT_R32G32B32_UINT:
+        case VK_FORMAT_R32G32B32_SINT:
+        case VK_FORMAT_R32G32B32_SFLOAT:
+            return 3;
+
+        case VK_FORMAT_R8G8B8A8_UNORM:
+        case VK_FORMAT_R8G8B8A8_SNORM:
+        case VK_FORMAT_R8G8B8A8_USCALED:
+        case VK_FORMAT_R8G8B8A8_SSCALED:
+        case VK_FORMAT_R8G8B8A8_UINT:
+        case VK_FORMAT_R8G8B8A8_SINT:
+        case VK_FORMAT_R8G8B8A8_SRGB:
+        case VK_FORMAT_B8G8R8A8_UNORM:
+        case VK_FORMAT_B8G8R8A8_SNORM:
+        case VK_FORMAT_B8G8R8A8_USCALED:
+        case VK_FORMAT_B8G8R8A8_SSCALED:
+        case VK_FORMAT_B8G8R8A8_UINT:
+        case VK_FORMAT_B8G8R8A8_SINT:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+        case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+        case VK_FORMAT_A8B8G8R8_SNORM_PACK32:
+        case VK_FORMAT_A8B8G8R8_USCALED_PACK32:
+        case VK_FORMAT_A8B8G8R8_SSCALED_PACK32:
+        case VK_FORMAT_A8B8G8R8_UINT_PACK32:
+        case VK_FORMAT_A8B8G8R8_SINT_PACK32:
+        case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+        case VK_FORMAT_R16G16B16A16_UNORM:
+        case VK_FORMAT_R16G16B16A16_SNORM:
+        case VK_FORMAT_R16G16B16A16_USCALED:
+        case VK_FORMAT_R16G16B16A16_SSCALED:
+        case VK_FORMAT_R16G16B16A16_UINT:
+        case VK_FORMAT_R16G16B16A16_SINT:
+        case VK_FORMAT_R16G16B16A16_SFLOAT:
+        case VK_FORMAT_R32G32B32A32_UINT:
+        case VK_FORMAT_R32G32B32A32_SINT:
+        case VK_FORMAT_R32G32B32A32_SFLOAT:
+            return 4;
+        default: assert_invariant(false && "Unknown data type, conversion is not supported.");
+    }
+    return {};
+}
+
 VkComponentMapping getSwizzleMap(TextureSwizzle swizzle[4]) {
     VkComponentMapping map;
     VkComponentSwizzle* dst = &map.r;
@@ -501,22 +604,11 @@ VkComponentMapping getSwizzleMap(TextureSwizzle swizzle[4]) {
     return map;
 }
 
-void transitionImageLayout(VkCommandBuffer cmdbuffer, VulkanLayoutTransition transition) {
-    if (transition.oldLayout == transition.newLayout) {
-        return;
-    }
-    VkImageMemoryBarrier barrier = {};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = transition.oldLayout;
-    barrier.newLayout = transition.newLayout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = transition.image;
-    barrier.subresourceRange = transition.subresources;
-    barrier.srcAccessMask = transition.srcAccessMask;
-    barrier.dstAccessMask = transition.dstAccessMask;
-    vkCmdPipelineBarrier(cmdbuffer, transition.srcStage, transition.dstStage, 0, 0, nullptr, 0,
-            nullptr, 1, &barrier);
+VkShaderStageFlags getShaderStageFlags(ShaderStageFlags stageFlags) {
+    VkShaderStageFlags flags = 0x0;
+    if (any(stageFlags & ShaderStageFlags::VERTEX))     flags |= VK_SHADER_STAGE_VERTEX_BIT;
+    if (any(stageFlags & ShaderStageFlags::FRAGMENT))   flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    return flags;
 }
 
 bool equivalent(const VkRect2D& a, const VkRect2D& b) {
@@ -527,6 +619,23 @@ bool equivalent(const VkRect2D& a, const VkRect2D& b) {
 
 bool equivalent(const VkExtent2D& a, const VkExtent2D& b) {
     return a.height == b.height && a.width == b.width;
+}
+
+VkImageAspectFlags getImageAspect(VkFormat format) {
+    switch (format) {
+        case VK_FORMAT_D16_UNORM_S8_UINT:
+        case VK_FORMAT_D24_UNORM_S8_UINT:
+        case VK_FORMAT_D32_SFLOAT_S8_UINT:
+            return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        case VK_FORMAT_D16_UNORM:
+        case VK_FORMAT_X8_D24_UNORM_PACK32:
+        case VK_FORMAT_D32_SFLOAT:
+            return VK_IMAGE_ASPECT_DEPTH_BIT;
+        case VK_FORMAT_S8_UINT:
+            return VK_IMAGE_ASPECT_STENCIL_BIT;
+        default:
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+    }
 }
 
 bool isDepthFormat(VkFormat format) {
@@ -546,26 +655,10 @@ bool isDepthFormat(VkFormat format) {
 static uint32_t mostSignificantBit(uint32_t x) { return 1ul << (31ul - utils::clz(x)); }
 
 uint8_t reduceSampleCount(uint8_t sampleCount, VkSampleCountFlags mask) {
-    assert_invariant(utils::popcount(sampleCount) == 1);
     if (sampleCount & mask) {
         return sampleCount;
     }
     return mostSignificantBit((sampleCount - 1) & mask);
 }
 
-} // namespace filament
-} // namespace backend
-
-bool operator<(const VkImageSubresourceRange& a, const VkImageSubresourceRange& b) {
-    if (a.aspectMask < b.aspectMask) return true;
-    if (a.aspectMask > b.aspectMask) return false;
-    if (a.baseMipLevel < b.baseMipLevel) return true;
-    if (a.baseMipLevel > b.baseMipLevel) return false;
-    if (a.levelCount < b.levelCount) return true;
-    if (a.levelCount > b.levelCount) return false;
-    if (a.baseArrayLayer < b.baseArrayLayer) return true;
-    if (a.baseArrayLayer > b.baseArrayLayer) return false;
-    if (a.layerCount < b.layerCount) return true;
-    if (a.layerCount > b.layerCount) return false;
-    return false;
-}
+} // namespace filament::backend

@@ -17,16 +17,19 @@
 #ifndef TNT_FILAMENT_DETAILS_SHADERGENERATOR_H
 #define TNT_FILAMENT_DETAILS_SHADERGENERATOR_H
 
-#include <algorithm>
+
+#include "MaterialInfo.h"
 
 #include <filament/MaterialEnums.h>
 
 #include <filamat/MaterialBuilder.h>
 
-#include "MaterialInfo.h"
+#include <private/filament/Variant.h>
 
 #include <utils/CString.h>
 #include <utils/sstream.h>
+
+#include <algorithm>
 
 namespace filamat {
 
@@ -39,23 +42,30 @@ public:
             MaterialBuilder::VariableList const& variables,
             MaterialBuilder::OutputList const& outputs,
             MaterialBuilder::PreprocessorDefineList const& defines,
+            MaterialBuilder::ConstantList const& constants,
             utils::CString const& materialCode,
             size_t lineOffset,
             utils::CString const& materialVertexCode,
             size_t vertexLineOffset,
             MaterialBuilder::MaterialDomain materialDomain) noexcept;
 
-    std::string createVertexProgram(filament::backend::ShaderModel sm,
+    std::string createVertexProgram(filament::backend::ShaderModel shaderModel,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
-            MaterialInfo const& material, uint8_t variantKey,
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material, filament::Variant variant,
             filament::Interpolation interpolation,
             filament::VertexDomain vertexDomain) const noexcept;
-    std::string createFragmentProgram(filament::backend::ShaderModel sm,
+
+    std::string createFragmentProgram(filament::backend::ShaderModel shaderModel,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
-            MaterialInfo const& material, uint8_t variantKey,
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material, filament::Variant variant,
             filament::Interpolation interpolation) const noexcept;
 
-    bool hasCustomDepthShader() const noexcept;
+    std::string createComputeProgram(filament::backend::ShaderModel shaderModel,
+            MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material) const noexcept;
 
     /**
      * When a GLSL shader is optimized we run it through an intermediate SPIR-V
@@ -64,30 +74,53 @@ public:
      * fixup step can be used to turn the samplers back into external samplers after
      * the optimizations have been applied.
      */
-    void fixupExternalSamplers(filament::backend::ShaderModel sm, std::string& shader,
-            MaterialInfo const& material) const noexcept;
+    static void fixupExternalSamplers(filament::backend::ShaderModel sm, std::string& shader,
+            MaterialInfo const& material) noexcept;
 
 private:
+    static void generateVertexDomainDefines(utils::io::sstream& out,
+            filament::VertexDomain domain) noexcept;
+
+    static void generateSurfaceMaterialVariantProperties(utils::io::sstream& out,
+            MaterialBuilder::PropertyList const properties,
+            const MaterialBuilder::PreprocessorDefineList& defines) noexcept;
+
+    static void generateSurfaceMaterialVariantDefines(utils::io::sstream& out,
+            filament::backend::ShaderStage stage,
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material, filament::Variant variant) noexcept;
+
+    static void generatePostProcessMaterialVariantDefines(utils::io::sstream& out,
+            filament::PostProcessVariant variant) noexcept;
+
+    static void generateUserSpecConstants(
+            const CodeGenerator& cg, utils::io::sstream& fs,
+            MaterialBuilder::ConstantList const& constants);
 
     std::string createPostProcessVertexProgram(filament::backend::ShaderModel sm,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
-            MaterialInfo const& material, uint8_t variant,
-            const filament::SamplerBindingMap& samplerBindingMap) const noexcept;
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material, filament::Variant::type_t variantKey) const noexcept;
 
     std::string createPostProcessFragmentProgram(filament::backend::ShaderModel sm,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
-            MaterialInfo const& material, uint8_t variant,
-            const filament::SamplerBindingMap& samplerBindingMap) const noexcept;
+            MaterialBuilder::FeatureLevel featureLevel,
+            MaterialInfo const& material, uint8_t variant) const noexcept;
+
+    static void appendShader(utils::io::sstream& ss,
+            const utils::CString& shader, size_t lineOffset) noexcept;
 
     MaterialBuilder::PropertyList mProperties;
     MaterialBuilder::VariableList mVariables;
     MaterialBuilder::OutputList mOutputs;
     MaterialBuilder::MaterialDomain mMaterialDomain;
     MaterialBuilder::PreprocessorDefineList mDefines;
-    utils::CString mMaterialCode;
+    MaterialBuilder::ConstantList mConstants;
+    utils::CString mMaterialFragmentCode;   // fragment or compute code
     utils::CString mMaterialVertexCode;
     size_t mMaterialLineOffset;
     size_t mMaterialVertexLineOffset;
+    bool mIsMaterialVertexShaderEmpty;
 };
 
 } // namespace filament

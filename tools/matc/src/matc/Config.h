@@ -22,8 +22,8 @@
 
 #include <filamat/MaterialBuilder.h>
 
+#include <map>
 #include <memory>
-#include <unordered_map>
 #include <ostream>
 
 #include <utils/compiler.h>
@@ -40,6 +40,11 @@ public:
     using Platform = filamat::MaterialBuilder::Platform;
     using TargetApi = filamat::MaterialBuilder::TargetApi;
     using Optimization = filamat::MaterialBuilder::Optimization;
+
+    // For defines and template args, we use an ordered map with a transparent comparator.
+    // Even though the key is stored using std::string, this allows you to make lookups using
+    // std::string_view. There is no need to construct a std::string object just to make a lookup.
+    using StringReplacementMap = std::map<std::string, std::string, std::less<>>;
 
     enum class Metadata {
         NONE,
@@ -110,12 +115,24 @@ public:
         return mRawShaderMode;
     }
 
-    uint8_t getVariantFilter() const noexcept {
+    bool noSamplerValidation() const noexcept {
+        return mNoSamplerValidation;
+    }
+
+    filament::UserVariantFilterMask getVariantFilter() const noexcept {
         return mVariantFilter;
     }
 
-    const std::unordered_map<std::string, std::string>& getDefines() const noexcept {
+    const StringReplacementMap& getDefines() const noexcept {
         return mDefines;
+    }
+
+    const StringReplacementMap& getTemplateMap() const noexcept {
+        return mTemplateMap;
+    }
+
+    filament::backend::FeatureLevel getFeatureLevel() const noexcept {
+        return mFeatureLevel;
     }
 
 protected:
@@ -123,13 +140,16 @@ protected:
     bool mIsValid = true;
     bool mPrintShaders = false;
     bool mRawShaderMode = false;
+    bool mNoSamplerValidation = false;
     Optimization mOptimizationLevel = Optimization::PERFORMANCE;
     Metadata mReflectionTarget = Metadata::NONE;
     Platform mPlatform = Platform::ALL;
     OutputFormat mOutputFormat = OutputFormat::BLOB;
     TargetApi mTargetApi = (TargetApi) 0;
-    std::unordered_map<std::string, std::string> mDefines;
-    uint8_t mVariantFilter = 0;
+    filament::backend::FeatureLevel mFeatureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
+    StringReplacementMap mDefines;
+    StringReplacementMap mTemplateMap;
+    filament::UserVariantFilterMask mVariantFilter = 0;
 };
 
 }

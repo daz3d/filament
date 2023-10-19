@@ -46,25 +46,28 @@ spv_result_t ValidateAdjacency(ValidationState_t& _) {
   for (size_t i = 0; i < instructions.size(); ++i) {
     const auto& inst = instructions[i];
     switch (inst.opcode()) {
-      case SpvOpFunction:
-      case SpvOpFunctionParameter:
+      case spv::Op::OpFunction:
+      case spv::Op::OpFunctionParameter:
         adjacency_status = IN_NEW_FUNCTION;
         break;
-      case SpvOpLabel:
+      case spv::Op::OpLabel:
         adjacency_status =
             adjacency_status == IN_NEW_FUNCTION ? IN_ENTRY_BLOCK : PHI_VALID;
         break;
-      case SpvOpExtInst:
+      case spv::Op::OpExtInst:
         // If it is a debug info instruction, we do not change the status to
         // allow debug info instructions before OpVariable in a function.
         // TODO(https://gitlab.khronos.org/spirv/SPIR-V/issues/533): We need
         // to discuss the location of DebugScope, DebugNoScope, DebugDeclare,
         // and DebugValue.
-        if (!spvExtInstIsDebugInfo(inst.ext_inst_type())) {
+        // NOTE: This does not apply to the non-semantic vulkan debug info.
+        if (!spvExtInstIsDebugInfo(inst.ext_inst_type()) ||
+            inst.ext_inst_type() ==
+                SPV_EXT_INST_TYPE_NONSEMANTIC_SHADER_DEBUGINFO_100) {
           adjacency_status = PHI_AND_VAR_INVALID;
         }
         break;
-      case SpvOpPhi:
+      case spv::Op::OpPhi:
         if (adjacency_status != PHI_VALID) {
           return _.diag(SPV_ERROR_INVALID_DATA, &inst)
                  << "OpPhi must appear within a non-entry block before all "
@@ -72,15 +75,15 @@ spv_result_t ValidateAdjacency(ValidationState_t& _) {
                  << "(except for OpLine, which can be mixed with OpPhi).";
         }
         break;
-      case SpvOpLine:
-      case SpvOpNoLine:
+      case spv::Op::OpLine:
+      case spv::Op::OpNoLine:
         break;
-      case SpvOpLoopMerge:
+      case spv::Op::OpLoopMerge:
         adjacency_status = PHI_AND_VAR_INVALID;
         if (i != (instructions.size() - 1)) {
           switch (instructions[i + 1].opcode()) {
-            case SpvOpBranch:
-            case SpvOpBranchConditional:
+            case spv::Op::OpBranch:
+            case spv::Op::OpBranchConditional:
               break;
             default:
               return _.diag(SPV_ERROR_INVALID_DATA, &inst)
@@ -91,12 +94,12 @@ spv_result_t ValidateAdjacency(ValidationState_t& _) {
           }
         }
         break;
-      case SpvOpSelectionMerge:
+      case spv::Op::OpSelectionMerge:
         adjacency_status = PHI_AND_VAR_INVALID;
         if (i != (instructions.size() - 1)) {
           switch (instructions[i + 1].opcode()) {
-            case SpvOpBranchConditional:
-            case SpvOpSwitch:
+            case spv::Op::OpBranchConditional:
+            case spv::Op::OpSwitch:
               break;
             default:
               return _.diag(SPV_ERROR_INVALID_DATA, &inst)
@@ -107,8 +110,9 @@ spv_result_t ValidateAdjacency(ValidationState_t& _) {
           }
         }
         break;
-      case SpvOpVariable:
-        if (inst.GetOperandAs<SpvStorageClass>(2) == SpvStorageClassFunction &&
+      case spv::Op::OpVariable:
+        if (inst.GetOperandAs<spv::StorageClass>(2) ==
+                spv::StorageClass::Function &&
             adjacency_status != IN_ENTRY_BLOCK) {
           return _.diag(SPV_ERROR_INVALID_DATA, &inst)
                  << "All OpVariable instructions in a function must be the "

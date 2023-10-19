@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "private/backend/MetalPlatform.h"
+#include "MetalPlatform.h"
 
 #include "MetalDriverFactory.h"
 
@@ -22,17 +22,16 @@
 
 #import <Foundation/Foundation.h>
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
-DefaultPlatform* createDefaultMetalPlatform() {
+Platform* createDefaultMetalPlatform() {
     return new MetalPlatform();
 }
 
 MetalPlatform::~MetalPlatform() = default;
 
-Driver* MetalPlatform::createDriver(void* sharedContext) noexcept {
-    return MetalDriverFactory::create(this);
+Driver* MetalPlatform::createDriver(void* /*sharedContext*/, const Platform::DriverConfig& driverConfig) noexcept {
+    return MetalDriverFactory::create(this, driverConfig);
 }
 
 id<MTLDevice> MetalPlatform::createDevice() noexcept {
@@ -75,5 +74,4 @@ id<MTLCommandBuffer> MetalPlatform::createAndEnqueueCommandBuffer() noexcept {
     return commandBuffer;
 }
 
-} // namespace backend
 } // namespace filament

@@ -33,7 +33,8 @@ class FuzzerPass {
   FuzzerPass(opt::IRContext* ir_context,
              TransformationContext* transformation_context,
              FuzzerContext* fuzzer_context,
-             protobufs::TransformationSequence* transformations);
+             protobufs::TransformationSequence* transformations,
+             bool ignore_inapplicable_transformations);
 
   virtual ~FuzzerPass();
 
@@ -158,14 +159,14 @@ class FuzzerPass {
   // already exist) and storage class |storage_class|.  A transformation is
   // applied to add the pointer if it does not already exist.
   uint32_t FindOrCreatePointerType(uint32_t base_type_id,
-                                   SpvStorageClass storage_class);
+                                   spv::StorageClass storage_class);
 
   // Returns the id of an OpTypePointer instruction, with a integer base
   // type of width and signedness specified by |width| and |is_signed|,
   // respectively.  If the pointer type or required integer base type do not
   // exist, transformations are applied to add them.
   uint32_t FindOrCreatePointerToIntegerType(uint32_t width, bool is_signed,
-                                            SpvStorageClass storage_class);
+                                            spv::StorageClass storage_class);
 
   // Returns the id of an OpConstant instruction, with a integer type of
   // width and signedness specified by |width| and |is_signed|, respectively,
@@ -238,7 +239,7 @@ class FuzzerPass {
   //   storage class, and the sequence will have multiple elements if there are
   //   repeated pointer declarations for the same basic type and storage class.
   std::pair<std::vector<uint32_t>, std::map<uint32_t, std::vector<uint32_t>>>
-  GetAvailableBasicTypesAndPointers(SpvStorageClass storage_class) const;
+  GetAvailableBasicTypesAndPointers(spv::StorageClass storage_class) const;
 
   // Given a type id, |scalar_or_composite_type_id|, which must correspond to
   // some scalar or composite type, returns the result id of an instruction
@@ -321,6 +322,10 @@ class FuzzerPass {
   TransformationContext* transformation_context_;
   FuzzerContext* fuzzer_context_;
   protobufs::TransformationSequence* transformations_;
+  // If set, then transformations that should be applicable by construction are
+  // still tested for applicability, and ignored if they turn out to be
+  // inapplicable. Otherwise, applicability by construction is asserted.
+  const bool ignore_inapplicable_transformations_;
 };
 
 }  // namespace fuzz

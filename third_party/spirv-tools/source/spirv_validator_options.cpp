@@ -120,3 +120,13 @@ void spvValidatorOptionsSetSkipBlockLayout(spv_validator_options options,
                                            bool val) {
   options->skip_block_layout = val;
 }
+
+void spvValidatorOptionsSetAllowLocalSizeId(spv_validator_options options,
+                                            bool val) {
+  options->allow_localsizeid = val;
+}
+
+void spvValidatorOptionsSetFriendlyNames(spv_validator_options options,
+                                         bool val) {
+  options->use_friendly_names = val;
+}

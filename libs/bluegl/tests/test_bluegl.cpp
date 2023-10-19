@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <bluegl/BlueGLDefines.h>
 #include <bluegl/BlueGL.h>
 
 #include "OpenGLSupport.hpp"

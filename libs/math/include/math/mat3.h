@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef MATH_MAT3_H_
-#define MATH_MAT3_H_
+#ifndef TNT_MATH_MAT3_H
+#define TNT_MATH_MAT3_H
 
-#include <math/quat.h>
 #include <math/TMatHelpers.h>
-#include <math/vec3.h>
 #include <math/compiler.h>
+#include <math/quat.h>
+#include <math/vec3.h>
 
 #include <limits.h>
 #include <stdint.h>
@@ -430,7 +430,20 @@ constexpr TQuaternion<T> TMat33<T>::packTangentFrame(const TMat33<T>& m, size_t 
     return q;
 }
 
+
 }  // namespace details
+
+/**
+ * Pre-scale a matrix m by the inverse of the largest scale factor to avoid large post-transform
+ * magnitudes in the shader. This is useful for normal transformations, to avoid large
+ * post-transform magnitudes in the shader, especially in the fragment shader, where we use
+ * medium precision.
+ */
+template<typename T>
+constexpr details::TMat33<T> prescaleForNormals(const details::TMat33<T>& m) noexcept {
+    return m * details::TMat33<T>(
+                    1.0 / std::sqrt(max(float3{length2(m[0]), length2(m[1]), length2(m[2])})));
+}
 
 // ----------------------------------------------------------------------------------------
 
@@ -487,4 +500,4 @@ constexpr void swap(filament::math::details::TMat33<T>& lhs,
 }
 }
 
-#endif  // MATH_MAT3_H_
+#endif  // TNT_MATH_MAT3_H

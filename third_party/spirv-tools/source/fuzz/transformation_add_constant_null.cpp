@@ -35,21 +35,21 @@ bool TransformationAddConstantNull::IsApplicable(
   if (!fuzzerutil::IsFreshId(context, message_.fresh_id())) {
     return false;
   }
-  auto type = context->get_type_mgr()->GetType(message_.type_id());
+  auto type = context->get_def_use_mgr()->GetDef(message_.type_id());
   // The type must exist.
   if (!type) {
     return false;
   }
   // The type must be one of the types for which null constants are allowed,
   // according to the SPIR-V spec.
-  return fuzzerutil::IsNullConstantSupported(*type);
+  return fuzzerutil::IsNullConstantSupported(context, *type);
 }
 
 void TransformationAddConstantNull::Apply(
     opt::IRContext* ir_context, TransformationContext* /*unused*/) const {
   auto new_instruction = MakeUnique<opt::Instruction>(
-      ir_context, SpvOpConstantNull, message_.type_id(), message_.fresh_id(),
-      opt::Instruction::OperandList());
+      ir_context, spv::Op::OpConstantNull, message_.type_id(),
+      message_.fresh_id(), opt::Instruction::OperandList());
   auto new_instruction_ptr = new_instruction.get();
   ir_context->module()->AddGlobalValue(std::move(new_instruction));
   fuzzerutil::UpdateModuleIdBound(ir_context, message_.fresh_id());

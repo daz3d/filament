@@ -23,14 +23,10 @@
 #include <ibl/Image.h>
 #include <ibl/utilities.h>
 
-#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
-#include <imageio/BlockCompression.h>
-#endif
-
 #include <imageio/ImageDecoder.h>
 #include <imageio/ImageEncoder.h>
 
-#include <image/KtxBundle.h>
+#include <image/Ktx1Bundle.h>
 #include <image/ColorTransform.h>
 
 #include <utils/JobSystem.h>
@@ -58,7 +54,7 @@ using namespace image;
 // -----------------------------------------------------------------------------------------------
 
 enum class ShFile {
-    SH_NONE, SH_FILE, SH_TEXT
+    SH_NONE, SH_FILE, SH_TEXT, SH_BIN
 };
 
 static const size_t DFG_LUT_DEFAULT_SIZE = 128;
@@ -131,13 +127,16 @@ static void iblLutDfg(utils::JobSystem& js, const utils::Path& filename, size_t 
         bool cloth);
 static void extractCubemapFaces(utils::JobSystem& js, const utils::Path& iname, const Cubemap& cm,
         const utils::Path& dir);
-static void outputSh(std::ostream& out, const std::unique_ptr<filament::math::float3[]>& sh, size_t numBands);
+static void outputSh(std::ostream& out, const std::unique_ptr<filament::math::float3[]>& sh,
+        size_t numBands);
+static void outputBinarySh(std::ostream& out, const std::unique_ptr<filament::math::float3[]>& sh,
+        size_t numBands);
 static void UTILS_UNUSED outputSpectrum(std::ostream& out,
         const std::unique_ptr<filament::math::float3[]>& sh, size_t numBands);
 static void saveImage(const std::string& path, ImageEncoder::Format format, const Image& image,
         const std::string& compression);
 static LinearImage toLinearImage(const Image& image);
-static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubemap& cm);
+static void exportKtxFaces(Ktx1Bundle& container, uint32_t miplevel, const Cubemap& cm);
 
 // -----------------------------------------------------------------------------------------------
 
@@ -167,20 +166,13 @@ static void printUsage(char* name) {
             "       Quiet mode. Suppress all non-error output\n\n"
             "   --type=[cubemap|equirect|octahedron|ktx], -t [cubemap|equirect|octahedron|ktx]\n"
             "       Specify output type (default: cubemap)\n\n"
-            "   --format=[exr|hdr|psd|rgbm|rgb32f|png|dds|ktx], -f [exr|hdr|psd|rgbm|rgb32f|png|dds|ktx]\n"
+            "   --format=[exr|hdr|psd|rgbm|rgb32f|png|dds|ktx], -f [format]\n"
             "       Specify output file format. ktx implies -type=ktx.\n"
-            "       KTX files are always encoded with 3-channel RGB_10_11_11_REV data\n\n"
+            "       KTX files are always KTX1 files, not KTX2.\n"
+            "       They are encoded with 3-channel RGB_10_11_11_REV data\n\n"
             "   --compression=COMPRESSION, -c COMPRESSION\n"
             "       Format specific compression:\n"
-#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
-            "           KTX:\n"
-            "             astc_[fast|thorough]_[ldr|hdr]_WxH, where WxH is a valid block size\n"
-            "             s3tc_rgba_dxt5\n"
-            "             etc_FORMAT_METRIC_EFFORT\n"
-            "               FORMAT is rgb8_alpha, srgb8_alpha, rgba8, or srgb8_alpha8\n"
-            "               METRIC is rgba, rgbx, rec709, numeric, or normalxyz\n"
-            "               EFFORT is an integer between 0 and 100\n"
-#endif
+            "           KTX: ignored\n"
             "           PNG: Ignored\n"
             "           PNG RGBM: Ignored\n"
             "           Radiance: Ignored\n"
@@ -224,7 +216,7 @@ static void printUsage(char* name) {
             "       Minimum LOD size [default: 16]\n\n"
             "   --sh=bands\n"
             "       SH decomposition of input cubemap\n\n"
-            "   --sh-output=filename.[exr|hdr|psd|rgbm|rgb32f|png|dds|txt]\n"
+            "   --sh-output=filename.[exr|hdr|psd|rgbm|rgb32f|png|dds|txt|bin]\n"
             "       SH output format. The filename extension determines the output format\n\n"
             "   --sh-irradiance, -i\n"
             "       Irradiance SH coefficients\n\n"
@@ -389,6 +381,8 @@ static int handleCommandLineArgments(int argc, char* argv[]) {
                 g_sh_filename = arg;
                 if (g_sh_filename.getExtension() == "txt") {
                     g_sh_file = ShFile::SH_TEXT;
+                } else if (g_sh_filename.getExtension() == "bin") {
+                    g_sh_file = ShFile::SH_BIN;
                 }
                 break;
             case 'w':
@@ -515,8 +509,12 @@ int main(int argc, char* argv[]) {
         g_sh_compute = 3;
         g_sh_shader = true;
         g_sh_irradiance = true;
-        g_sh_filename = sh_dir + "sh.txt";
-        g_sh_file = ShFile::SH_TEXT;
+        if (g_sh_file == ShFile::SH_NONE) {
+            g_sh_file = ShFile::SH_TEXT;
+            g_sh_filename = sh_dir + "sh.txt";
+        } else {
+            g_sh_filename = sh_dir + g_sh_filename.getName();
+        }
         g_sh_output = true;
 
         // faces
@@ -763,25 +761,25 @@ void sphericalHarmonics(utils::JobSystem& js, const utils::Path& iname, const Cu
             cm.makeSeamless();
 
             if (g_sh_file == ShFile::SH_FILE) {
-                Image image;
-                if (g_type == OutputType::EQUIRECT) {
-                    size_t dim = cm.getDimensions();
-                    image = Image(dim * 2, dim);
-                    CubemapUtils::cubemapToEquirectangular(js, image, cm);
-                }
-
+                Image outputImage;
                 if (g_type == OutputType::OCTAHEDRON) {
-                    size_t dim = cm.getDimensions();
-                    image = Image(dim, dim);
-                    CubemapUtils::cubemapToOctahedron(js, image, cm);
+                    size_t outputDimension = cm.getDimensions();
+                    outputImage = Image(outputDimension, outputDimension);
+                    CubemapUtils::cubemapToOctahedron(js, outputImage, cm);
+                } else /* EQUIRECT and any other format */ {
+                    size_t outputDimension = cm.getDimensions();
+                    outputImage = Image(outputDimension * 2, outputDimension);
+                    CubemapUtils::cubemapToEquirectangular(js, outputImage, cm);
                 }
 
-                saveImage(g_sh_filename, ImageEncoder::chooseFormat(g_sh_filename.getName()),
-                        image, g_compression);
-            }
-            if (g_sh_file == ShFile::SH_TEXT) {
+                saveImage(g_sh_filename, ImageEncoder::chooseFormat(
+                        g_sh_filename.getName()), outputImage, g_compression);
+            } else if (g_sh_file == ShFile::SH_TEXT) {
                 std::ofstream outputStream(g_sh_filename, std::ios::trunc);
                 outputSh(outputStream, sh, g_sh_compute);
+            } else if (g_sh_file == ShFile::SH_BIN) {
+                std::ofstream outputStream(g_sh_filename, std::ios::trunc | std::ios::binary);
+                outputBinarySh(outputStream, sh, g_sh_compute);
             }
         }
 
@@ -800,9 +798,9 @@ void sphericalHarmonics(utils::JobSystem& js, const utils::Path& iname, const Cu
             }
 
             { // save a file with the "other one" (irradiance or radiance)
-                std::unique_ptr<filament::math::float3[]> sh
+                std::unique_ptr<filament::math::float3[]> renderSh
                     = CubemapSH::computeSH(js, inputCubemap, g_sh_compute, !g_sh_irradiance);
-                CubemapSH::renderSH(js, cm, sh, g_sh_compute);
+                CubemapSH::renderSH(js, cm, renderSh, g_sh_compute);
                 std::string basename = iname.getNameWithoutExtension();
                 utils::Path filePath =
                         outputDir + (basename + "_sh" + (!g_sh_irradiance ? "_i" : "_r") + ".hdr");
@@ -836,6 +834,17 @@ void outputSh(std::ostream& out,
         }
     }
 }
+
+void outputBinarySh(std::ostream& out,
+        const std::unique_ptr<filament::math::float3[]>& sh, size_t numBands) {
+    for (ssize_t l = 0; l < numBands; l++) {
+        for (ssize_t m = -l; m <= l; m++) {
+            size_t i = CubemapSH::getShIndex(m, (size_t) l);
+            out.write((char*) &sh[i], sizeof(float3));
+        }
+    }
+}
+
 
 void UTILS_UNUSED outputSpectrum(std::ostream& out,
         const std::unique_ptr<filament::math::float3[]>& sh, size_t numBands) {
@@ -936,14 +945,14 @@ void iblRoughnessPrefilter(
 
     // It's convenient to create an empty KTX bundle on the stack in this scope, regardless of
     // whether KTX is requested. It does not consume memory if empty.
-    KtxBundle container((uint32_t) numLevels, 1, true);
+    Ktx1Bundle container((uint32_t) numLevels, 1, true);
     container.info() = {
-        .endianness = KtxBundle::ENDIAN_DEFAULT,
-        .glType = KtxBundle::R11F_G11F_B10F,
+        .endianness = Ktx1Bundle::ENDIAN_DEFAULT,
+        .glType = Ktx1Bundle::R11F_G11F_B10F,
         .glTypeSize = 1,
-        .glFormat = KtxBundle::RGB,
-        .glInternalFormat = KtxBundle::R11F_G11F_B10F,
-        .glBaseInternalFormat = KtxBundle::R11F_G11F_B10F,
+        .glFormat = Ktx1Bundle::RGB,
+        .glInternalFormat = Ktx1Bundle::R11F_G11F_B10F,
+        .glBaseInternalFormat = Ktx1Bundle::R11F_G11F_B10F,
         .pixelWidth = 1U << baseExp,
         .pixelHeight = 1U << baseExp,
         .pixelDepth = 0,
@@ -1083,19 +1092,19 @@ void iblDiffuseIrradiance(utils::JobSystem& js, const utils::Path& iname,
     std::string ext = ImageEncoder::chooseExtension(g_format);
 
     if (g_type == OutputType::EQUIRECT) {
-        size_t dim = dst.getDimensions();
-        Image image(dim * 2, dim);
-        CubemapUtils::cubemapToEquirectangular(js, image, dst);
+        size_t outputDimensions = dst.getDimensions();
+        Image outputImage(outputDimensions * 2, outputDimensions);
+        CubemapUtils::cubemapToEquirectangular(js, outputImage, dst);
         std::string filename = outputDir + ("irradiance" + ext);
-        saveImage(filename, g_format, image, g_compression);
+        saveImage(filename, g_format, outputImage, g_compression);
     }
 
     if (g_type == OutputType::OCTAHEDRON) {
-        size_t dim = dst.getDimensions();
-        Image image(dim, dim);
-        CubemapUtils::cubemapToOctahedron(js, image, dst);
+        size_t outputDimensions = dst.getDimensions();
+        Image outputImage(outputDimensions, outputDimensions);
+        CubemapUtils::cubemapToOctahedron(js, outputImage, dst);
         std::string filename = outputDir + ("irradiance" + ext);
-        saveImage(filename, g_format, image, g_compression);
+        saveImage(filename, g_format, outputImage, g_compression);
     }
 
     if (g_type == OutputType::FACES) {
@@ -1195,14 +1204,14 @@ void extractCubemapFaces(utils::JobSystem& js, const utils::Path& iname, const C
 
     if (g_type == OutputType::KTX) {
         const uint32_t dim = (const uint32_t) cm.getDimensions();
-        KtxBundle container(1, 1, true);
+        Ktx1Bundle container(1, 1, true);
         container.info() = {
-            .endianness = KtxBundle::ENDIAN_DEFAULT,
-            .glType = KtxBundle::R11F_G11F_B10F,
+            .endianness = Ktx1Bundle::ENDIAN_DEFAULT,
+            .glType = Ktx1Bundle::R11F_G11F_B10F,
             .glTypeSize = 1,
-            .glFormat = KtxBundle::RGB,
-            .glInternalFormat = KtxBundle::R11F_G11F_B10F,
-            .glBaseInternalFormat = KtxBundle::R11F_G11F_B10F,
+            .glFormat = Ktx1Bundle::RGB,
+            .glInternalFormat = Ktx1Bundle::R11F_G11F_B10F,
+            .glBaseInternalFormat = Ktx1Bundle::R11F_G11F_B10F,
             .pixelWidth = dim,
             .pixelHeight = dim,
             .pixelDepth = 0,
@@ -1268,33 +1277,8 @@ static void saveImage(const std::string& path, ImageEncoder::Format format, cons
     }
 }
 
-static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubemap& cm) {
+static void exportKtxFaces(Ktx1Bundle& container, uint32_t miplevel, const Cubemap& cm) {
     auto& info = container.info();
-
-#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
-    CompressionConfig compression {};
-    if (!g_compression.empty()) {
-        bool valid = parseOptionString(g_compression, &compression);
-        if (!valid) {
-            std::cerr << "Unrecognized compression: " << g_compression << std::endl;
-            exit(1);
-        }
-        // The KTX spec says the following for compressed textures: glTypeSize should 1,
-        // glFormat should be 0, and glBaseInternalFormat should be RED, RG, RGB, or RGBA.
-        // The glInternalFormat field is the only field that specifies the actual format.
-        info.glTypeSize = 1;
-        info.glFormat = 0;
-        // FIXME: not sure this is always correct to use RGB here, does this work with HDR formats?
-        info.glBaseInternalFormat = KtxBundle::RGB;
-        info.glInternalFormat = KtxBundle::RGB;
-    }
-#else
-    if (!g_compression.empty()) {
-        std::cerr << "Block compression is not supported in this build." << std::endl;
-        exit(1);
-    }
-#endif
-
     const uint32_t dim = (const uint32_t) cm.getDimensions();
     for (uint32_t j = 0; j < 6; j++) {
         KtxBlobIndex blobIndex {(uint32_t) miplevel, 0, j};
@@ -1309,16 +1293,6 @@ static void exportKtxFaces(KtxBundle& container, uint32_t miplevel, const Cubema
             default: face = Cubemap::Face::PX; break; // make linters happy
         }
         LinearImage image = toLinearImage(cm.getImageForFace(face));
-
-#ifdef IMAGEIO_SUPPORTS_BLOCK_COMPRESSION
-        if (compression.type != CompressionConfig::INVALID) {
-            CompressedTexture tex = compressTexture(compression, image);
-            container.setBlob(blobIndex, tex.data.get(), tex.size);
-            info.glInternalFormat = (uint32_t) tex.format;
-            continue;
-        }
-#endif
-
         auto uintData = fromLinearToRGB_10_11_11_REV(image);
         container.setBlob(blobIndex, uintData.get(), dim * dim * 4);
     }

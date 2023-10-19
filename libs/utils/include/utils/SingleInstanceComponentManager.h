@@ -19,6 +19,7 @@
 
 #include <utils/compiler.h>
 #include <utils/Entity.h>
+#include <utils/EntityInstance.h>
 #include <utils/EntityManager.h>
 #include <utils/StructureOfArrays.h>
 
@@ -59,8 +60,11 @@ private:
 protected:
     static constexpr size_t ENTITY_INDEX = sizeof ... (Elements);
 
+
 public:
     using SoA = StructureOfArrays<Elements ..., Entity>;
+
+    using Structure = typename SoA::Structure;
 
     using Instance = EntityInstanceBase::Type;
 
@@ -68,11 +72,11 @@ public:
         // We always start with a dummy entry because index=0 is reserved. The component
         // at index = 0, is guaranteed to be default-initialized.
         // Sub-classes can use this to their advantage.
-        mData.push_back();
+        mData.push_back(Structure{});
     }
 
-    SingleInstanceComponentManager(SingleInstanceComponentManager&& rhs) noexcept {/* = default */}
-    SingleInstanceComponentManager& operator=(SingleInstanceComponentManager&& rhs) noexcept {/* = default */}
+    SingleInstanceComponentManager(SingleInstanceComponentManager&&) noexcept {/* = default */}
+    SingleInstanceComponentManager& operator=(SingleInstanceComponentManager&&) noexcept {/* = default */}
     ~SingleInstanceComponentManager() noexcept = default;
 
     // not copyable
@@ -237,7 +241,7 @@ protected:
         size_t count = getComponentCount();
         size_t aliveInARow = 0;
         default_random_engine& rng = mRng;
-        #pragma nounroll
+        UTILS_NOUNROLL
         while (count && aliveInARow < ratio) {
             // note: using the modulo favorizes lower number
             size_t i = rng() % count;
@@ -256,7 +260,7 @@ protected:
 
 private:
     // maps an entity to an instance index
-    tsl::robin_map<Entity, Instance> mInstanceMap;
+    tsl::robin_map<Entity, Instance, Entity::Hasher> mInstanceMap;
     default_random_engine mRng;
 };
 
@@ -268,7 +272,7 @@ SingleInstanceComponentManager<Elements ...>::addComponent(Entity e) {
     if (!e.isNull()) {
         if (!hasComponent(e)) {
             // this is like a push_back(e);
-            mData.push_back().template back<ENTITY_INDEX>() = e;
+            mData.push_back(Structure{}).template back<ENTITY_INDEX>() = e;
             // index 0 is used when the component doesn't exist
             ci = Instance(mData.size() - 1);
             mInstanceMap[e] = ci;

@@ -108,7 +108,7 @@ bool TransformationVectorShuffle::IsApplicable(
   // It must be legitimate to insert an OpVectorShuffle before the identified
   // instruction.
   return fuzzerutil::CanInsertOpcodeBeforeInstruction(
-      SpvOpVectorShuffle, instruction_to_insert_before);
+      spv::Op::OpVectorShuffle, instruction_to_insert_before);
 }
 
 void TransformationVectorShuffle::Apply(
@@ -134,8 +134,8 @@ void TransformationVectorShuffle::Apply(
       FindInstruction(message_.instruction_to_insert_before(), ir_context);
   opt::Instruction* new_instruction =
       insert_before->InsertBefore(MakeUnique<opt::Instruction>(
-          ir_context, SpvOpVectorShuffle, result_type_id, message_.fresh_id(),
-          shuffle_operands));
+          ir_context, spv::Op::OpVectorShuffle, result_type_id,
+          message_.fresh_id(), shuffle_operands));
   fuzzerutil::UpdateModuleIdBound(ir_context, message_.fresh_id());
   // Inform the def-use manager about the new instruction and record its basic
   // block.
@@ -204,7 +204,7 @@ void TransformationVectorShuffle::AddDataSynonymFacts(
       // Check that the first vector can participate in data synonym facts.
       if (!fuzzerutil::CanMakeSynonymOf(
               ir_context, *transformation_context,
-              ir_context->get_def_use_mgr()->GetDef(message_.vector1()))) {
+              *ir_context->get_def_use_mgr()->GetDef(message_.vector1()))) {
         continue;
       }
       descriptor_for_source_component =
@@ -213,7 +213,7 @@ void TransformationVectorShuffle::AddDataSynonymFacts(
       // Check that the second vector can participate in data synonym facts.
       if (!fuzzerutil::CanMakeSynonymOf(
               ir_context, *transformation_context,
-              ir_context->get_def_use_mgr()->GetDef(message_.vector2()))) {
+              *ir_context->get_def_use_mgr()->GetDef(message_.vector2()))) {
         continue;
       }
       auto index_into_vector_2 =

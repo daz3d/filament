@@ -7,14 +7,12 @@ set(TARGET cmgen)
 # Sources and headers
 # ==================================================================================================
 set(HDRS
-    src/JobQueue.h
-    src/ProgressUpdater.h
+        src/ProgressUpdater.h
 )
 
 set(SRCS
     src/cmgen.cpp
-    src/JobQueue.cpp
-    src/ProgressUpdater.cpp
+        src/ProgressUpdater.cpp
 )
 
 # ==================================================================================================
@@ -22,7 +20,8 @@ set(SRCS
 # ==================================================================================================
 add_executable(${TARGET} ${HDRS} ${SRCS})
 
-target_link_libraries(${TARGET} PRIVATE math utils ibl z image imageio getopt)
+target_link_libraries(${TARGET} PRIVATE ibl imageio getopt)
+set_target_properties(${TARGET} PROPERTIES FOLDER Tools)
 
 # ==================================================================================================
 # Compile options and optimizations
@@ -30,7 +29,7 @@ target_link_libraries(${TARGET} PRIVATE math utils ibl z image imageio getopt)
 if (MSVC)
     target_compile_options(${TARGET} PRIVATE /fp:fast)
 else()
-    target_compile_options(${TARGET} PRIVATE -ffast-math)
+    target_compile_options(${TARGET} PRIVATE -ffast-math -fno-finite-math-only)
 endif()
 
 if (MSVC)
@@ -55,5 +54,6 @@ install(TARGETS ${TARGET} RUNTIME DESTINATION bin)
 # ==================================================================================================
 if (NOT ANDROID)
     add_executable(test_${TARGET} tests/test_cmgen.cpp)
-    target_link_libraries(test_${TARGET} PRIVATE image imageio gtest)
+    target_link_libraries(test_${TARGET} PRIVATE imageio gtest)
+    set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
 endif()

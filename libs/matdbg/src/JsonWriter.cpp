@@ -86,9 +86,11 @@ static void printStringChunk(ostream& json, const ChunkContainer& container,
 static bool printMaterial(ostream& json, const ChunkContainer& container) {
     printStringChunk(json, container, MaterialName, "name");
     printUint32Chunk(json, container, MaterialVersion, "version");
+    printUint32Chunk(json, container, MaterialFeatureLevel, "feature_level");
     json << "\"shading\": {\n";
     printChunk<Shading, uint8_t>(json, container, MaterialShading, "model");
     printChunk<MaterialDomain, uint8_t>(json, container, ChunkType::MaterialDomain, "material_domain");
+    printChunk<UserVariantFilterMask, uint8_t>(json, container, ChunkType::MaterialVariantFilterMask, "variant_filter_mask");
     printChunk<VertexDomain, uint8_t>(json, container, MaterialVertexDomain, "vertex_domain");
     printChunk<Interpolation, uint8_t>(json, container, MaterialInterpolation, "interpolation");
     printChunk<bool, bool>(json, container, MaterialShadowMultiplier, "shadow_multiply");
@@ -103,6 +105,7 @@ static bool printMaterial(ostream& json, const ChunkContainer& container) {
     printChunk<bool, bool>(json, container, MaterialColorWrite, "color_write");
     printChunk<bool, bool>(json, container, MaterialDepthWrite, "depth_write");
     printChunk<bool, bool>(json, container, MaterialDepthTest, "depth_test");
+    printChunk<bool, bool>(json, container, MaterialInstanced, "instanced");
     printChunk<bool, bool>(json, container, MaterialDoubleSided, "double_sided");
     printChunk<CullingMode, uint8_t>(json, container, MaterialCullingMode, "culling");
     printChunk<TransparencyMode, uint8_t>(json, container, MaterialTransparencyMode, "transparency");
@@ -110,7 +113,7 @@ static bool printMaterial(ostream& json, const ChunkContainer& container) {
     return true;
 }
 
-static bool printParametersInfo(ostream& json, const ChunkContainer& container) {
+static bool printParametersInfo(ostream&, const ChunkContainer&) {
     // TODO
     return true;
 }
@@ -121,14 +124,14 @@ static void printShaderInfo(ostream& json, const vector<ShaderInfo>& info, const
     for (uint64_t i = 0; i < info.size(); ++i) {
         const auto& item = info[i];
         string variantString = formatVariantString(item.variant, domain);
-        string ps = (item.pipelineStage == backend::ShaderType::VERTEX) ? "vertex  " : "fragment";
+        string ps = (item.pipelineStage == backend::ShaderStage::VERTEX) ? "vertex  " : "fragment";
         json
-            << "    {"
-            << "\"index\": \"" << std::setw(2) << i << "\", "
-            << "\"shaderModel\": \"" << toString(item.shaderModel) << "\", "
-            << "\"pipelineStage\": \"" << ps << "\", "
-            << "\"variantString\": \"" << variantString << "\", "
-            << "\"variant\": \"" << std::hex << int(item.variant) << std::dec << "\" }"
+                << "    {"
+                << "\"index\": \"" << std::setw(2) << i << "\", "
+                << "\"shaderModel\": \"" << toString(item.shaderModel) << "\", "
+                << "\"pipelineStage\": \"" << ps << "\", "
+                << "\"variantString\": \"" << variantString << "\", "
+                << "\"variant\": " << +item.variant.key << " }"
             << ((i == info.size() - 1) ? "\n" : ",\n");
     }
 }

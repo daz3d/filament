@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef UTILS_PANIC_H_
-#define UTILS_PANIC_H_
+#ifndef TNT_UTILS_PANIC_H
+#define TNT_UTILS_PANIC_H
 
 #include <string>
 
@@ -424,8 +424,10 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
 
 #ifndef NDEBUG
 #   define PANIC_FILE(F) (F)
+#   define PANIC_FUNCTION __PRETTY_FUNCTION__
 #else
 #   define PANIC_FILE(F) ""
+#   define PANIC_FUNCTION __func__
 #endif
 
 /**
@@ -433,7 +435,7 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
  * @param format printf-style string describing the error in more details
  */
 #define PANIC_PRECONDITION(format, ...)                                                            \
-    ::utils::PreconditionPanic::panic(__PRETTY_FUNCTION__,                                         \
+    ::utils::PreconditionPanic::panic(PANIC_FUNCTION,                                              \
             PANIC_FILE(__FILE__), __LINE__, format, ##__VA_ARGS__)
 
 /**
@@ -441,7 +443,7 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
  * @param format printf-style string describing the error in more details
  */
 #define PANIC_POSTCONDITION(format, ...)                                                           \
-    ::utils::PostconditionPanic::panic(__PRETTY_FUNCTION__,                                        \
+    ::utils::PostconditionPanic::panic(PANIC_FUNCTION,                                             \
             PANIC_FILE(__FILE__), __LINE__, format, ##__VA_ARGS__)
 
 /**
@@ -449,7 +451,7 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
  * @param format printf-style string describing the error in more details
  */
 #define PANIC_ARITHMETIC(format, ...)                                                              \
-    ::utils::ArithmeticPanic::panic(__PRETTY_FUNCTION__,                                           \
+    ::utils::ArithmeticPanic::panic(PANIC_FUNCTION,                                                \
             PANIC_FILE(__FILE__), __LINE__, format, ##__VA_ARGS__)
 
 /**
@@ -457,7 +459,7 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
  * @param format printf-style string describing the error in more details
  */
 #define PANIC_LOG(format, ...)                                                                     \
-    ::utils::details::panicLog(__PRETTY_FUNCTION__,                                                \
+    ::utils::details::panicLog(PANIC_FUNCTION,                                                     \
             PANIC_FILE(__FILE__), __LINE__, format, ##__VA_ARGS__)
 
 /**
@@ -558,4 +560,4 @@ class UTILS_PUBLIC ArithmeticPanic : public TPanic<ArithmeticPanic> {
  */
 #define ASSERT_DESTRUCTOR(cond, format, ...) (!(cond) ? PANIC_LOG(format, ##__VA_ARGS__) : (void)0)
 
-#endif  // UTILS_PANIC_H_
+#endif  // TNT_UTILS_PANIC_H

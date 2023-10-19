@@ -26,6 +26,7 @@ import android.view.animation.LinearInterpolator
 
 import com.google.android.filament.*
 import com.google.android.filament.android.DisplayHelper
+import com.google.android.filament.android.FilamentHelper
 import com.google.android.filament.utils.*
 import com.google.android.filament.android.UiHelper
 
@@ -230,7 +231,7 @@ class MainActivity : Activity() {
         animator.repeatCount = ValueAnimator.INFINITE
         animator.addUpdateListener { a ->
             val v = (a.animatedValue as Float)
-            camera.lookAt(cos(v) * 4.5, 1.5, sin(v) * 4.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+            camera.lookAt(cos(v) * 5.5, 1.5, sin(v) * 5.5, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
         }
         animator.start()
     }
@@ -252,7 +253,7 @@ class MainActivity : Activity() {
 
         // Stop the animation and any pending frame
         choreographer.removeFrameCallback(frameScheduler)
-        animator.cancel();
+        animator.cancel()
 
         // Always detach the surface before destroying the engine
         uiHelper.detach()
@@ -323,6 +324,8 @@ class MainActivity : Activity() {
             camera.setProjection(45.0, aspect, 0.1, 20.0, Camera.Fov.VERTICAL)
 
             view.viewport = Viewport(0, 0, width, height)
+
+            FilamentHelper.synchronizePendingFrames(engine)
         }
     }
 

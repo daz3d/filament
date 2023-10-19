@@ -17,12 +17,15 @@
 #ifndef TNT_FILAMENT_DETAILS_SWAPCHAIN_H
 #define TNT_FILAMENT_DETAILS_SWAPCHAIN_H
 
-#include "upcast.h"
+#include "downcast.h"
 
 #include "private/backend/DriverApi.h"
 
 #include <filament/SwapChain.h>
 
+#include <backend/CallbackHandler.h>
+
+#include <utils/Invocable.h>
 #include <utils/compiler.h>
 
 namespace filament {
@@ -61,7 +64,10 @@ public:
 
     void setFrameScheduledCallback(FrameScheduledCallback callback, void* user);
 
-    void setFrameCompletedCallback(FrameCompletedCallback callback, void* user);
+    void setFrameCompletedCallback(backend::CallbackHandler* handler,
+                utils::Invocable<void(SwapChain*)>&& callback) noexcept;
+
+    static bool isSRGBSwapChainSupported(FEngine& engine) noexcept;
 
 private:
     FEngine& mEngine;
@@ -70,7 +76,7 @@ private:
     uint64_t mConfigFlags = 0;
 };
 
-FILAMENT_UPCAST(SwapChain)
+FILAMENT_DOWNCAST(SwapChain)
 
 } // namespace filament
 

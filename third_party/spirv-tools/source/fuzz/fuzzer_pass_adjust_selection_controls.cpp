@@ -22,9 +22,10 @@ namespace fuzz {
 FuzzerPassAdjustSelectionControls::FuzzerPassAdjustSelectionControls(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAdjustSelectionControls::Apply() {
   // Consider every merge instruction in the module (via looking through all
@@ -33,7 +34,7 @@ void FuzzerPassAdjustSelectionControls::Apply() {
     for (auto& block : function) {
       if (auto merge_inst = block.GetMergeInst()) {
         // Ignore the instruction if it is not a selection merge.
-        if (merge_inst->opcode() != SpvOpSelectionMerge) {
+        if (merge_inst->opcode() != spv::Op::OpSelectionMerge) {
           continue;
         }
 
@@ -47,13 +48,14 @@ void FuzzerPassAdjustSelectionControls::Apply() {
         // The choices to change the selection control to are the set of valid
         // controls, minus the current control.
         std::vector<uint32_t> choices;
-        for (auto control :
-             {SpvSelectionControlMaskNone, SpvSelectionControlFlattenMask,
-              SpvSelectionControlDontFlattenMask}) {
-          if (control == merge_inst->GetSingleWordOperand(1)) {
+        for (auto control : {spv::SelectionControlMask::MaskNone,
+                             spv::SelectionControlMask::Flatten,
+                             spv::SelectionControlMask::DontFlatten}) {
+          if (control ==
+              spv::SelectionControlMask(merge_inst->GetSingleWordOperand(1))) {
             continue;
           }
-          choices.push_back(control);
+          choices.push_back(uint32_t(control));
         }
 
         // Apply the transformation and add it to the output transformation

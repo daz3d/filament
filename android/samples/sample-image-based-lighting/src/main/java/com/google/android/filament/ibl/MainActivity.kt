@@ -26,6 +26,7 @@ import android.view.animation.LinearInterpolator
 
 import com.google.android.filament.*
 import com.google.android.filament.android.DisplayHelper
+import com.google.android.filament.android.FilamentHelper
 import com.google.android.filament.android.UiHelper
 
 import java.nio.ByteBuffer
@@ -117,9 +118,10 @@ class MainActivity : Activity() {
     }
 
     private fun setupView() {
-        val ssaoOptions = view.ambientOcclusionOptions
-        ssaoOptions.enabled = true
-        view.ambientOcclusionOptions = ssaoOptions
+        // ambient occlusion is the cheapest effect that adds a lot of quality
+        view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply {
+            enabled = true
+        }
 
         // NOTE: Try to disable post-processing (tone-mapping, etc.) to see the difference
         // view.isPostProcessingEnabled = false
@@ -303,6 +305,8 @@ class MainActivity : Activity() {
             camera.setProjection(45.0, aspect, 0.1, 20.0, Camera.Fov.VERTICAL)
 
             view.viewport = Viewport(0, 0, width, height)
+
+            FilamentHelper.synchronizePendingFrames(engine)
         }
     }
 

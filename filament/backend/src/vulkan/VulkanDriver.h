@@ -14,142 +14,106 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_VULKANDRIVER_H
-#define TNT_FILAMENT_DRIVER_VULKANDRIVER_H
+#ifndef TNT_FILAMENT_BACKEND_VULKANDRIVER_H
+#define TNT_FILAMENT_BACKEND_VULKANDRIVER_H
 
-#include "VulkanPipelineCache.h"
 #include "VulkanBlitter.h"
-#include "VulkanDisposer.h"
 #include "VulkanConstants.h"
 #include "VulkanContext.h"
 #include "VulkanFboCache.h"
+#include "VulkanHandles.h"
+#include "VulkanPipelineCache.h"
+#include "VulkanReadPixels.h"
+#include "VulkanResourceAllocator.h"
 #include "VulkanSamplerCache.h"
 #include "VulkanStagePool.h"
 #include "VulkanUtility.h"
 
-#include "private/backend/Driver.h"
-#include "private/backend/HandleAllocator.h"
 #include "DriverBase.h"
+#include "private/backend/Driver.h"
 
-#include <utils/compiler.h>
 #include <utils/Allocator.h>
+#include <utils/compiler.h>
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
 class VulkanPlatform;
-struct VulkanRenderTarget;
 struct VulkanSamplerGroup;
 
 class VulkanDriver final : public DriverBase {
 public:
-    static Driver* create(backend::VulkanPlatform* platform,
-            const char* const* ppEnabledExtensions, uint32_t enabledExtensionCount) noexcept;
+    static Driver* create(VulkanPlatform* platform, VulkanContext const& context,
+            Platform::DriverConfig const& driverConfig) noexcept;
 
 private:
+    void debugCommandBegin(CommandStream* cmds, bool synchronous,
+            const char* methodName) noexcept override;
 
-    void debugCommandBegin(CommandStream* cmds, bool synchronous, const char* methodName) noexcept override;
-
-    inline VulkanDriver(backend::VulkanPlatform* platform,
-            const char* const* ppEnabledExtensions, uint32_t enabledExtensionCount) noexcept;
+    inline VulkanDriver(VulkanPlatform* platform, VulkanContext const& context,
+            Platform::DriverConfig const& driverConfig) noexcept;
 
     ~VulkanDriver() noexcept override;
+
+    Dispatcher getDispatcher() const noexcept final;
 
     ShaderModel getShaderModel() const noexcept final;
 
     template<typename T>
-    friend class backend::ConcreteDispatcher;
+    friend class ConcreteDispatcher;
 
-#define DECL_DRIVER_API(methodName, paramsDecl, params) \
+#define DECL_DRIVER_API(methodName, paramsDecl, params)                                            \
     UTILS_ALWAYS_INLINE inline void methodName(paramsDecl);
 
-#define DECL_DRIVER_API_SYNCHRONOUS(RetType, methodName, paramsDecl, params) \
+#define DECL_DRIVER_API_SYNCHRONOUS(RetType, methodName, paramsDecl, params)                       \
     RetType methodName(paramsDecl) override;
 
-#define DECL_DRIVER_API_RETURN(RetType, methodName, paramsDecl, params) \
-    RetType methodName##S() noexcept override; \
+#define DECL_DRIVER_API_RETURN(RetType, methodName, paramsDecl, params)                            \
+    RetType methodName##S() noexcept override;                                                     \
     UTILS_ALWAYS_INLINE inline void methodName##R(RetType, paramsDecl);
 
 #include "private/backend/DriverAPI.inc"
 
     VulkanDriver(VulkanDriver const&) = delete;
-    VulkanDriver& operator = (VulkanDriver const&) = delete;
+    VulkanDriver& operator=(VulkanDriver const&) = delete;
 
 private:
+    inline void setRenderPrimitiveBuffer(Handle<HwRenderPrimitive> rph, Handle<HwVertexBuffer> vbh,
+            Handle<HwIndexBuffer> ibh);
 
-    backend::HandleAllocatorVK mHandleAllocator;
+    inline void setRenderPrimitiveRange(Handle<HwRenderPrimitive> rph, PrimitiveType pt,
+            uint32_t offset, uint32_t minIndex, uint32_t maxIndex, uint32_t count);
 
-    backend::VulkanPlatform& mContextManager;
-
-    template<typename D, typename ... ARGS>
-    backend::Handle<D> initHandle(ARGS&& ... args) noexcept {
-        return mHandleAllocator.allocateAndConstruct<D>(std::forward<ARGS>(args) ...);
-    }
-
-    template<typename D>
-    backend::Handle<D> allocHandle() noexcept {
-        return mHandleAllocator.allocate<D>();
-    }
-
-    template<typename D, typename B, typename ... ARGS>
-    typename std::enable_if<std::is_base_of<B, D>::value, D>::type*
-    construct(backend::Handle<B> const& handle, ARGS&& ... args) noexcept {
-        return mHandleAllocator.construct<D, B>(handle, std::forward<ARGS>(args) ...);
-    }
-
-    template<typename B, typename D,
-            typename = typename std::enable_if<std::is_base_of<B, D>::value, D>::type>
-    void destruct(backend::Handle<B> handle, D const* p) noexcept {
-        return mHandleAllocator.deallocate(handle, p);
-    }
-
-    template<typename Dp, typename B>
-    typename std::enable_if_t<
-            std::is_pointer_v<Dp> &&
-            std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
-    handle_cast(backend::Handle<B>& handle) noexcept {
-        return mHandleAllocator.handle_cast<Dp, B>(handle);
-    }
-
-    template<typename Dp, typename B>
-    inline typename std::enable_if_t<
-            std::is_pointer_v<Dp> &&
-            std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
-    handle_cast(backend::Handle<B> const& handle) noexcept {
-        return mHandleAllocator.handle_cast<Dp, B>(handle);
-    }
-
-    template<typename D, typename B>
-    void destruct(Handle<B> handle) noexcept {
-        destruct(handle, handle_cast<D const*>(handle));
-    }
-
-    // This version of destruct takes a VulkanContext and calls a terminate(VulkanContext&)
-    // on the handle before calling the dtor
-    template<typename Dp, typename B>
-    void destruct(VulkanContext& context, Handle<B> handle) noexcept {
-        auto ptr = handle_cast<Dp*>(handle);
-        ptr->terminate(context);
-        mHandleAllocator.deallocate(handle, ptr);
-    }
-
-    void refreshSwapChain();
     void collectGarbage();
 
+    VulkanPlatform* mPlatform = nullptr;
+    std::unique_ptr<VulkanCommands> mCommands;
+    std::unique_ptr<VulkanTimestamps> mTimestamps;
+    std::unique_ptr<VulkanTexture> mEmptyTexture;
+
+    VulkanSwapChain* mCurrentSwapChain = nullptr;
+    VulkanRenderTarget* mDefaultRenderTarget = nullptr;
+    VulkanRenderPass mCurrentRenderPass = {};
+    VmaAllocator mAllocator = VK_NULL_HANDLE;
+    VkDebugReportCallbackEXT mDebugCallback = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT mDebugMessenger = VK_NULL_HANDLE;
+
     VulkanContext mContext = {};
+    VulkanResourceAllocator mResourceAllocator;
+    VulkanResourceManager mResourceManager;
+
+    // Used for resources that are created synchronously and used and destroyed on the backend
+    // thread.
+    VulkanThreadSafeResourceManager mThreadSafeResourceManager;
+
     VulkanPipelineCache mPipelineCache;
-    VulkanDisposer mDisposer;
     VulkanStagePool mStagePool;
     VulkanFboCache mFramebufferCache;
     VulkanSamplerCache mSamplerCache;
     VulkanBlitter mBlitter;
-    VulkanRenderTarget* mCurrentRenderTarget = nullptr;
     VulkanSamplerGroup* mSamplerBindings[VulkanPipelineCache::SAMPLER_BINDING_COUNT] = {};
-    VkDebugReportCallbackEXT mDebugCallback = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT mDebugMessenger = VK_NULL_HANDLE;
+    VulkanReadPixels mReadPixels;
 };
 
-} // namespace backend
-} // namespace filament
+} // namespace filament::backend
 
-#endif // TNT_FILAMENT_DRIVER_VULKANDRIVER_H
+#endif // TNT_FILAMENT_BACKEND_VULKANDRIVER_H

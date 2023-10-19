@@ -26,19 +26,40 @@ class ViewSettingsTest : public testing::Test {};
 static const char* JSON_TEST_DEFAULTS = R"TXT(
 {
     "view": {
-        "sampleCount": 1,
         "antiAliasing": "FXAA",
         "taa": {
             "enabled": false,
             "filterWidth": 1.0,
             "feedback": 0.04
         },
+        "msaa": {
+            "enabled": false,
+            "sampleCount": 4,
+            "customResolve": false
+        },
+        "dsr": {
+            "enabled": false,
+            "minScale": [0.25, 0.25],
+            "maxScale": [1.0, 1.0],
+            "sharpness": 0.9,
+            "enabled": false,
+            "homogeneousScaling": false,
+            "quality": "MEDIUM"
+        },
         "colorGrading": {
             "enabled": true,
             "quality": "MEDIUM",
             "toneMapping": "ACES_LEGACY",
+            "genericToneMapper": {
+                "contrast": 1.0,
+                "midGrayIn": 1.0,
+                "midGrayOut": 1.0,
+                "hdrMax": 16.0
+            },
             "luminanceScaling": false,
+            "gamutMapping": false,
             "exposure": 0,
+            "nightAdaptation": 0,
             "temperature": 0,
             "tint": 0,
             "outRed": [1.0, 0.0, 0.0],
@@ -85,7 +106,6 @@ static const char* JSON_TEST_DEFAULTS = R"TXT(
             "enabled": false,
             "strength": 0.10,
             "resolution": 360,
-            "anamorphism": 1.0,
             "levels": 6,
             "blendMode": "ADD",
             "threshold": true,
@@ -150,7 +170,7 @@ static const char* JSON_TEST_AUTOMATION = R"TXT([{
 
 TEST_F(ViewSettingsTest, JsonTestDefaults) {
     JsonSerializer serializer;
-    Settings settings1 = {0};
+    Settings settings1;
     ASSERT_TRUE(serializer.readJson(JSON_TEST_DEFAULTS, strlen(JSON_TEST_DEFAULTS), &settings1));
 
     ASSERT_TRUE(settings1.view.bloom.threshold);
@@ -182,31 +202,11 @@ TEST_F(ViewSettingsTest, JsonTestSerialization) {
 
 TEST_F(ViewSettingsTest, JsonTestMaterial) {
     JsonSerializer serializer;
-    Settings settings = {0};
+    Settings settings;
     std::string js = "{" + std::string(JSON_TEST_MATERIAL) + "}";
     ASSERT_TRUE(serializer.readJson(js.c_str(), js.size(), &settings));
     std::string serialized = serializer.writeJson(settings);
     ASSERT_PRED_FORMAT2(testing::IsSubstring, "\"baz\": [1, 2, 3]", serialized);
-}
-
-TEST_F(ViewSettingsTest, DefaultAutomationSpec) {
-    AutomationSpec* specs = AutomationSpec::generateDefaultTestCases();
-    ASSERT_TRUE(specs);
-    ASSERT_EQ(specs->size(), 66);
-
-    Settings settings;
-
-    ASSERT_TRUE(specs->get(0, &settings));
-    ASSERT_FALSE(settings.view.postProcessingEnabled);
-    ASSERT_EQ(settings.view.dithering, Dithering::TEMPORAL);
-
-    ASSERT_TRUE(specs->get(1, &settings));
-    ASSERT_TRUE(settings.view.postProcessingEnabled);
-
-    ASSERT_TRUE(specs->get(65, &settings));
-    ASSERT_FALSE(specs->get(66, &settings));
-
-    delete specs;
 }
 
 TEST_F(ViewSettingsTest, CustomAutomationSpec) {

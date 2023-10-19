@@ -14,28 +14,17 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_VULKANUTILITY_H
-#define TNT_FILAMENT_DRIVER_VULKANUTILITY_H
+#ifndef TNT_FILAMENT_BACKEND_VULKANUTILITY_H
+#define TNT_FILAMENT_BACKEND_VULKANUTILITY_H
 
 #include <backend/DriverEnums.h>
 
+#include <utils/FixedCapacityVector.h>
+
 #include <bluevk/BlueVK.h>
 
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
-struct VulkanLayoutTransition {
-    VkImage image;
-    VkImageLayout oldLayout;
-    VkImageLayout newLayout;
-    VkImageSubresourceRange subresources;
-    VkPipelineStageFlags srcStage;
-    VkAccessFlags srcAccessMask;
-    VkPipelineStageFlags dstStage;
-    VkAccessFlags dstAccessMask;
-};
-
-void createSemaphore(VkDevice device, VkSemaphore* semaphore);
 VkFormat getVkFormat(ElementType type, bool normalized, bool integer);
 VkFormat getVkFormat(TextureFormat format);
 VkFormat getVkFormat(PixelDataFormat format, PixelDataType type);
@@ -46,16 +35,57 @@ VkBlendFactor getBlendFactor(BlendFunction mode);
 VkCullModeFlags getCullMode(CullingMode mode);
 VkFrontFace getFrontFace(bool inverseFrontFaces);
 PixelDataType getComponentType(VkFormat format);
+uint32_t getComponentCount(VkFormat format);
 VkComponentMapping getSwizzleMap(TextureSwizzle swizzle[4]);
-void transitionImageLayout(VkCommandBuffer cmdbuffer, VulkanLayoutTransition transition);
+VkShaderStageFlags getShaderStageFlags(ShaderStageFlags stageFlags);
+
 bool equivalent(const VkRect2D& a, const VkRect2D& b);
 bool equivalent(const VkExtent2D& a, const VkExtent2D& b);
 bool isDepthFormat(VkFormat format);
+VkImageAspectFlags getImageAspect(VkFormat format);
 uint8_t reduceSampleCount(uint8_t sampleCount, VkSampleCountFlags mask);
 
-} // namespace filament
-} // namespace backend
+// Helper function for the vkEnumerateX methods. These methods have the format of
+// VkResult vkEnumerateX(InputType1 arg1, InputTyp2 arg2, ..., uint32_t* size,
+//         OutputType* output_arg)
+// Instead of macros and explicitly listing the template params, Variadic Template was also
+// considered, but because the "variadic" part of the vk methods (i.e. the inputs) are before the
+// non-variadic parts, this breaks the template type matching logic. Hence, we use a macro approach
+// here.
+#define EXPAND_ENUM(...)\
+    uint32_t size = 0;\
+    VkResult result = func(__VA_ARGS__, nullptr);\
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "enumerate size error");\
+    utils::FixedCapacityVector<OutType> ret(size);\
+    result = func(__VA_ARGS__, ret.data());\
+    ASSERT_POSTCONDITION(result == VK_SUCCESS, "enumerate error");\
+    return std::move(ret);
 
-bool operator<(const VkImageSubresourceRange& a, const VkImageSubresourceRange& b);
+#define EXPAND_ENUM_NO_ARGS() EXPAND_ENUM(&size)
+#define EXPAND_ENUM_ARGS(...) EXPAND_ENUM(__VA_ARGS__, &size)
 
-#endif // TNT_FILAMENT_DRIVER_VULKANUTILITY_H
+template <typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(VKAPI_ATTR VkResult (*func)(uint32_t*, OutType*)) {
+    EXPAND_ENUM_NO_ARGS();
+}
+
+template <typename InType, typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(
+        VKAPI_ATTR VkResult (*func)(InType, uint32_t*, OutType*), InType inData) {
+    EXPAND_ENUM_ARGS(inData);
+}
+
+template <typename InTypeA, typename InTypeB, typename OutType>
+utils::FixedCapacityVector<OutType> enumerate(
+        VKAPI_ATTR VkResult (*func)(InTypeA, InTypeB, uint32_t*, OutType*), InTypeA inDataA,
+        InTypeB inDataB) {
+    EXPAND_ENUM_ARGS(inDataA, inDataB);
+}
+
+#undef EXPAND_ENUM
+#undef EXPAND_ENUM_NO_ARGS
+#undef EXPAND_ENUM_ARGS
+
+} // namespace filament::backend
+
+#endif // TNT_FILAMENT_BACKEND_VULKANUTILITY_H

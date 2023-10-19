@@ -14,22 +14,19 @@
  * limitations under the License.
  */
 
-#ifndef MATH_QUAT_H_
-#define MATH_QUAT_H_
+#ifndef TNT_MATH_QUAT_H
+#define TNT_MATH_QUAT_H
 
-#include <math/half.h>
 #include <math/TQuatHelpers.h>
+#include <math/compiler.h>
+#include <math/half.h>
 #include <math/vec3.h>
 #include <math/vec4.h>
-#include <math/compiler.h>
 
 #include <stdint.h>
 #include <sys/types.h>
 
-namespace filament {
-namespace math {
-// -------------------------------------------------------------------------------------
-
+namespace filament::math {
 namespace details {
 
 template<typename T>
@@ -89,15 +86,15 @@ public:
 
     // constructors
 
-    // leaves object uninitialized. use with caution.
+    // Leaves object uninitialized. Use with caution.
     explicit constexpr TQuaternion(no_init) {}
 
     // default constructor. sets all values to zero.
     constexpr TQuaternion() : x(0), y(0), z(0), w(0) {}
 
-    // handles implicit conversion to a quat. must not be explicit.
+    // Handles implicit conversion to a quat. Must not be explicit.
     template<typename A, typename = enable_if_arithmetic_t<A>>
-    constexpr TQuaternion(A w) : x(0), y(0), z(0), w(w) {}
+    constexpr TQuaternion(A w) : x(0), y(0), z(0), w(w) {} // NOLINT(google-explicit-constructor)
 
     // initialize from 4 values to w + xi + yj + zk
     template<typename A, typename B, typename C, typename D,
@@ -126,6 +123,44 @@ public:
     constexpr static TQuaternion MATH_PURE fromAxisAngle(const TVec3<A>& axis, B angle) {
         return TQuaternion(std::sin(angle * 0.5) * normalize(axis), std::cos(angle * 0.5));
     }
+
+    // constructs a quaternion from orig to dest.
+    // it returns the shortest arc and `from` and `to` must be normalized.
+    template<typename A, typename B, typename = enable_if_arithmetic_t<A, B>>
+    constexpr static TQuaternion MATH_PURE fromDirectedRotation(const TVec3<A>& from, const TVec3<B>& to) {
+        // see the implementation of glm/gtx/quaternion.hpp
+        T cosTheta = dot(from, to);
+        TVec3<T> rotationAxis;
+
+        if (cosTheta >= T(1) - std::numeric_limits<T>::epsilon()) {
+            // orig and dest point in the same direction
+            return TQuaternion(1, 0, 0, 0);
+        }
+
+        if (cosTheta < T(-1) + std::numeric_limits<T>::epsilon()) {
+            // special case when vectors in opposite directions :
+            // there is no "ideal" rotation axis
+            // So guess one; any will do as long as it's perpendicular to start
+            // This implementation favors a rotation around the Up axis (Y),
+            // since it's often what you want to do.
+            rotationAxis = cross(TVec3<T>(0, 0, 1), from);
+
+            if (length2(rotationAxis) < std::numeric_limits<T>::epsilon()) {
+                 // bad luck, they were parallel, try again!
+                 rotationAxis = cross(TVec3<T>(1, 0, 0), from);
+            }
+
+            rotationAxis = normalize(rotationAxis);
+            return fromAxisAngle(rotationAxis, F_PI);
+        }
+
+        // implementation from Stan Melax's Game Programming Gems 1 article
+        rotationAxis = cross(from, to);
+
+        const T s = std::sqrt((T(1) + cosTheta) * T(2));
+        return TQuaternion(s * T(0.5),
+                rotationAxis.x / s, rotationAxis.y / s, rotationAxis.z / s);
+    }
 };
 
 }  // namespace details
@@ -136,32 +171,32 @@ typedef details::TQuaternion<double> quat;
 typedef details::TQuaternion<float> quatf;
 typedef details::TQuaternion<half> quath;
 
-constexpr inline quat operator "" _i(long double v) {
-    return quat(0.0, double(v), 0.0, 0.0);
+// note: don't put a space between "" and _{i,j,k}, this is deprecated
+
+constexpr inline quat operator ""_i(long double v) {
+    return { 0.0, double(v), 0.0, 0.0 };
 }
 
-constexpr inline quat operator "" _j(long double v) {
-    return quat(0.0, 0.0, double(v), 0.0);
+constexpr inline quat operator ""_j(long double v) {
+    return { 0.0, 0.0, double(v), 0.0 };
 }
 
-constexpr inline quat operator "" _k(long double v) {
-    return quat(0.0, 0.0, 0.0, double(v));
+constexpr inline quat operator ""_k(long double v) {
+    return { 0.0, 0.0, 0.0, double(v) };
 }
 
-constexpr inline quat operator "" _i(unsigned long long v) {
-    return quat(0.0, double(v), 0.0, 0.0);
+constexpr inline quat operator ""_i(unsigned long long v) {
+    return { 0.0, double(v), 0.0, 0.0 };
 }
 
-constexpr inline quat operator "" _j(unsigned long long v) {
-    return quat(0.0, 0.0, double(v), 0.0);
+constexpr inline quat operator ""_j(unsigned long long v) {
+    return { 0.0, 0.0, double(v), 0.0 };
 }
 
-constexpr inline quat operator "" _k(unsigned long long v) {
-    return quat(0.0, 0.0, 0.0, double(v));
+constexpr inline quat operator ""_k(unsigned long long v) {
+    return { 0.0, 0.0, 0.0, double(v) };
 }
 
-// ----------------------------------------------------------------------------------------
-}  // namespace math
-}  // namespace filament
+}  // namespace filament::math
 
-#endif  // MATH_QUAT_H_
+#endif  // TNT_MATH_QUAT_H

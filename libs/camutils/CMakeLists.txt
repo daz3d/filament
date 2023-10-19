@@ -31,14 +31,13 @@ add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
 target_link_libraries(${TARGET} PUBLIC math)
 
 target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
 
 # ==================================================================================================
 # Compiler flags
 # ==================================================================================================
 if (MSVC)
-    target_compile_options(${TARGET} PRIVATE $<$<CONFIG:Release>:/fp:fast>)
 else()
-    target_compile_options(${TARGET} PRIVATE $<$<CONFIG:Release>:-ffast-math>)
     target_compile_options(${TARGET} PRIVATE -Wno-deprecated-register)
 endif()
 
@@ -54,4 +53,5 @@ install(DIRECTORY ${PUBLIC_HDR_DIR}/camutils DESTINATION include)
 if (NOT ANDROID AND NOT WEBGL AND NOT IOS)
     add_executable(test_${TARGET} tests/test_camutils.cpp)
     target_link_libraries(test_${TARGET} PRIVATE camutils gtest)
+    set_target_properties(test_${TARGET} PROPERTIES FOLDER Tests)
 endif()

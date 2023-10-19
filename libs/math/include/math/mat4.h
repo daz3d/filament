@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef MATH_MAT4_H_
-#define MATH_MAT4_H_
+#ifndef TNT_MATH_MAT4_H
+#define TNT_MATH_MAT4_H
 
+#include <math/TMatHelpers.h>
 #include <math/compiler.h>
 #include <math/mat3.h>
 #include <math/quat.h>
 #include <math/scalar.h>
-#include <math/TMatHelpers.h>
 #include <math/vec3.h>
 #include <math/vec4.h>
 
@@ -272,24 +272,6 @@ public:
     template<typename U, typename V>
     constexpr TMat44(const TMat33<U>& matrix, const TVec4<V>& column3) noexcept;
 
-    /*
-     *  helpers
-     */
-
-    // returns false if the two matrices are different. May return false if they're the
-    // same, with some elements only differing by +0 or -0. Behaviour is undefined with NaNs.
-    static constexpr bool fuzzyEqual(TMat44 const& l, TMat44 const& r) noexcept {
-        uint64_t const* const li = reinterpret_cast<uint64_t const*>(&l);
-        uint64_t const* const ri = reinterpret_cast<uint64_t const*>(&r);
-        uint64_t result = 0;
-        // For some reason clang is not able to vectorize this loop when the number of iteration
-        // is known and constant (!?!?!). Still this is better than operator==.
-        for (size_t i = 0; i < sizeof(TMat44) / sizeof(uint64_t); i++) {
-            result |= li[i] ^ ri[i];
-        }
-        return result != 0;
-    }
-
     static constexpr TMat44 ortho(T left, T right, T bottom, T top, T near, T far) noexcept;
 
     static constexpr TMat44 frustum(T left, T right, T bottom, T top, T near, T far) noexcept;
@@ -491,11 +473,22 @@ template<typename T>
 constexpr TMat44<T> TMat44<T>::frustum(T left, T right, T bottom, T top, T near, T far) noexcept {
     TMat44<T> m;
     m[0][0] = (2 * near) / (right - left);
+    // 0
+    // 0
+    // 0
+
+    // 0
     m[1][1] = (2 * near) / (top - bottom);
+    // 0
+    // 0
+
     m[2][0] = (right + left) / (right - left);
     m[2][1] = (top + bottom) / (top - bottom);
     m[2][2] = -(far + near) / (far - near);
     m[2][3] = -1;
+
+    // 0
+    // 0
     m[3][2] = -(2 * far * near) / (far - near);
     m[3][3] = 0;
     return m;
@@ -556,6 +549,46 @@ constexpr typename TMat44<T>::col_type MATH_PURE operator*(const TMat44<T>& lhs,
 
 typedef details::TMat44<double> mat4;
 typedef details::TMat44<float> mat4f;
+
+// mat4 * float4, with double precision intermediates
+constexpr float4 highPrecisionMultiply(mat4f const& lhs, float4 const& rhs) noexcept {
+    double4 result{};
+    result += lhs[0] * rhs[0];
+    result += lhs[1] * rhs[1];
+    result += lhs[2] * rhs[2];
+    result += lhs[3] * rhs[3];
+    return float4{ result };
+}
+
+// mat4 * mat4, with double precision intermediates
+constexpr mat4f highPrecisionMultiply(mat4f const& lhs, mat4f const& rhs) noexcept {
+    return {
+            highPrecisionMultiply(lhs, rhs[0]),
+            highPrecisionMultiply(lhs, rhs[1]),
+            highPrecisionMultiply(lhs, rhs[2]),
+            highPrecisionMultiply(lhs, rhs[3])
+    };
+}
+
+// mat4 * float4, with double precision intermediates
+constexpr double4 highPrecisionMultiplyd(mat4f const& lhs, float4 const& rhs) noexcept {
+    double4 result{};
+    result += lhs[0] * rhs[0];
+    result += lhs[1] * rhs[1];
+    result += lhs[2] * rhs[2];
+    result += lhs[3] * rhs[3];
+    return result;
+}
+
+// mat4 * mat4, with double precision intermediates
+constexpr mat4 highPrecisionMultiplyd(mat4f const& lhs, mat4f const& rhs) noexcept {
+    return {
+            highPrecisionMultiplyd(lhs, rhs[0]),
+            highPrecisionMultiplyd(lhs, rhs[1]),
+            highPrecisionMultiplyd(lhs, rhs[2]),
+            highPrecisionMultiplyd(lhs, rhs[3])
+    };
+}
 
 // ----------------------------------------------------------------------------------------
 }  // namespace math
@@ -628,4 +661,4 @@ constexpr void swap(filament::math::details::TMat44<T>& lhs,
 }
 }
 
-#endif  // MATH_MAT4_H_
+#endif  // TNT_MATH_MAT4_H

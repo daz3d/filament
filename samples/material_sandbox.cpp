@@ -333,10 +333,16 @@ static void setup(Engine* engine, View*, Scene* scene) {
     if (ibl) {
         auto& params = g_params;
         IndirectLight* const pIndirectLight = ibl->getIndirectLight();
-        params.lightDirection = IndirectLight::getDirectionEstimate(ibl->getSphericalHarmonics());
-        float4 c = pIndirectLight->getColorEstimate(ibl->getSphericalHarmonics(), params.lightDirection);
-        params.lightIntensity = c.w * pIndirectLight->getIntensity();
-        params.lightColor = c.rgb;
+        // If we loaded an equirectangular IBL, we don't have spherical harmonics. In that case,
+        // simply skip the estimates.
+        if (ibl->hasSphericalHarmonics()) {
+            params.lightDirection =
+                    IndirectLight::getDirectionEstimate(ibl->getSphericalHarmonics());
+            float4 c = pIndirectLight->getColorEstimate(
+                    ibl->getSphericalHarmonics(), params.lightDirection);
+            params.lightIntensity = c.w * pIndirectLight->getIntensity();
+            params.lightColor = c.rgb;
+        }
     }
 
     g_params.bloomOptions.dirt = FilamentApp::get().getDirtTexture();
@@ -596,11 +602,16 @@ static void gui(filament::Engine* engine, filament::View*) {
 
         if (ImGui::CollapsingHeader("Camera")) {
             ImGui::Indent();
-            ImGui::SliderFloat("Focal length", &FilamentApp::get().getCameraFocalLength(), 16.0f, 90.0f);
+            ImGui::SliderFloat("Focal length", &params.cameraFocalLength, 16.0f, 90.0f);
             ImGui::SliderFloat("Aperture", &params.cameraAperture, 1.0f, 32.0f);
             ImGui::SliderFloat("Speed", &params.cameraSpeed, 800.0f, 1.0f);
             ImGui::SliderFloat("ISO", &params.cameraISO, 25.0f, 6400.0f);
+            ImGui::SliderFloat("Near", &params.cameraNear, 0.01f, 1.0f);
+            ImGui::SliderFloat("Far", &params.cameraFar, 1.0f, 10000.0f);
             ImGui::Unindent();
+
+            FilamentApp::get().setCameraFocalLength(params.cameraFocalLength);
+            FilamentApp::get().setCameraNearFar(params.cameraNear, params.cameraFar);
         }
 
         if (ImGui::CollapsingHeader("Indirect Light")) {
@@ -620,7 +631,20 @@ static void gui(filament::Engine* engine, filament::View*) {
                 ImGui::SliderFloat("Power", &params.ssaoOptions.power, 0.0f, 4.0f);
                 ImGui::SliderInt("Quality", &quality, 0, 3);
                 ImGui::SliderInt("Low Pass", &lowpass, 0, 2);
+                ImGui::SliderFloat("Bilateral Threshold", &params.ssaoOptions.bilateralThreshold, 0.0f, 0.5f);
+                ImGui::Checkbox("Bent Normals", &params.ssaoOptions.bentNormals);
                 ImGui::Checkbox("High quality upsampling", &upsampling);
+// Can be used to debug SSAO
+//                ImGui::SliderInt("SampleCount",
+//                        debug.getPropertyAddress<int>("d.ssao.sampleCount"), 1, 128);
+//                ImGui::SliderInt("spiralTurns",
+//                        debug.getPropertyAddress<int>("d.ssao.spiralTurns"), 1,
+//                                *debug.getPropertyAddress<int>("d.ssao.sampleCount"));
+//                ImGui::SliderInt("kernelSize",
+//                        debug.getPropertyAddress<int>("d.ssao.kernelSize"), 1, 23);
+//                ImGui::SliderFloat("stddev",
+//                        debug.getPropertyAddress<float>("d.ssao.stddev"), 0.0f, 8.0f);
+
                 params.ssaoOptions.upsampling = upsampling ? View::QualityLevel::HIGH : View::QualityLevel::LOW;
                 params.ssaoOptions.quality = (View::QualityLevel)quality;
                 params.ssaoOptions.lowPassFilter = (View::QualityLevel)lowpass;
@@ -654,7 +678,6 @@ static void gui(filament::Engine* engine, filament::View*) {
             ImGui::SliderFloat("Halo falloff", &params.sunHaloFalloff, 0.0f, 2048.0f);
             ImGuiExt::DirectionWidget("Direction", params.lightDirection.v);
             if (ImGui::CollapsingHeader("Contact Shadows")) {
-                DebugRegistry& debug = engine->getDebugRegistry();
                 ImGui::Checkbox("Enabled##contactShadows", &params.screenSpaceContactShadows);
                 ImGui::SliderInt("Steps", &params.stepCount, 0, 255);
                 ImGui::SliderFloat("Distance", &params.maxShadowDistance, 0.0f, 10.0f);
@@ -716,7 +739,7 @@ static void gui(filament::Engine* engine, filament::View*) {
             ImGui::Indent();
             ImGui::Checkbox("Enabled##colorGrading", &params.colorGrading);
             ImGui::Combo("Tone-mapping", &colorGrading.toneMapping,
-                    "Linear\0ACES (legacy)\0ACES\0Filmic\0Reserved\0Reinhard\0Display Range\0\0");
+                    "Linear\0ACES (legacy)\0ACES\0Filmic\0Display Range\0\0");
             ImGui::Checkbox("Luminance scaling", &colorGrading.luminanceScaling);
             if (ImGui::CollapsingHeader("While balance")) {
                 ImGui::SliderInt("Temperature", &colorGrading.temperature, -100, 100);
@@ -873,15 +896,12 @@ static void gui(filament::Engine* engine, filament::View*) {
             ImGui::SliderFloat("Polygon Offset Scale", &params.polygonOffsetSlope, 0.0f, 10.0f);
             ImGui::SliderFloat("Polygon Offset Constant", &params.polygonOffsetConstant, 0.0f, 10.0f);
 
-            bool* lispsm;
-            if (debug.getPropertyAddress<bool>("d.shadowmap.lispsm", &lispsm)) {
-                ImGui::Checkbox("Enable LiSPSM", lispsm);
-                if (*lispsm) {
-                    ImGui::SliderFloat("dzn",
-                            debug.getPropertyAddress<float>("d.shadowmap.dzn"), 0.0f, 1.0f);
-                    ImGui::SliderFloat("dzf",
-                            debug.getPropertyAddress<float>("d.shadowmap.dzf"),-1.0f, 0.0f);
-                }
+            ImGui::Checkbox("Enable LiSPSM", &params.lispsm);
+            if (params.lispsm) {
+                ImGui::SliderFloat("dzn",
+                        debug.getPropertyAddress<float>("d.shadowmap.dzn"), 0.0f, 1.0f);
+                ImGui::SliderFloat("dzf",
+                        debug.getPropertyAddress<float>("d.shadowmap.dzf"),-1.0f, 0.0f);
             }
             ImGui::Unindent();
         }
@@ -930,6 +950,7 @@ static void gui(filament::Engine* engine, filament::View*) {
 
     LightManager::ShadowOptions options = lcm.getShadowOptions(lightInstance);
     options.stable = params.stableShadowMap;
+    options.lispsm = params.lispsm;
     options.normalBias = params.normalBias;
     options.constantBias = params.constantBias;
     options.polygonOffsetConstant = params.polygonOffsetConstant;
@@ -964,12 +985,18 @@ static void preRender(filament::Engine* engine, filament::View* view, filament::
     view->setBloomOptions(g_params.bloomOptions);
     view->setFogOptions(g_params.fogOptions);
     view->setTemporalAntiAliasingOptions(g_params.taaOptions);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     view->setSampleCount((uint8_t) (g_params.msaa ? 4 : 1));
+#pragma clang diagnostic pop
     view->setAmbientOcclusionOptions(g_params.ssaoOptions);
 
     if (g_params.colorGrading) {
         if (g_params.colorGradingOptions != g_lastColorGradingOptions) {
             ColorGradingOptions &options = g_params.colorGradingOptions;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             ColorGrading *colorGrading = ColorGrading::Builder()
                     .whiteBalance(options.temperature / 100.0f, options.tint / 100.0f)
                     .channelMixer(options.outRed, options.outGreen, options.outBlue)
@@ -987,6 +1014,7 @@ static void preRender(filament::Engine* engine, filament::View* view, filament::
                     .toneMapping(static_cast<ColorGrading::ToneMapping>(options.toneMapping))
                     .luminanceScaling(options.luminanceScaling)
                     .build(*engine);
+#pragma clang diagnostic pop
 
             if (g_colorGrading) {
                 engine->destroy(g_colorGrading);

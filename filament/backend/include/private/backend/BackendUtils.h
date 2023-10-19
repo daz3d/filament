@@ -14,23 +14,23 @@
  * limitations under the License.
  */
 
+#ifndef TNT_FILAMENT_BACKEND_PRIVATE_BACKENDUTILS_H
+#define TNT_FILAMENT_BACKEND_PRIVATE_BACKENDUTILS_H
+
 #include <backend/DriverEnums.h>
 
 #include <backend/PixelBufferDescriptor.h>
 
+#include <string_view>
+
 #include <stddef.h>
 
-#ifndef FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB
-#    define FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB 1
-#endif
-
-namespace filament {
-namespace backend {
+namespace filament::backend {
 
 /**
  * Returns true if the shader string requests the Google-style line directive extension.
  */
-bool requestsGoogleLineDirectivesExtension(const char* shader, size_t length) noexcept;
+bool requestsGoogleLineDirectivesExtension(std::string_view source) noexcept;
 
 /**
  * Edit a GLSL shader string in-place so any Google-style line directives are turned into regular
@@ -50,6 +50,11 @@ void removeGoogleLineDirectives(char* shader, size_t length) noexcept;
 size_t getFormatSize(TextureFormat format) noexcept;
 
 /**
+ * Returns the number of component (1 to 4) for the given format.
+ */
+size_t getFormatComponentCount(TextureFormat format) noexcept;
+
+/**
  * For compressed texture formats, returns the number of horizontal texels per block. Otherwise
  * returns 0.
  */
@@ -66,5 +71,6 @@ size_t getBlockHeight(TextureFormat format) noexcept;
  */
 bool reshape(const PixelBufferDescriptor& data, PixelBufferDescriptor& reshaped);
 
-} // namespace backend
 } // namespace filament
+
+#endif // TNT_FILAMENT_BACKEND_PRIVATE_BACKENDUTILS_H

@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_DRIVER_VULKANBLITTER_H
-#define TNT_FILAMENT_DRIVER_VULKANBLITTER_H
+#ifndef TNT_FILAMENT_BACKEND_VULKANBLITTER_H
+#define TNT_FILAMENT_BACKEND_VULKANBLITTER_H
 
 #include "VulkanContext.h"
 
-namespace filament {
-namespace backend {
+#include <utils/compiler.h>
+
+namespace filament::backend {
 
 class VulkanBuffer;
 class VulkanFboCache;
@@ -31,11 +32,11 @@ struct VulkanProgram;
 
 class VulkanBlitter {
 public:
-    VulkanBlitter(VulkanContext& context, VulkanStagePool& stagePool,
-            VulkanPipelineCache& pipelineCache, VulkanFboCache& fboCache,
-            VulkanSamplerCache& samplerCache) :
-            mContext(context), mStagePool(stagePool), mPipelineCache(pipelineCache),
-            mFramebufferCache(fboCache), mSamplerCache(samplerCache) {}
+    VulkanBlitter(VulkanStagePool& stagePool, VulkanPipelineCache& pipelineCache,
+            VulkanFboCache& fboCache, VulkanSamplerCache& samplerCache) noexcept;
+
+    void initialize(VkPhysicalDevice physicalDevice, VkDevice device, VmaAllocator allocator,
+            VulkanCommands* commands, VulkanTexture* emptyTexture) noexcept;
 
     struct BlitArgs {
         const VulkanRenderTarget* dstTarget;
@@ -49,31 +50,30 @@ public:
     void blitColor(BlitArgs args);
     void blitDepth(BlitArgs args);
 
-    void shutdown() noexcept;
+    void terminate() noexcept;
 
 private:
     void lazyInit() noexcept;
 
-    void blitFast(VkImageAspectFlags aspect, VkFilter filter, const VkExtent2D srcExtent,
-            VulkanAttachment src, VulkanAttachment dst, const VkOffset3D srcRect[2],
-            const VkOffset3D dstRect[2]);
-
-    void blitSlowDepth(VkImageAspectFlags aspect, VkFilter filter,
-            const VkExtent2D srcExtent, VulkanAttachment src, VulkanAttachment dst,
-            const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]);
+    void blitSlowDepth(VkFilter filter, const VkExtent2D srcExtent, VulkanAttachment src,
+            VulkanAttachment dst, const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]);
 
     VulkanBuffer* mTriangleBuffer = nullptr;
     VulkanBuffer* mParamsBuffer = nullptr;
     VulkanProgram* mDepthResolveProgram = nullptr;
 
-    VulkanContext& mContext;
+    UTILS_UNUSED VkPhysicalDevice mPhysicalDevice;
+    VkDevice mDevice;
+    VmaAllocator mAllocator;
+    VulkanCommands* mCommands;
+    VulkanTexture* mEmptyTexture;
+
     VulkanStagePool& mStagePool;
     VulkanPipelineCache& mPipelineCache;
     VulkanFboCache& mFramebufferCache;
     VulkanSamplerCache& mSamplerCache;
 };
 
-} // namespace filament
-} // namespace backend
+} // namespace filament::backend
 
-#endif // TNT_FILAMENT_DRIVER_VULKANBLITTER_H
+#endif // TNT_FILAMENT_BACKEND_VULKANBLITTER_H

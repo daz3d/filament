@@ -22,9 +22,14 @@
 
 #include <filament/MaterialChunkType.h>
 
+#include <utils/FixedCapacityVector.h>
+
 #include <tsl/robin_map.h>
 
 namespace filaflat {
+
+using ShaderContent = utils::FixedCapacityVector<uint8_t>;
+using BlobDictionary = utils::FixedCapacityVector<ShaderContent>;
 
 class Unflattener;
 
@@ -61,26 +66,17 @@ public:
         return { it->first, it->second };
     }
 
-    const uint8_t* getChunkStart(Type type) const noexcept {
-        return mChunks.at(type).start;
-    }
-
-    const uint8_t* getChunkEnd(Type type) const noexcept {
-        ChunkDesc const& chunkDesc = mChunks.at(type);
-        return chunkDesc.start + chunkDesc.size;
-    }
-
-    bool hasChunk(Type type, ChunkDesc const** pChunkDesc = nullptr) const noexcept {
-        auto& chunks = mChunks;
-        auto pos = chunks.find(type);
-        if (pos != chunks.end()) {
-            if (pChunkDesc) {
-                *pChunkDesc = &pos.value();
-            }
-            return true;
+    std::pair<uint8_t const*, uint8_t const*> getChunkRange(Type type) const noexcept {
+        ChunkDesc chunkDesc;
+        bool const success = hasChunk(type, &chunkDesc);
+        if (success) {
+            return { chunkDesc.start, chunkDesc.start + chunkDesc.size };
         }
-        return false;
+        return { nullptr, nullptr };
     }
+
+    bool hasChunk(Type type) const noexcept;
+    bool hasChunk(Type type, ChunkDesc* pChunkDesc) const noexcept;
 
     void const* getData() const { return mData; }
 

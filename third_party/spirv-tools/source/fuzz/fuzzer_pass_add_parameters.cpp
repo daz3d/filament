@@ -25,9 +25,10 @@ namespace fuzz {
 FuzzerPassAddParameters::FuzzerPassAddParameters(
     opt::IRContext* ir_context, TransformationContext* transformation_context,
     FuzzerContext* fuzzer_context,
-    protobufs::TransformationSequence* transformations)
+    protobufs::TransformationSequence* transformations,
+    bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassAddParameters::Apply() {
   // Compute type candidates for the new parameter.
@@ -78,7 +79,7 @@ void FuzzerPassAddParameters::Apply() {
         auto storage_class = fuzzerutil::GetStorageClassFromPointerType(
             GetIRContext(), current_type_id);
         switch (storage_class) {
-          case SpvStorageClassFunction: {
+          case spv::StorageClass::Function: {
             // In every caller find or create a local variable that has the
             // selected type.
             for (auto* instr :
@@ -90,8 +91,8 @@ void FuzzerPassAddParameters::Apply() {
               call_parameter_ids[instr->result_id()] = variable_id;
             }
           } break;
-          case SpvStorageClassPrivate:
-          case SpvStorageClassWorkgroup: {
+          case spv::StorageClass::Private:
+          case spv::StorageClass::Workgroup: {
             // If there exists at least one caller, find or create a global
             // variable that has the selected type.
             std::vector<opt::Instruction*> callers =

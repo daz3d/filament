@@ -24,9 +24,10 @@ FuzzerPassReplaceOpPhiIdsFromDeadPredecessors::
         opt::IRContext* ir_context,
         TransformationContext* transformation_context,
         FuzzerContext* fuzzer_context,
-        protobufs::TransformationSequence* transformations)
+        protobufs::TransformationSequence* transformations,
+        bool ignore_inapplicable_transformations)
     : FuzzerPass(ir_context, transformation_context, fuzzer_context,
-                 transformations) {}
+                 transformations, ignore_inapplicable_transformations) {}
 
 void FuzzerPassReplaceOpPhiIdsFromDeadPredecessors::Apply() {
   // Keep a vector of the transformations to apply.
@@ -49,7 +50,7 @@ void FuzzerPassReplaceOpPhiIdsFromDeadPredecessors::Apply() {
               block->id(), [this, &function, block, &transformations](
                                opt::Instruction* instruction, uint32_t) {
                 // Only consider OpPhi instructions.
-                if (instruction->opcode() != SpvOpPhi) {
+                if (instruction->opcode() != spv::Op::OpPhi) {
                   return;
                 }
 

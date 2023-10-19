@@ -61,7 +61,11 @@ constexpr uint8_t BLENDING_SOLID_REFRACTION = 4;
 using namespace filament;
 
 struct ColorGradingOptions {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     int toneMapping = static_cast<int>(ColorGrading::ToneMapping::ACES_LEGACY);
+#pragma clang diagnostic pop
+
     bool luminanceScaling = false;
     int temperature = 0;
     int tint = 0;
@@ -165,6 +169,7 @@ struct SandboxParameters {
     bool msaa = false;
     bool dithering = true;
     bool stableShadowMap = false;
+    bool lispsm = true;
     float normalBias = 1.0;
     float constantBias = 0.001;
     float polygonOffsetConstant = 0.5;
@@ -179,6 +184,9 @@ struct SandboxParameters {
     float cameraAperture = 16.0f;
     float cameraSpeed = 125.0f;
     float cameraISO = 100.0f;
+    float cameraFocalLength = 28.0f;
+    float cameraNear = 0.1f;
+    float cameraFar = 100.0f;
     bool colorGrading = true;
     ColorGradingOptions colorGradingOptions;
 };
