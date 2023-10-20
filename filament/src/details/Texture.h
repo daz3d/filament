@@ -38,6 +38,7 @@ public:
     void terminate(FEngine& engine);
 
     backend::Handle<backend::HwTexture> getHwHandle() const noexcept { return mHandle; }
+    //DAZ Add
     uint32_t getOGLId(FEngine& engine) const noexcept;
 
     size_t getWidth(size_t level = 0) const noexcept;
