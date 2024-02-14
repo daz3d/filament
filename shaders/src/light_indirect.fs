@@ -679,6 +679,14 @@ void evaluateIBL(const MaterialInputs material, const PixelParams pixel, inout v
     Fr = Fr * (1.0 - ssrFr.a) + (E * ssrFr.rgb);
 #endif
 
+#if defined(DAZ_EXTENDED_PBR)
+    Fr *= pixel.iblAttenuation;
+    Fd *= pixel.iblAttenuation;
+#if defined(MATERIAL_HAS_REFRACTION)
+    Ft *= pixel.iblAttenuation;
+#endif
+#endif
+
     // Combine all terms
     // Note: iblLuminance is already premultiplied by the exposure
 

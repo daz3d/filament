@@ -92,6 +92,7 @@ struct MaterialInputs {
 #if defined(DAZ_EXTENDED_PBR)
     float clearCoatReflectance;
     float specularAttenuation;
+    float iblAttenuation;
 #endif
 };
 
@@ -184,6 +185,7 @@ void initMaterial(out MaterialInputs material) {
 #if defined(DAZ_EXTENDED_PBR)
     material.clearCoatReflectance = 0.5;
     material.specularAttenuation = 1.0;
+    material.iblAttenuation = 1.0;
 #endif
 }
 

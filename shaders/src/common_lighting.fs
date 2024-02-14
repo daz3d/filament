@@ -67,6 +67,7 @@ struct PixelParams {
 #if defined(DAZ_EXTENDED_PBR)
     float clearCoatReflectance;
     float specularAttenuation;
+    float iblAttenuation;
 #endif
 
 };

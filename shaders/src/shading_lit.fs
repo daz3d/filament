@@ -135,6 +135,11 @@ void getCommonPixelParams(const MaterialInputs material, inout PixelParams pixel
 #endif
 #endif
 #endif
+
+#if defined(DAZ_EXTENDED_PBR)
+    pixel.specularAttenuation = material.specularAttenuation;
+    pixel.iblAttenuation = material.iblAttenuation;
+#endif
 }
 
 void getSheenPixelParams(const MaterialInputs material, inout PixelParams pixel) {
@@ -151,10 +156,6 @@ void getSheenPixelParams(const MaterialInputs material, inout PixelParams pixel)
 
     pixel.sheenPerceptualRoughness = sheenPerceptualRoughness;
     pixel.sheenRoughness = perceptualRoughnessToRoughness(sheenPerceptualRoughness);
-#endif
-
-#if defined(DAZ_EXTENDED_PBR)
-    pixel.specularAttenuation = material.specularAttenuation;
 #endif
 }
 
