@@ -104,11 +104,11 @@ Froxelizer::Froxelizer(FEngine& engine)
     static_assert(std::is_same_v<RecordBufferType, uint8_t>,
             "Record Buffer must use bytes");
 
-    if (UTILS_UNLIKELY(engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0)) {
+    DriverApi& driverApi = engine.getDriverApi();
+
+    if (UTILS_UNLIKELY(driverApi.getFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0)) {
         return;
     }
-
-    DriverApi& driverApi = engine.getDriverApi();
 
     mFroxelBufferEntryCount = std::min(
             FROXEL_BUFFER_MAX_ENTRY_COUNT,
@@ -168,7 +168,8 @@ void Froxelizer::setProjection(const mat4f& projection,
 }
 
 bool Froxelizer::prepare(
-        FEngine::DriverApi& driverApi, ArenaScope& arena, filament::Viewport const& viewport,
+        FEngine::DriverApi& driverApi, RootArenaScope& rootArenaScope,
+        filament::Viewport const& viewport,
         const mat4f& projection, float projectionNear, float projectionFar) noexcept {
     setViewport(viewport);
     setProjection(projection, projectionNear, projectionFar);
@@ -199,12 +200,12 @@ bool Froxelizer::prepare(
 
     // light records per froxel (~256 KiB)
     mLightRecords = {
-            arena.allocate<LightRecord>(getFroxelBufferEntryCount(), CACHELINE_SIZE),
+            rootArenaScope.allocate<LightRecord>(getFroxelBufferEntryCount(), CACHELINE_SIZE),
             getFroxelBufferEntryCount() };
 
     // froxel thread data (~256 KiB)
     mFroxelShardedData = {
-            arena.allocate<FroxelThreadData>(GROUP_COUNT, CACHELINE_SIZE),
+            rootArenaScope.allocate<FroxelThreadData>(GROUP_COUNT, CACHELINE_SIZE),
             uint32_t(GROUP_COUNT)
     };
 

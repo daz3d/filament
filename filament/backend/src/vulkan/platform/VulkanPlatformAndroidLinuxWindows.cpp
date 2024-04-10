@@ -15,6 +15,7 @@
  */
 
 #include <backend/platforms/VulkanPlatform.h>
+#include <backend/DriverEnums.h>
 
 #include "vulkan/VulkanConstants.h"
 #include "vulkan/VulkanDriverFactory.h"
@@ -23,6 +24,11 @@
 
 #include <bluevk/BlueVK.h>
 
+#include <tuple>
+
+#include <stdint.h>
+#include <stddef.h>
+
 #if defined(__linux__) || defined(__FreeBSD__)
 #define LINUX_OR_FREEBSD 1
 #endif
@@ -30,8 +36,6 @@
 // Platform specific includes and defines
 #if defined(__ANDROID__)
     #include <android/native_window.h>
-#elif defined(__linux__) && defined(FILAMENT_SUPPORTS_GGP)
-    #include <ggp_c/ggp.h>
 #elif defined(__linux__) && defined(FILAMENT_SUPPORTS_WAYLAND)
     #include <dlfcn.h>
     namespace {
@@ -75,7 +79,7 @@
 #elif defined(WIN32)
     // No platform specific includes
 #else
-    #error Not a supported Vulkan platform
+    // Not a supported Vulkan platform
 #endif
 
 using namespace bluevk;
@@ -86,8 +90,6 @@ VulkanPlatform::ExtensionSet VulkanPlatform::getRequiredInstanceExtensions() {
     VulkanPlatform::ExtensionSet ret;
     #if defined(__ANDROID__)
         ret.insert("VK_KHR_android_surface");
-    #elif defined(__linux__) && defined(FILAMENT_SUPPORTS_GGP)
-        ret.insert(VK_GGP_STREAM_DESCRIPTOR_SURFACE_EXTENSION_NAME);
     #elif defined(__linux__) && defined(FILAMENT_SUPPORTS_WAYLAND)
         ret.insert("VK_KHR_wayland_surface");
     #elif LINUX_OR_FREEBSD && defined(FILAMENT_SUPPORTS_X11)
@@ -121,20 +123,6 @@ VulkanPlatform::SurfaceBundle VulkanPlatform::createVkSurfaceKHR(void* nativeWin
         VkResult const result = vkCreateAndroidSurfaceKHR(instance, &createInfo, VKALLOC,
                 (VkSurfaceKHR*) &surface);
         ASSERT_POSTCONDITION(result == VK_SUCCESS, "vkCreateAndroidSurfaceKHR error.");
-    #elif defined(__linux__) && defined(FILAMENT_SUPPORTS_GGP)
-        VkStreamDescriptorSurfaceCreateInfoGGP const surface_create_info = {
-                .sType = VK_STRUCTURE_TYPE_STREAM_DESCRIPTOR_SURFACE_CREATE_INFO_GGP,
-                .streamDescriptor = kGgpPrimaryStreamDescriptor,
-        };
-        PFN_vkCreateStreamDescriptorSurfaceGGP fpCreateStreamDescriptorSurfaceGGP
-                = reinterpret_cast<PFN_vkCreateStreamDescriptorSurfaceGGP>(
-                        vkGetInstanceProcAddr(instance, "vkCreateStreamDescriptorSurfaceGGP"));
-        ASSERT_PRECONDITION(fpCreateStreamDescriptorSurfaceGGP != nullptr,
-                "Error getting VkInstance "
-                "function vkCreateStreamDescriptorSurfaceGGP");
-        VkResult const result = fpCreateStreamDescriptorSurfaceGGP(instance, &surface_create_info,
-                nullptr, (VkSurfaceKHR*) &surface);
-        ASSERT_POSTCONDITION(result == VK_SUCCESS, "vkCreateStreamDescriptorSurfaceGGP error.");
     #elif defined(__linux__) && defined(FILAMENT_SUPPORTS_WAYLAND)
         wl* ptrval = reinterpret_cast<wl*>(nativeWindow);
         extent.width = ptrval->width;

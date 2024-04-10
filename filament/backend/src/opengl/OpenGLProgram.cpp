@@ -16,16 +16,25 @@
 
 #include "OpenGLProgram.h"
 
-#include "BlobCacheKey.h"
+#include "GLUtils.h"
 #include "OpenGLDriver.h"
 #include "ShaderCompilerService.h"
+
+#include <backend/Program.h>
+
+#include <private/backend/BackendUtils.h>
 
 #include <utils/debug.h>
 #include <utils/compiler.h>
 #include <utils/Log.h>
 #include <utils/Systrace.h>
 
-#include <private/backend/BackendUtils.h>
+#include <array>
+#include <string_view>
+#include <utility>
+#include <new>
+
+#include <stddef.h>
 
 namespace filament::backend {
 
@@ -129,7 +138,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
 #endif
     {
         // ES2 initialization of (fake) UBOs
-        UniformsRecord* const uniformsRecords = new UniformsRecord[Program::UNIFORM_BINDING_COUNT];
+        UniformsRecord* const uniformsRecords = new(std::nothrow) UniformsRecord[Program::UNIFORM_BINDING_COUNT];
         UTILS_NOUNROLL
         for (GLuint binding = 0, n = Program::UNIFORM_BINDING_COUNT; binding < n; binding++) {
             Program::UniformInfo& uniforms = lazyInitializationData.bindingUniformInfo[binding];
@@ -212,6 +221,7 @@ void OpenGLProgram::updateSamplers(OpenGLDriver* const gld) const noexcept {
         assert_invariant(binding < Program::SAMPLER_BINDING_COUNT);
         auto const * const sb = samplerBindings[binding];
         assert_invariant(sb);
+        if (!sb) continue; // should never happen, this would be a user error.
         for (uint8_t j = 0, m = sb->textureUnitEntries.size(); j < m; ++j, ++tmu) { // "<=" on purpose here
             const GLTexture* const t = sb->textureUnitEntries[j].texture;
             if (t) { // program may not use all samplers of sampler group
@@ -228,15 +238,16 @@ void OpenGLProgram::updateSamplers(OpenGLDriver* const gld) const noexcept {
     CHECK_GL_ERROR(utils::slog.e)
 }
 
-void OpenGLProgram::updateUniforms(uint32_t index, void const* buffer, uint16_t age) noexcept {
+void OpenGLProgram::updateUniforms(uint32_t index, GLuint id, void const* buffer, uint16_t age) noexcept {
     assert_invariant(mUniformsRecords);
     assert_invariant(buffer);
 
     // only update the uniforms if the UBO has changed since last time we updated
     UniformsRecord const& records = mUniformsRecords[index];
-    if (records.age == age) {
+    if (records.id == id && records.age == age) {
         return;
     }
+    records.id = id;
     records.age = age;
 
     assert_invariant(records.uniforms.size() == records.locations.size());

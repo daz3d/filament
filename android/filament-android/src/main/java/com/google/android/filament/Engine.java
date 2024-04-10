@@ -111,6 +111,8 @@ public class Engine {
 
     private long mNativeObject;
 
+    private Config mConfig;
+
     @NonNull private final TransformManager mTransformManager;
     @NonNull private final LightManager mLightManager;
     @NonNull private final RenderableManager mRenderableManager;
@@ -150,8 +152,20 @@ public class Engine {
         FEATURE_LEVEL_0,
         /** OpenGL ES 3.0 features (default) */
         FEATURE_LEVEL_1,
+        /** OpenGL ES 3.1 features + 16 textures units + cubemap arrays */
+        FEATURE_LEVEL_2,
         /** OpenGL ES 3.1 features + 31 textures units + cubemap arrays */
-        FEATURE_LEVEL_2
+        FEATURE_LEVEL_3,
+    };
+
+    /**
+     * The type of technique for stereoscopic rendering
+     */
+    public enum StereoscopicType {
+        /** Stereoscopic rendering is performed using instanced rendering technique. */
+        INSTANCED,
+        /** Stereoscopic rendering is performed using the multiview feature from the graphics backend. */
+        MULTIVIEW,
     };
 
     /**
@@ -161,6 +175,7 @@ public class Engine {
         @SuppressWarnings({"FieldCanBeLocal", "UnusedDeclaration"})
         private final BuilderFinalizer mFinalizer;
         private final long mNativeBuilder;
+        private Config mConfig;
 
         public Builder() {
             mNativeBuilder = nCreateBuilder();
@@ -202,10 +217,40 @@ public class Engine {
          * @return A reference to this Builder for chaining calls.
          */
         public Builder config(Config config) {
+            mConfig = config;
             nSetBuilderConfig(mNativeBuilder, config.commandBufferSizeMB,
                     config.perRenderPassArenaSizeMB, config.driverHandleArenaSizeMB,
                     config.minCommandBufferSizeMB, config.perFrameCommandsSizeMB,
-                    config.jobSystemThreadCount);
+                    config.jobSystemThreadCount,
+                    config.textureUseAfterFreePoolSize, config.disableParallelShaderCompile,
+                    config.stereoscopicType.ordinal(), config.stereoscopicEyeCount,
+                    config.resourceAllocatorCacheSizeMB, config.resourceAllocatorCacheMaxAge,
+                    config.disableHandleUseAfterFreeCheck);
+            return this;
+        }
+
+        /**
+         * Sets the initial featureLevel for the Engine.
+         *
+         * @param featureLevel The feature level at which initialize Filament.
+         * @return A reference to this Builder for chaining calls.
+         */
+        public Builder featureLevel(FeatureLevel featureLevel) {
+            nSetBuilderFeatureLevel(mNativeBuilder, featureLevel.ordinal());
+            return this;
+        }
+
+        /**
+         * Sets the initial paused state of the rendering thread.
+         *
+         * <p>Warning: This is an experimental API. See {@link Engine#setPaused(boolean)} for
+         * caveats.
+         *
+         * @param paused Whether to start the rendering thread paused.
+         * @return A reference to this Builder for chaining calls.
+         */
+        public Builder paused(boolean paused) {
+            nSetBuilderPaused(mNativeBuilder, paused);
             return this;
         }
 
@@ -222,7 +267,7 @@ public class Engine {
         public Engine build() {
             long nativeEngine = nBuilderBuild(mNativeBuilder);
             if (nativeEngine == 0) throw new IllegalStateException("Couldn't create Engine");
-            return new Engine(nativeEngine);
+            return new Engine(nativeEngine, mConfig);
         }
 
         private static class BuilderFinalizer {
@@ -330,14 +375,68 @@ public class Engine {
          * the number of threads to use.
          */
         public long jobSystemThreadCount = 0;
+
+        /**
+         * Number of most-recently destroyed textures to track for use-after-free.
+         *
+         * This will cause the backend to throw an exception when a texture is freed but still bound
+         * to a SamplerGroup and used in a draw call. 0 disables completely.
+         *
+         * Currently only respected by the Metal backend.
+         */
+        public long textureUseAfterFreePoolSize = 0;
+
+        /**
+         * Set to `true` to forcibly disable parallel shader compilation in the backend.
+         * Currently only honored by the GL backend.
+         */
+        public boolean disableParallelShaderCompile = false;
+
+        /**
+         * The type of technique for stereoscopic rendering.
+         *
+         * This setting determines the algorithm used when stereoscopic rendering is enabled. This
+         * decision applies to the entire Engine for the lifetime of the Engine. E.g., multiple
+         * Views created from the Engine must use the same stereoscopic type.
+         *
+         * Each view can enable stereoscopic rendering via the StereoscopicOptions::enable flag.
+         *
+         * @see View#setStereoscopicOptions
+         */
+        public StereoscopicType stereoscopicType = StereoscopicType.INSTANCED;
+
+        /**
+         * The number of eyes to render when stereoscopic rendering is enabled. Supported values are
+         * between 1 and Engine#getMaxStereoscopicEyes() (inclusive).
+         *
+         * @see View#setStereoscopicOptions
+         * @see Engine#getMaxStereoscopicEyes
+         */
+        public long stereoscopicEyeCount = 2;
+
+        /*
+         * @Deprecated This value is no longer used.
+         */
+        public long resourceAllocatorCacheSizeMB = 64;
+
+        /*
+         * This value determines for how many frames are texture entries kept in the cache.
+         */
+        public long resourceAllocatorCacheMaxAge = 2;
+
+        /*
+         * Disable backend handles use-after-free checks.
+         */
+        public boolean disableHandleUseAfterFreeCheck = false;
     }
 
-    private Engine(long nativeEngine) {
+    private Engine(long nativeEngine, Config config) {
         mNativeObject = nativeEngine;
         mTransformManager = new TransformManager(nGetTransformManager(nativeEngine));
         mLightManager = new LightManager(nGetLightManager(nativeEngine));
         mRenderableManager = new RenderableManager(nGetRenderableManager(nativeEngine));
         mEntityManager = new EntityManager(nGetEntityManager(nativeEngine));
+        mConfig = config;
     }
 
     /**
@@ -468,17 +567,23 @@ public class Engine {
     }
 
     /**
-     * Activate all features of a given feature level. By default FeatureLevel::FEATURE_LEVEL_1 is
-     * active. The selected feature level must not be higher than the value returned by
-     * getActiveFeatureLevel() and it's not possible lower the active feature level.
+     * Activate all features of a given feature level. If an explicit feature level is not specified
+     * at Engine initialization time via {@link Builder#featureLevel}, the default feature level is
+     * {@link FeatureLevel#FEATURE_LEVEL_0} on devices not compatible with GLES 3.0; otherwise, the
+     * default is {@link FeatureLevel::FEATURE_LEVEL_1}. The selected feature level must not be
+     * higher than the value returned by {@link #getActiveFeatureLevel} and it's not possible lower
+     * the active feature level. Additionally, it is not possible to modify the feature level at all
+     * if the Engine was initialized at {@link FeatureLevel#FEATURE_LEVEL_0}.
      *
-     * @param featureLevel the feature level to activate. If featureLevel is lower than
-     *                     getActiveFeatureLevel(), the current (higher) feature level is kept.
-     *                     If featureLevel is higher than getSupportedFeatureLevel(), an exception
-     *                     is thrown, or the program is terminated if exceptions are disabled.
+     * @param featureLevel the feature level to activate. If featureLevel is lower than {@link
+     *                     #getActiveFeatureLevel}, the current (higher) feature level is kept. If
+     *                     featureLevel is higher than {@link #getSupportedFeatureLevel}, or if the
+     *                     engine was initialized at feature level 0, an exception is thrown, or the
+     *                     program is terminated if exceptions are disabled.
      *
      * @return the active feature level.
      *
+     * @see Builder#featureLevel
      * @see #getSupportedFeatureLevel
      * @see #getActiveFeatureLevel
      */
@@ -524,6 +629,37 @@ public class Engine {
         return nIsAutomaticInstancingEnabled(getNativeObject());
     }
 
+    /**
+     * Retrieves the configuration settings of this {@link Engine}.
+     *
+     * This method returns the configuration object that was supplied to the Engine's {@link
+     * Builder#config} method during the creation of this Engine. If the {@link Builder::config}
+     * method was not explicitly called (or called with null), this method returns the default
+     * configuration settings.
+     *
+     * @return a {@link Config} object with this Engine's configuration
+     * @see Builder#config
+     */
+    @NonNull
+    public Config getConfig() {
+        if (mConfig == null) {
+            mConfig = new Config();
+        }
+        return mConfig;
+    }
+
+    /**
+     * Returns the maximum number of stereoscopic eyes supported by Filament. The actual number of
+     * eyes rendered is set at Engine creation time with the {@link
+     * Engine#Config#stereoscopicEyeCount} setting.
+     *
+     * @return the max number of stereoscopic eyes supported
+     * @see Engine#Config#stereoscopicEyeCount
+     */
+    public long getMaxStereoscopicEyes() {
+        return nGetMaxStereoscopicEyes(getNativeObject());
+    }
+
 
     // SwapChain
 
@@ -538,7 +674,7 @@ public class Engine {
      */
     @NonNull
     public SwapChain createSwapChain(@NonNull Object surface) {
-        return createSwapChain(surface, SwapChain.CONFIG_DEFAULT);
+        return createSwapChain(surface, SwapChainFlags.CONFIG_DEFAULT);
     }
 
     /**
@@ -546,15 +682,15 @@ public class Engine {
      *
      * @param surface on Android, <b>must be</b> an instance of {@link android.view.Surface}
      *
-     * @param flags configuration flags, see {@link SwapChain}
+     * @param flags configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
      * @exception IllegalStateException can be thrown if the SwapChain couldn't be created
      *
-     * @see SwapChain#CONFIG_DEFAULT
-     * @see SwapChain#CONFIG_TRANSPARENT
-     * @see SwapChain#CONFIG_READABLE
+     * @see SwapChainFlags#CONFIG_DEFAULT
+     * @see SwapChainFlags#CONFIG_TRANSPARENT
+     * @see SwapChainFlags#CONFIG_READABLE
      *
      */
     @NonNull
@@ -572,21 +708,22 @@ public class Engine {
      *
      * @param width  width of the rendering buffer
      * @param height height of the rendering buffer
-     * @param flags  configuration flags, see {@link SwapChain}
+     * @param flags  configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
      * @exception IllegalStateException can be thrown if the SwapChain couldn't be created
      *
-     * @see SwapChain#CONFIG_DEFAULT
-     * @see SwapChain#CONFIG_TRANSPARENT
-     * @see SwapChain#CONFIG_READABLE
+     * @see SwapChainFlags#CONFIG_DEFAULT
+     * @see SwapChainFlags#CONFIG_TRANSPARENT
+     * @see SwapChainFlags#CONFIG_READABLE
      *
      */
     @NonNull
     public SwapChain createSwapChain(int width, int height, long flags) {
         if (width >= 0 && height >= 0) {
-            long nativeSwapChain = nCreateSwapChainHeadless(getNativeObject(), width, height, flags);
+            long nativeSwapChain =
+                nCreateSwapChainHeadless(getNativeObject(), width, height, flags);
             if (nativeSwapChain == 0) throw new IllegalStateException("Couldn't create SwapChain");
             return new SwapChain(nativeSwapChain, null);
         }
@@ -598,11 +735,12 @@ public class Engine {
      *
      * @param surface a properly initialized {@link NativeSurface}
      *
-     * @param flags configuration flags, see {@link SwapChain}
+     * @param flags configuration flags, see {@link SwapChainFlags}
      *
      * @return a newly created {@link SwapChain} object
      *
-     * @exception IllegalStateException can be thrown if the {@link SwapChain} couldn't be created
+     * @exception IllegalStateException can be thrown if the {@link SwapChainFlags} couldn't be
+     *            created
      */
     @NonNull
     public SwapChain createSwapChainFromNativeSurface(@NonNull NativeSurface surface, long flags) {
@@ -1060,6 +1198,34 @@ public class Engine {
         nFlushAndWait(getNativeObject());
     }
 
+    /**
+     * Kicks the hardware thread (e.g. the OpenGL, Vulkan or Metal thread) but does not wait
+     * for commands to be either executed or the hardware finished.
+     *
+     * <p>This is typically used after creating a lot of objects to start draining the command
+     * queue which has a limited size.</p>
+     */
+    public void flush() {
+        nFlush(getNativeObject());
+    }
+
+    /**
+     * Pause or resume the rendering thread.
+     *
+     * <p>Warning: This is an experimental API. In particular, note the following caveats.
+     *
+     * <ul><li>
+     * Buffer callbacks will never be called as long as the rendering thread is paused.
+     * Do not rely on a buffer callback to unpause the thread.
+     * </li><li>
+     * While the rendering thread is paused, rendering commands will continue to be queued until the
+     * buffer limit is reached. When the limit is reached, the program will abort.
+     * </li></ul>
+     */
+    public void setPaused(boolean paused) {
+        nSetPaused(getNativeObject(), paused);
+    }
+
     @UsedByReflection("TextureHelper.java")
     public long getNativeObject() {
         if (mNativeObject == 0) {
@@ -1132,6 +1298,8 @@ public class Engine {
     private static native boolean nIsValidSwapChain(long nativeEngine, long nativeSwapChain);
     private static native void nDestroyEntity(long nativeEngine, int entity);
     private static native void nFlushAndWait(long nativeEngine);
+    private static native void nFlush(long nativeEngine);
+    private static native void nSetPaused(long nativeEngine, boolean paused);
     private static native long nGetTransformManager(long nativeEngine);
     private static native long nGetLightManager(long nativeEngine);
     private static native long nGetRenderableManager(long nativeEngine);
@@ -1139,6 +1307,7 @@ public class Engine {
     private static native long nGetEntityManager(long nativeEngine);
     private static native void nSetAutomaticInstancingEnabled(long nativeEngine, boolean enable);
     private static native boolean nIsAutomaticInstancingEnabled(long nativeEngine);
+    private static native long nGetMaxStereoscopicEyes(long nativeEngine);
     private static native int nGetSupportedFeatureLevel(long nativeEngine);
     private static native int nSetActiveFeatureLevel(long nativeEngine, int ordinal);
     private static native int nGetActiveFeatureLevel(long nativeEngine);
@@ -1148,7 +1317,13 @@ public class Engine {
     private static native void nSetBuilderBackend(long nativeBuilder, long backend);
     private static native void nSetBuilderConfig(long nativeBuilder, long commandBufferSizeMB,
             long perRenderPassArenaSizeMB, long driverHandleArenaSizeMB,
-            long minCommandBufferSizeMB, long perFrameCommandsSizeMB, long jobSystemThreadCount);
+            long minCommandBufferSizeMB, long perFrameCommandsSizeMB, long jobSystemThreadCount,
+            long textureUseAfterFreePoolSize, boolean disableParallelShaderCompile,
+            int stereoscopicType, long stereoscopicEyeCount,
+            long resourceAllocatorCacheSizeMB, long resourceAllocatorCacheMaxAge,
+            boolean disableHandleUseAfterFreeCheck);
+    private static native void nSetBuilderFeatureLevel(long nativeBuilder, int ordinal);
     private static native void nSetBuilderSharedContext(long nativeBuilder, long sharedContext);
+    private static native void nSetBuilderPaused(long nativeBuilder, boolean paused);
     private static native long nBuilderBuild(long nativeBuilder);
 }

@@ -295,6 +295,11 @@ utils::JobSystem& Engine::getJobSystem() noexcept {
     return downcast(this)->getJobSystem();
 }
 
+void Engine::setPaused(bool paused) {
+    ASSERT_PRECONDITION(UTILS_HAS_THREADING, "Pause is meant for multi-threaded platforms.");
+    downcast(this)->setPaused(paused);
+}
+
 DebugRegistry& Engine::getDebugRegistry() noexcept {
     return downcast(this)->getDebugRegistry();
 }
@@ -327,8 +332,16 @@ size_t Engine::getMaxAutomaticInstances() const noexcept {
     return downcast(this)->getMaxAutomaticInstances();
 }
 
-bool Engine::isStereoSupported() const noexcept {
-    return downcast(this)->isStereoSupported();
+const Engine::Config& Engine::getConfig() const noexcept {
+    return downcast(this)->getConfig();
+}
+
+bool Engine::isStereoSupported(StereoscopicType stereoscopicType) const noexcept {
+    return downcast(this)->isStereoSupported(stereoscopicType);
+}
+
+size_t Engine::getMaxStereoscopicEyes() noexcept {
+    return FEngine::getMaxStereoscopicEyes();
 }
 
 #if defined(__EMSCRIPTEN__)

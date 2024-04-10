@@ -25,7 +25,7 @@ MaterialInstance* Material::createInstance(const char* name) const noexcept {
 }
 
 const char* Material::getName() const noexcept {
-    return downcast(this)->getName().c_str();
+    return downcast(this)->getName().c_str_safe();
 }
 
 Shading Material::getShading()  const noexcept {
@@ -118,6 +118,10 @@ RefractionType Material::getRefractionType() const noexcept {
 
 ReflectionMode Material::getReflectionMode() const noexcept {
     return downcast(this)->getReflectionMode();
+}
+
+FeatureLevel Material::getFeatureLevel() const noexcept {
+    return downcast(this)->getFeatureLevel();
 }
 
 bool Material::hasParameter(const char* name) const noexcept {

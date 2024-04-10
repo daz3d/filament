@@ -79,10 +79,13 @@ public:
      * Utilities
      */
 
-    // synchronous call to the backend. returns whether a backend supports a particular format.
+    // Synchronous call to the backend. Returns whether a backend supports a particular format.
     static bool isTextureFormatSupported(FEngine& engine, InternalFormat format) noexcept;
 
-    // synchronous call to the backend. returns whether a backend supports texture swizzling.
+    // Synchronous call to the backend. Returns whether a backend supports protected textures.
+    static bool isProtectedTexturesSupported(FEngine& engine) noexcept;
+
+    // Synchronous call to the backend. Returns whether a backend supports texture swizzling.
     static bool isTextureSwizzleSupported(FEngine& engine) noexcept;
 
     // storage needed on the CPU side for texture data uploads
@@ -104,7 +107,7 @@ public:
 
     // Returns the max number of levels for a texture of given dimensions
     static inline uint8_t maxLevelCount(uint32_t width, uint32_t height) noexcept {
-        uint32_t maxDimension = std::max(width, height);
+        uint32_t const maxDimension = std::max(width, height);
         return maxLevelCount(maxDimension);
     }
 

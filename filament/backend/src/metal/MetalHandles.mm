@@ -19,6 +19,7 @@
 #include "MetalBlitter.h"
 #include "MetalEnums.h"
 #include "MetalUtils.h"
+#include "MetalBufferPool.h"
 
 #include <filament/SwapChain.h>
 
@@ -39,7 +40,15 @@ namespace filament {
 namespace backend {
 
 static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
-    NSUInteger u = 0;
+    NSUInteger u = MTLTextureUsageUnknown;
+
+    if (any(usage & TextureUsage::SAMPLEABLE)) {
+        u |= MTLTextureUsageShaderRead;
+    }
+    if (any(usage & TextureUsage::UPLOADABLE)) {
+        // This is only needed because of the slowpath is MetalBlitter
+        u |= MTLTextureUsageRenderTarget;
+    }
     if (any(usage & TextureUsage::COLOR_ATTACHMENT)) {
         u |= MTLTextureUsageRenderTarget;
     }
@@ -49,9 +58,13 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     if (any(usage & TextureUsage::STENCIL_ATTACHMENT)) {
         u |= MTLTextureUsageRenderTarget;
     }
-
-    // All textures can be blitted from, so they must have the UsageShaderRead flag.
-    u |= MTLTextureUsageShaderRead;
+    if (any(usage & TextureUsage::BLIT_DST)) {
+        // This is only needed because of the slowpath is MetalBlitter
+        u |= MTLTextureUsageRenderTarget;
+    }
+    if (any(usage & TextureUsage::BLIT_SRC)) {
+        u |= MTLTextureUsageShaderRead;
+    }
 
     return MTLTextureUsage(u);
 }
@@ -233,13 +246,53 @@ void MetalSwapChain::present() {
     }
 }
 
-void presentDrawable(bool presentFrame, void* user) {
-    // CFBridgingRelease here is used to balance the CFBridgingRetain inside of acquireDrawable.
-    id<CAMetalDrawable> drawable = (id<CAMetalDrawable>) CFBridgingRelease(user);
-    if (presentFrame) {
-        [drawable present];
+#ifndef FILAMENT_RELEASE_PRESENT_DRAWABLE_MAIN_THREAD
+#define FILAMENT_RELEASE_PRESENT_DRAWABLE_MAIN_THREAD 1
+#endif
+
+class PresentDrawableData {
+public:
+    PresentDrawableData() = delete;
+    PresentDrawableData(const PresentDrawableData&) = delete;
+    PresentDrawableData& operator=(const PresentDrawableData&) = delete;
+
+    static PresentDrawableData* create(id<CAMetalDrawable> drawable, MetalDriver* driver) {
+        assert_invariant(driver);
+        return new PresentDrawableData(drawable, driver);
     }
-    // The drawable will be released here when the "drawable" variable goes out of scope.
+
+    static void maybePresentAndDestroyAsync(PresentDrawableData* that, bool shouldPresent) {
+        if (shouldPresent) {
+           [that->mDrawable present];
+        }
+
+#if FILAMENT_RELEASE_PRESENT_DRAWABLE_MAIN_THREAD == 1
+        // mDrawable is acquired on the driver thread. Typically, we would release this object on
+        // the same thread, but after receiving consistent crash reports from within
+        // [CAMetalDrawable dealloc], we suspect this object requires releasing on the main thread.
+        dispatch_async(dispatch_get_main_queue(), ^{ cleanupAndDestroy(that); });
+#else
+        that->mDriver->runAtNextTick([that]() { cleanupAndDestroy(that); });
+#endif
+    }
+
+private:
+    PresentDrawableData(id<CAMetalDrawable> drawable, MetalDriver* driver)
+        : mDrawable(drawable), mDriver(driver) {}
+
+    static void cleanupAndDestroy(PresentDrawableData *that) {
+        that->mDrawable = nil;
+        that->mDriver = nullptr;
+        delete that;
+    }
+
+    id<CAMetalDrawable> mDrawable;
+    MetalDriver* mDriver = nullptr;
+};
+
+void presentDrawable(bool presentFrame, void* user) {
+    auto* presentDrawableData = static_cast<PresentDrawableData*>(user);
+    PresentDrawableData::maybePresentAndDestroyAsync(presentDrawableData, presentFrame);
 }
 
 void MetalSwapChain::scheduleFrameScheduledCallback() {
@@ -248,19 +301,16 @@ void MetalSwapChain::scheduleFrameScheduledCallback() {
     }
 
     assert_invariant(drawable);
-    FrameScheduledCallback callback = frameScheduledCallback;
-    // This block strongly captures drawable to keep it alive until the handler executes.
-    // We cannot simply reference this->drawable inside the block because the block would then only
-    // capture the _this_ pointer (MetalSwapChain*) instead of the drawable.
-    id<CAMetalDrawable> d = drawable;
+
+    // Destroy this by calling maybePresentAndDestroyAsync() later.
+    auto* presentData = PresentDrawableData::create(drawable, context.driver);
+
+    FrameScheduledCallback userCallback = frameScheduledCallback;
     void* userData = frameScheduledUserData;
+
     [getPendingCommandBuffer(&context) addScheduledHandler:^(id<MTLCommandBuffer> cb) {
-        // CFBridgingRetain is used here to give the drawable a +1 retain count before
-        // casting it to a void*.
-        PresentCallable callable(presentDrawable, (void*) CFBridgingRetain(d));
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            callback(callable, userData);
-        });
+        PresentCallable callable(presentDrawable, static_cast<void*>(presentData));
+        userCallback(callable, userData);
     }];
 }
 
@@ -291,133 +341,119 @@ void MetalBufferObject::updateBufferUnsynchronized(void* data, size_t size, uint
     buffer.copyIntoBufferUnsynchronized(data, size, byteOffset);
 }
 
-MetalVertexBuffer::MetalVertexBuffer(MetalContext& context, uint8_t bufferCount,
-            uint8_t attributeCount, uint32_t vertexCount, AttributeArray const& attributes)
-    : HwVertexBuffer(bufferCount, attributeCount, vertexCount, attributes), buffers(bufferCount, nullptr) {}
+MetalVertexBufferInfo::MetalVertexBufferInfo(MetalContext& context, uint8_t bufferCount,
+        uint8_t attributeCount, AttributeArray const& attributes)
+        : HwVertexBufferInfo(bufferCount, attributeCount),
+          bufferMapping(utils::FixedCapacityVector<Entry>::with_capacity(MAX_VERTEX_BUFFER_COUNT)) {
+
+    const size_t maxAttributeCount = attributes.size();
+
+    auto& mapping = bufferMapping;
+    mapping.clear();
+    vertexDescription = {};
+
+    // Set the layout for the zero buffer, which unused attributes are mapped to.
+    vertexDescription.layouts[ZERO_VERTEX_BUFFER_LOGICAL_INDEX] = {
+            .step = MTLVertexStepFunctionConstant, .stride = 16
+    };
+
+    // Here we map each source buffer to a Metal buffer argument.
+    // Each attribute has a source buffer, offset, and stride.
+    // Two source buffers with the same index and stride can share the same Metal buffer argument
+    // index.
+    //
+    // The source buffer is the buffer index that the Filament client sets.
+    //                                       * source buffer
+    // .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT2, 0, 12)
+    // .attribute(VertexAttribute::UV,       0, VertexBuffer::AttributeType::HALF2,  8, 12)
+    // .attribute(VertexAttribute::COLOR,    1, VertexBuffer::AttributeType::UBYTE4, 0,  4)
+
+    auto allocateOrGetBufferArgumentIndex =
+            [&mapping, currentBufferArgumentIndex = USER_VERTEX_BUFFER_BINDING_START, this](
+                    auto sourceBuffer, auto sourceBufferStride) mutable -> uint8_t {
+        auto match = [&](const auto& e) {
+            return e.sourceBufferIndex == sourceBuffer && e.stride == sourceBufferStride;
+        };
+        if (auto it = std::find_if(mapping.begin(), mapping.end(), match); it != mapping.end()) {
+            return it->bufferArgumentIndex;
+        } else {
+            auto bufferArgumentIndex = currentBufferArgumentIndex++;
+            mapping.emplace_back(sourceBuffer, sourceBufferStride, bufferArgumentIndex);
+            vertexDescription.layouts[bufferArgumentIndex] = {
+                    .step = MTLVertexStepFunctionPerVertex, .stride = sourceBufferStride
+            };
+            return bufferArgumentIndex;
+        }
+    };
+
+    for (uint32_t attributeIndex = 0; attributeIndex < maxAttributeCount; attributeIndex++) {
+        const auto& attribute = attributes[attributeIndex];
+
+        // If the attribute is unused, bind it to the zero buffer. It's a Metal error for a shader
+        // to read from missing vertex attributes.
+        if (attribute.buffer == Attribute::BUFFER_UNUSED) {
+            const MTLVertexFormat format = (attribute.flags & Attribute::FLAG_INTEGER_TARGET)
+                    ? MTLVertexFormatUInt4
+                    : MTLVertexFormatFloat4;
+            vertexDescription.attributes[attributeIndex] = {
+                    .format = format, .buffer = ZERO_VERTEX_BUFFER_LOGICAL_INDEX, .offset = 0
+            };
+            continue;
+        }
+
+        // Map the source buffer and stride of this attribute to a Metal buffer argument.
+        auto bufferArgumentIndex =
+                allocateOrGetBufferArgumentIndex(attribute.buffer, attribute.stride);
+
+        vertexDescription.attributes[attributeIndex] = {
+                .format = getMetalFormat(
+                        attribute.type, attribute.flags & Attribute::FLAG_NORMALIZED),
+                .buffer = uint32_t(bufferArgumentIndex),
+                .offset = attribute.offset
+        };
+    }
+}
+
+MetalVertexBuffer::MetalVertexBuffer(MetalContext& context,
+        uint32_t vertexCount, uint32_t bufferCount, Handle<HwVertexBufferInfo> vbih)
+    : HwVertexBuffer(vertexCount), vbih(vbih), buffers(bufferCount, nullptr) {
+}
 
 MetalIndexBuffer::MetalIndexBuffer(MetalContext& context, BufferUsage usage, uint8_t elementSize,
         uint32_t indexCount) : HwIndexBuffer(elementSize, indexCount),
         buffer(context, BufferObjectBinding::VERTEX, usage, elementSize * indexCount, true) { }
 
-void MetalRenderPrimitive::setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer*
-        indexBuffer) {
-    this->vertexBuffer = vertexBuffer;
-    this->indexBuffer = indexBuffer;
-
-    const size_t attributeCount = vertexBuffer->attributes.size();
-
-    vertexDescription = {};
-
-    // Each attribute gets its own vertex buffer, starting at logical buffer 1.
-    uint32_t bufferIndex = 1;
-    for (uint32_t attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
-        const auto& attribute = vertexBuffer->attributes[attributeIndex];
-        if (attribute.buffer == Attribute::BUFFER_UNUSED) {
-            const uint8_t flags = attribute.flags;
-            const MTLVertexFormat format = (flags & Attribute::FLAG_INTEGER_TARGET) ?
-                    MTLVertexFormatUInt4 : MTLVertexFormatFloat4;
-
-            // If the attribute is not enabled, bind it to the zero buffer. It's a Metal error for a
-            // shader to read from missing vertex attributes.
-            vertexDescription.attributes[attributeIndex] = {
-                    .format = format,
-                    .buffer = ZERO_VERTEX_BUFFER_LOGICAL_INDEX,
-                    .offset = 0
-            };
-            vertexDescription.layouts[ZERO_VERTEX_BUFFER_LOGICAL_INDEX] = {
-                    .step = MTLVertexStepFunctionConstant,
-                    .stride = 16
-            };
-            continue;
-        }
-
-        vertexDescription.attributes[attributeIndex] = {
-                .format = getMetalFormat(attribute.type,
-                                         attribute.flags & Attribute::FLAG_NORMALIZED),
-                .buffer = bufferIndex,
-                .offset = 0
-        };
-        vertexDescription.layouts[bufferIndex] = {
-                .step = MTLVertexStepFunctionPerVertex,
-                .stride = attribute.stride
-        };
-
-        bufferIndex++;
-    };
+MetalRenderPrimitive::MetalRenderPrimitive() {
 }
 
-MetalProgram::MetalProgram(id<MTLDevice> device, const Program& program) noexcept
-    : HwProgram(program.getName()), vertexFunction(nil), fragmentFunction(nil),
-            computeFunction(nil), isValid(false) {
+void MetalRenderPrimitive::setBuffers(MetalVertexBufferInfo const* const vbi,
+        MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer) {
+    this->vertexBuffer = vertexBuffer;
+    this->indexBuffer = indexBuffer;
+}
 
-    using MetalFunctionPtr = __strong id<MTLFunction>*;
-
-    static_assert(Program::SHADER_TYPE_COUNT == 3, "Only vertex, fragment, and/or compute shaders expected.");
-    MetalFunctionPtr shaderFunctions[3] = { &vertexFunction, &fragmentFunction, &computeFunction };
-
-    const auto& sources = program.getShadersSource();
-    for (size_t i = 0; i < Program::SHADER_TYPE_COUNT; i++) {
-        const auto& source = sources[i];
-        // It's okay for some shaders to be empty, they shouldn't be used in any draw calls.
-        if (source.empty()) {
-            continue;
-        }
-
-        assert_invariant( source[source.size() - 1] == '\0' );
-
-        // the shader string is null terminated and the length includes the null character
-        NSString* objcSource = [[NSString alloc] initWithBytes:source.data()
-                                                        length:source.size() - 1
-                                                      encoding:NSUTF8StringEncoding];
-        NSError* error = nil;
-        // When options is nil, Metal uses the most recent language version available.
-        id<MTLLibrary> library = [device newLibraryWithSource:objcSource
-                                                      options:nil
-                                                        error:&error];
-        if (library == nil) {
-            if (error) {
-                auto description =
-                        [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
-                utils::slog.w << description << utils::io::endl;
-            }
-            PANIC_LOG("Failed to compile Metal program.");
-            return;
-        }
-
-        MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
-        auto const& specializationConstants = program.getSpecializationConstants();
-        for (auto const& sc : specializationConstants) {
-            const std::array<MTLDataType, 3> types{
-                MTLDataTypeInt, MTLDataTypeFloat, MTLDataTypeBool };
-            std::visit([&sc, constants, type = types[sc.value.index()]](auto&& arg) {
-                [constants setConstantValue:&arg
-                                       type:type
-                                    atIndex:sc.id];
-            }, sc.value);
-        }
-
-        id<MTLFunction> function = [library newFunctionWithName:@"main0"
-                                                 constantValues:constants
-                                                          error:&error];
-        if (!program.getName().empty()) {
-            function.label = @(program.getName().c_str());
-        }
-        assert_invariant(function);
-        *shaderFunctions[i] = function;
-    }
-
-    UTILS_UNUSED_IN_RELEASE const bool isRasterizationProgram =
-            vertexFunction != nil && fragmentFunction != nil;
-    UTILS_UNUSED_IN_RELEASE const bool isComputeProgram = computeFunction != nil;
-    // The program must be either a rasterization program XOR a compute program.
-    assert_invariant(isRasterizationProgram != isComputeProgram);
-
-    // All stages of the program have compiled successfully, this is a valid program.
-    isValid = true;
+MetalProgram::MetalProgram(MetalContext& context, Program&& program) noexcept
+    : HwProgram(program.getName()), mContext(context) {
 
     // Save this program's SamplerGroupInfo, it's used during draw calls to bind sampler groups to
     // the appropriate stage(s).
     samplerGroupInfo = program.getSamplerGroupInfo();
+
+    mToken = context.shaderCompiler->createProgram(program.getName(), std::move(program));
+    assert_invariant(mToken);
+}
+
+const MetalShaderCompiler::MetalFunctionBundle& MetalProgram::getFunctions() {
+    initialize();
+    return mFunctionBundle;
+}
+
+void MetalProgram::initialize() {
+    if (!mToken) {
+        return;
+    }
+    mFunctionBundle = mContext.shaderCompiler->getProgram(mToken);
+    assert_invariant(!mToken);
 }
 
 MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t levels,
@@ -533,6 +569,15 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
         externalImage(context) {
     texture = metalTexture;
     setLodRange(0, levels - 1);
+}
+
+void MetalTexture::terminate() noexcept {
+    texture = nil;
+    swizzledTextureView = nil;
+    lodTextureView = nil;
+    msaaSidecar = nil;
+    externalImage.set(nullptr);
+    terminated = true;
 }
 
 MetalTexture::~MetalTexture() {
@@ -726,13 +771,13 @@ void MetalTexture::loadWithCopyBuffer(uint32_t level, uint32_t slice, MTLRegion 
         PixelBufferDescriptor const& data, const PixelBufferShape& shape) {
     const size_t stagingBufferSize = shape.totalBytes;
     auto entry = context.bufferPool->acquireBuffer(stagingBufferSize);
-    memcpy(entry->buffer.contents,
+    memcpy(entry->buffer.get().contents,
             static_cast<uint8_t*>(data.buffer) + shape.sourceOffset,
             stagingBufferSize);
     id<MTLCommandBuffer> blitCommandBuffer = getPendingCommandBuffer(&context);
     id<MTLBlitCommandEncoder> blitCommandEncoder = [blitCommandBuffer blitCommandEncoder];
     blitCommandEncoder.label = @"Texture upload buffer blit";
-    [blitCommandEncoder copyFromBuffer:entry->buffer
+    [blitCommandEncoder copyFromBuffer:entry->buffer.get()
                           sourceOffset:0
                      sourceBytesPerRow:shape.bytesPerRow
                    sourceBytesPerImage:shape.bytesPerSlice
@@ -768,6 +813,7 @@ void MetalTexture::loadWithBlit(uint32_t level, uint32_t slice, MTLRegion region
 #endif
 
     id<MTLTexture> stagingTexture = [context.device newTextureWithDescriptor:descriptor];
+    // FIXME? Why is this not just `MTLRegion sourceRegion = region;` ?
     MTLRegion sourceRegion = MTLRegionMake3D(0, 0, 0,
             region.size.width, region.size.height, region.size.depth);
     [stagingTexture replaceRegion:sourceRegion
@@ -794,27 +840,27 @@ void MetalTexture::loadWithBlit(uint32_t level, uint32_t slice, MTLRegion region
                                                              slices:NSMakeRange(0, slices)];
     }
 
-    MetalBlitter::BlitArgs args;
+    MetalBlitter::BlitArgs args{};
     args.filter = SamplerMagFilter::NEAREST;
     args.source.level = 0;
     args.source.slice = 0;
     args.source.region = sourceRegion;
+    args.source.texture = stagingTexture;
     args.destination.level = level;
     args.destination.slice = slice;
     args.destination.region = region;
-    args.source.color = stagingTexture;
-    args.destination.color = destinationTexture;
+    args.destination.texture = destinationTexture;
     context.blitter->blit(getPendingCommandBuffer(&context), args, "Texture upload blit");
 }
 
-void MetalTexture::extendLodRangeTo(uint32_t level) {
+void MetalTexture::extendLodRangeTo(uint16_t level) {
     assert_invariant(!isInRenderPass(&context));
     minLod = std::min(minLod, level);
     maxLod = std::max(maxLod, level);
     lodTextureView = nil;
 }
 
-void MetalTexture::setLodRange(uint32_t min, uint32_t max) {
+void MetalTexture::setLodRange(uint16_t min, uint16_t max) {
     assert_invariant(!isInRenderPass(&context));
     assert_invariant(min <= max);
     minLod = min;

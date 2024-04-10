@@ -139,13 +139,13 @@ void MaterialBuilderBase::prepare(bool vulkanSemantics,
                 glTargetLanguage,
                 effectiveFeatureLevel,
             });
-            if (featureLevel == filament::backend::FeatureLevel::FEATURE_LEVEL_0
-                && shaderModel == ShaderModel::MOBILE) {
-                // ESSL1 code may never be compiled to SPIR-V.
+            if (mIncludeEssl1
+                    && featureLevel == filament::backend::FeatureLevel::FEATURE_LEVEL_0
+                    && shaderModel == ShaderModel::MOBILE) {
                 mCodeGenPermutations.push_back({
                     shaderModel,
                     TargetApi::OPENGL,
-                    TargetLanguage::GLSL,
+                    glTargetLanguage,
                     filament::backend::FeatureLevel::FEATURE_LEVEL_0
                 });
             }
@@ -250,15 +250,18 @@ MaterialBuilder& MaterialBuilder::parameter(const char* name, UniformType type,
 
 
 MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType samplerType,
-        SamplerFormat format, ParameterPrecision precision) noexcept {
-    ASSERT_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT, "Too many parameters");
-    mParameters[mParameterCount++] = { name, samplerType, format, precision };
-    return *this;
-}
+        SamplerFormat format, ParameterPrecision precision, bool multisample) noexcept {
 
-MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType samplerType,
-        ParameterPrecision precision) noexcept {
-    return parameter(name, samplerType, SamplerFormat::FLOAT, precision);
+    ASSERT_PRECONDITION(
+            !multisample || (format != SamplerFormat::SHADOW && (
+                                    samplerType == SamplerType::SAMPLER_2D
+                                            || samplerType == SamplerType::SAMPLER_2D_ARRAY)),
+            "multisample samplers only possible with SAMPLER_2D or SAMPLER_2D_ARRAY,"
+            " as long as type is not SHADOW");
+
+    ASSERT_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT, "Too many parameters");
+    mParameters[mParameterCount++] = { name, samplerType, format, precision, multisample };
+    return *this;
 }
 
 template<typename T, typename>
@@ -385,6 +388,16 @@ MaterialBuilder& MaterialBuilder::blending(BlendingMode blending) noexcept {
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::customBlendFunctions(
+        BlendFunction srcRGB, BlendFunction srcA,
+        BlendFunction dstRGB, BlendFunction dstA) noexcept {
+    mCustomBlendFunctions[0] = srcRGB;
+    mCustomBlendFunctions[1] = srcA;
+    mCustomBlendFunctions[2] = dstRGB;
+    mCustomBlendFunctions[3] = dstA;
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::postLightingBlending(BlendingMode blending) noexcept {
     mPostLightingBlendingMode = blending;
     return *this;
@@ -495,6 +508,16 @@ MaterialBuilder& MaterialBuilder::transparencyMode(TransparencyMode mode) noexce
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::stereoscopicType(StereoscopicType stereoscopicType) noexcept {
+    mStereoscopicType = stereoscopicType;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::stereoscopicEyeCount(uint8_t eyeCount) noexcept {
+    mStereoscopicEyeCount = eyeCount;
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::reflectionMode(ReflectionMode mode) noexcept {
     mReflectionMode = mode;
     return *this;
@@ -556,7 +579,7 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
         assert_invariant(!param.isSubpass());
         if (param.isSampler()) {
             sbb.add({ param.name.data(), param.name.size() },
-                    param.samplerType, param.format, param.precision);
+                    param.samplerType, param.format, param.precision, param.multisample);
         } else if (param.isUniform()) {
             ibb.add({{{ param.name.data(), param.name.size() },
                       uint32_t(param.size == 1u ? 0u : param.size), param.uniformType,
@@ -587,11 +610,11 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
     }
 
     if (mBlendingMode == BlendingMode::MASKED) {
-        ibb.add({{ "_maskThreshold", 0, UniformType::FLOAT }});
+        ibb.add({{ "_maskThreshold", 0, UniformType::FLOAT, Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 }});
     }
 
     if (mDoubleSidedCapability) {
-        ibb.add({{ "_doubleSided", 0, UniformType::BOOL }});
+        ibb.add({{ "_doubleSided", 0, UniformType::BOOL, Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 }});
     }
 
     mRequiredAttributes.set(VertexAttribute::POSITION);
@@ -629,6 +652,11 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
     info.vertexDomainDeviceJittered = mVertexDomainDeviceJittered;
     info.featureLevel = mFeatureLevel;
     info.groupSize = mGroupSize;
+    info.stereoscopicType = mStereoscopicType;
+    info.stereoscopicEyeCount = mStereoscopicEyeCount;
+
+    // This is determined via static analysis of the glsl after prepareToBuild().
+    info.userMaterialHasCustomDepth = false;
 }
 
 bool MaterialBuilder::findProperties(backend::ShaderStage type,
@@ -888,7 +916,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                         .domain = mMaterialDomain,
                         .materialInfo = &info,
                         .hasFramebufferFetch = mEnableFramebufferFetch,
-                        .usesClipDistance = v.variant.hasInstancedStereo(),
+                        .usesClipDistance = v.variant.hasStereo() && info.stereoscopicType == StereoscopicType::INSTANCED,
                         .glsl = {},
                 };
 
@@ -909,7 +937,8 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
 
                 if (targetApi == TargetApi::OPENGL) {
                     if (targetLanguage == TargetLanguage::SPIRV) {
-                        ShaderGenerator::fixupExternalSamplers(shaderModel, shader, info);
+                        ShaderGenerator::fixupExternalSamplers(shaderModel, shader, featureLevel,
+                                info);
                     }
                 }
 
@@ -1095,6 +1124,12 @@ error:
         return Package::invalidPackage();
     }
 
+    // Force post process materials to be unlit. This prevents imposing a lot of extraneous
+    // data, code, and expectations for materials which do not need them.
+    if (mMaterialDomain == MaterialDomain::POST_PROCESS) {
+        mShading = Shading::UNLIT;
+    }
+
     // Add a default color output.
     if (mMaterialDomain == MaterialDomain::POST_PROCESS && mOutputs.empty()) {
         output(VariableQualifier::OUT,
@@ -1153,10 +1188,8 @@ error:
         mVariantFilter |= uint32_t(UserVariantFilterBit::DIRECTIONAL_LIGHTING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::DYNAMIC_LIGHTING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::SHADOW_RECEIVER);
-        mVariantFilter |= uint32_t(UserVariantFilterBit::SKINNING);
         mVariantFilter |= uint32_t(UserVariantFilterBit::VSM);
         mVariantFilter |= uint32_t(UserVariantFilterBit::SSR);
-        mVariantFilter |= uint32_t(UserVariantFilterBit::STE);
     }
 
     // Create chunk tree.
@@ -1412,15 +1445,15 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
         uniforms.push_back({
                 "objectUniforms.data[0].morphTargetCount",
                 offsetof(PerRenderableUib, data[0].morphTargetCount), 1,
-                UniformType::UINT });
+                UniformType::INT });
         uniforms.push_back({
                 "objectUniforms.data[0].flagsChannels",
                 offsetof(PerRenderableUib, data[0].flagsChannels), 1,
-                UniformType::UINT });
+                UniformType::INT });
         uniforms.push_back({
                 "objectUniforms.data[0].objectId",
                 offsetof(PerRenderableUib, data[0].objectId), 1,
-                UniformType::UINT });
+                UniformType::INT });
         uniforms.push_back({
                 "objectUniforms.data[0].userData",
                 offsetof(PerRenderableUib, data[0].userData), 1,
@@ -1487,6 +1520,16 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
         container.emplace<bool>(ChunkType::MaterialDoubleSided, mDoubleSided);
         container.emplace<uint8_t>(ChunkType::MaterialBlendingMode,
                 static_cast<uint8_t>(mBlendingMode));
+
+        if (mBlendingMode == BlendingMode::CUSTOM) {
+            uint32_t const blendFunctions =
+                    (uint32_t(mCustomBlendFunctions[0]) << 24) |
+                    (uint32_t(mCustomBlendFunctions[1]) << 16) |
+                    (uint32_t(mCustomBlendFunctions[2]) <<  8) |
+                    (uint32_t(mCustomBlendFunctions[3]) <<  0);
+            container.emplace< uint32_t >(ChunkType::MaterialBlendFunction, blendFunctions);
+        }
+
         container.emplace<uint8_t>(ChunkType::MaterialTransparencyMode,
                 static_cast<uint8_t>(mTransparencyMode));
         container.emplace<uint8_t>(ChunkType::MaterialReflectionMode,
@@ -1553,6 +1596,11 @@ void MaterialBuilder::writeSurfaceChunks(ChunkContainer& container) const noexce
 
 MaterialBuilder& MaterialBuilder::noSamplerValidation(bool enabled) noexcept {
     mNoSamplerValidation = enabled;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::includeEssl1(bool enabled) noexcept {
+    mIncludeEssl1 = enabled;
     return *this;
 }
 

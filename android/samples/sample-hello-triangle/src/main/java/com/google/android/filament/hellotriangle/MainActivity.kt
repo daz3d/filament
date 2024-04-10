@@ -20,6 +20,8 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.opengl.Matrix
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Choreographer
 import android.view.Surface
 import android.view.SurfaceView
@@ -110,7 +112,7 @@ class MainActivity : Activity() {
     }
 
     private fun setupFilament() {
-        engine = Engine.create()
+        engine = Engine.Builder().featureLevel(Engine.FeatureLevel.FEATURE_LEVEL_0).build()
         renderer = engine.createRenderer()
         scene = engine.createScene()
         view = engine.createView()
@@ -120,13 +122,8 @@ class MainActivity : Activity() {
     private fun setupView() {
         scene.skybox = Skybox.Builder().color(0.035f, 0.035f, 0.035f, 1.0f).build(engine)
 
-        if (engine.activeFeatureLevel == Engine.FeatureLevel.FEATURE_LEVEL_0) {
-            // post-processing is not supported at feature level 0
-            view.isPostProcessingEnabled = false
-        } else {
-            // NOTE: Try to disable post-processing (tone-mapping, etc.) to see the difference
-            // view.isPostProcessingEnabled = false
-        }
+        // post-processing is not supported at feature level 0
+        view.isPostProcessingEnabled = false
 
         // Tell the view which camera we want to use
         view.camera = camera
@@ -162,6 +159,14 @@ class MainActivity : Activity() {
     private fun loadMaterial() {
         readUncompressedAsset("materials/baked_color.filamat").let {
             material = Material.Builder().payload(it, it.remaining()).build(engine)
+            material.compile(
+                Material.CompilerPriorityQueue.HIGH,
+                Material.UserVariantFilterBit.ALL,
+                Handler(Looper.getMainLooper())) {
+                        android.util.Log.i("hellotriangle",
+                            "Material " + material.name + " compiled.")
+            }
+            engine.flush()
         }
     }
 

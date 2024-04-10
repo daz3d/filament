@@ -41,9 +41,12 @@
 
 #include <camutils/Manipulator.h>
 
+#include <private/filament/EngineEnums.h>
+
 #include <getopt/getopt.h>
 
 #include <utils/NameComponentManager.h>
+#include <utils/Log.h>
 
 #include <math/vec3.h>
 #include <math/vec4.h>
@@ -53,9 +56,12 @@
 #include <imgui.h>
 #include <filagui/ImGuiExtensions.h>
 
+#include <cgltf.h>
+
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 
 #include "generated/resources/gltf_demo.h"
@@ -178,10 +184,13 @@ static void printUsage(char* name) {
         "       Set the camera mode: orbit (default) or flight\n"
         "       Flight mode uses the following controls:\n"
         "           Click and drag the mouse to pan the camera\n"
-        "           Use the scroll weel to adjust movement speed\n"
+        "           Use the scroll wheel to adjust movement speed\n"
         "           W / S: forward / backward\n"
         "           A / D: left / right\n"
         "           E / Q: up / down\n\n"
+        "   --eyes=<stereoscopic eyes>, -y <stereoscopic eyes>\n"
+        "       Sets the number of stereoscopic eyes (default: 2) when stereoscopic rendering is\n"
+        "       enabled.\n\n"
         "   --split-view, -v\n"
         "       Splits the window into 4 views\n\n"
         "   --vulkan-gpu-hint=<hint>, -g\n"
@@ -213,6 +222,7 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
         { "ubershader",      no_argument,          nullptr, 'u' },
         { "actual-size",     no_argument,          nullptr, 's' },
         { "camera",          required_argument,    nullptr, 'c' },
+        { "eyes",            required_argument,    nullptr, 'y' },
         { "recompute-aabb",  no_argument,          nullptr, 'r' },
         { "settings",        required_argument,    nullptr, 't' },
         { "split-view",      no_argument,          nullptr, 'v' },
@@ -259,6 +269,19 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
                     std::cerr << "Unrecognized camera mode. Must be 'flight'|'orbit'.\n";
                 }
                 break;
+            case 'y': {
+                int eyeCount = 0;
+                try {
+                    eyeCount = std::stoi(arg);
+                } catch (std::invalid_argument &e) { }
+                if (eyeCount >= 1 && eyeCount <= CONFIG_MAX_STEREOSCOPIC_EYES) {
+                    app->config.stereoscopicEyeCount = eyeCount;
+                } else {
+                    std::cerr << "Eye count must be between 1 and CONFIG_MAX_STEREOSCOPIC_EYES ("
+                              << (int) CONFIG_MAX_STEREOSCOPIC_EYES << ") (inclusive).\n";
+                }
+                break;
+            }
             case 'e':
                 app->config.headless = true;
                 break;
@@ -485,6 +508,57 @@ static void onClick(App& app, View* view, ImVec2 pos) {
     });
 }
 
+static utils::Path getPathForAsset(std::string_view string) {
+    utils::Path filename{ string };
+    if (!filename.exists()) {
+        std::cerr << "file " << filename << " not found!" << std::endl;
+        return {};
+    }
+    if (filename.isDirectory()) {
+        auto files = filename.listContents();
+        for (const auto& file: files) {
+            if (file.getExtension() == "gltf" || file.getExtension() == "glb") {
+                filename = file;
+                break;
+            }
+        }
+        if (filename.isDirectory()) {
+            std::cerr << "no glTF file found in " << filename << std::endl;
+            return {};
+        }
+    }
+    return filename;
+}
+
+
+static bool checkAsset(const utils::Path& filename) {
+    // Peek at the file size to allow pre-allocation.
+    long const contentSize = static_cast<long>(getFileSize(filename.c_str()));
+    if (contentSize <= 0) {
+        std::cerr << "Unable to open " << filename << std::endl;
+        return false;
+    }
+
+    // Consume the glTF file.
+    std::ifstream in(filename.c_str(), std::ifstream::binary | std::ifstream::in);
+    std::vector<uint8_t> buffer(static_cast<unsigned long>(contentSize));
+    if (!in.read((char*) buffer.data(), contentSize)) {
+        std::cerr << "Unable to read " << filename << std::endl;
+        return false;
+    }
+
+    // Parse the glTF file and create Filament entities.
+    cgltf_options options{};
+    cgltf_data* sourceAsset;
+    cgltf_result result = cgltf_parse(&options, buffer.data(), contentSize, &sourceAsset);
+    if (result != cgltf_result_success) {
+        slog.e << "Unable to parse glTF file." << io::endl;
+        return false;
+    }
+    return true;
+};
+
+
 int main(int argc, char** argv) {
     App app;
 
@@ -496,23 +570,9 @@ int main(int argc, char** argv) {
     utils::Path filename;
     int const num_args = argc - optionIndex;
     if (num_args >= 1) {
-        filename = argv[optionIndex];
-        if (!filename.exists()) {
-            std::cerr << "file " << filename << " not found!" << std::endl;
+        filename = getPathForAsset(argv[optionIndex]);
+        if (filename.isEmpty()) {
             return 1;
-        }
-        if (filename.isDirectory()) {
-            auto files = filename.listContents();
-            for (const auto& file : files) {
-                if (file.getExtension() == "gltf" || file.getExtension() == "glb") {
-                    filename = file;
-                    break;
-                }
-            }
-            if (filename.isDirectory()) {
-                std::cerr << "no glTF file found in " << filename << std::endl;
-                return 1;
-            }
         }
     }
 
@@ -534,14 +594,49 @@ int main(int argc, char** argv) {
 
         // Parse the glTF file and create Filament entities.
         app.asset = app.assetLoader->createAsset(buffer.data(), buffer.size());
-        app.instance = app.asset->getInstance();
-        buffer.clear();
-        buffer.shrink_to_fit();
-
         if (!app.asset) {
             std::cerr << "Unable to parse " << filename << std::endl;
             exit(1);
         }
+
+        // pre-compile all material variants
+        std::set<Material*> materials;
+        RenderableManager const& rcm = app.engine->getRenderableManager();
+        Slice<Entity> const renderables{
+                app.asset->getRenderableEntities(), app.asset->getRenderableEntityCount() };
+        for (Entity const e: renderables) {
+            auto ri = rcm.getInstance(e);
+            size_t const c = rcm.getPrimitiveCount(ri);
+            for (size_t i = 0; i < c; i++) {
+                MaterialInstance* const mi = rcm.getMaterialInstanceAt(ri, i);
+                Material* ma = const_cast<Material *>(mi->getMaterial());
+                materials.insert(ma);
+            }
+        }
+        for (Material* ma : materials) {
+            // Don't attempt to precompile shaders on WebGL.
+            // Chrome already suffers from slow shader compilation:
+            // https://github.com/google/filament/issues/6615
+            // Precompiling shaders exacerbates the problem.
+#if !defined(__EMSCRIPTEN__)
+            // First compile high priority variants
+            ma->compile(Material::CompilerPriorityQueue::HIGH,
+                    UserVariantFilterBit::DIRECTIONAL_LIGHTING |
+                    UserVariantFilterBit::DYNAMIC_LIGHTING |
+                    UserVariantFilterBit::SHADOW_RECEIVER);
+
+            // and then, everything else at low priority, except STE, which is very uncommon.
+            ma->compile(Material::CompilerPriorityQueue::LOW,
+                    UserVariantFilterBit::FOG |
+                    UserVariantFilterBit::SKINNING |
+                    UserVariantFilterBit::SSR |
+                    UserVariantFilterBit::VSM);
+#endif
+        }
+
+        app.instance = app.asset->getInstance();
+        buffer.clear();
+        buffer.shrink_to_fit();
     };
 
     auto loadResources = [&app] (const utils::Path& filename) {
@@ -559,6 +654,8 @@ int main(int argc, char** argv) {
             app.resourceLoader->addTextureProvider("image/png", app.stbDecoder);
             app.resourceLoader->addTextureProvider("image/jpeg", app.stbDecoder);
             app.resourceLoader->addTextureProvider("image/ktx2", app.ktxDecoder);
+        } else {
+            app.resourceLoader->setConfiguration(configuration);
         }
 
         if (!app.resourceLoader->asyncBeginLoad(app.asset)) {
@@ -776,6 +873,39 @@ int main(int argc, char** argv) {
                             debugDirectionalShadowmap);
                 }
 
+                ImGui::Checkbox("Display Shadow Texture",
+                        debug.getPropertyAddress<bool>("d.shadowmap.display_shadow_texture"));
+                if (*debug.getPropertyAddress<bool>("d.shadowmap.display_shadow_texture")) {
+                    int layerCount;
+                    int levelCount;
+                    debug.getProperty("d.shadowmap.display_shadow_texture_layer_count", &layerCount);
+                    debug.getProperty("d.shadowmap.display_shadow_texture_level_count", &levelCount);
+                    ImGui::Indent();
+                    ImGui::SliderFloat("scale", debug.getPropertyAddress<float>(
+                                    "d.shadowmap.display_shadow_texture_scale"), 0.0f, 8.0f);
+                    ImGui::SliderFloat("contrast", debug.getPropertyAddress<float>(
+                                    "d.shadowmap.display_shadow_texture_power"), 0.0f, 2.0f);
+                    ImGui::SliderInt("layer", debug.getPropertyAddress<int>(
+                                    "d.shadowmap.display_shadow_texture_layer"), 0, layerCount - 1);
+                    ImGui::SliderInt("level", debug.getPropertyAddress<int>(
+                                    "d.shadowmap.display_shadow_texture_level"), 0, levelCount - 1);
+                    ImGui::SliderInt("channel", debug.getPropertyAddress<int>(
+                                    "d.shadowmap.display_shadow_texture_channel"), 0, 3);
+                    ImGui::Unindent();
+                }
+#if defined(FILAMENT_SAMPLES_STEREO_TYPE_MULTIVIEW)
+                ImGui::Checkbox("Combine Multiview Images",
+                    debug.getPropertyAddress<bool>("d.stereo.combine_multiview_images"));
+#endif
+
+                bool debugFroxelVisualization;
+                if (debug.getProperty("d.lighting.debug_froxel_visualization",
+                        &debugFroxelVisualization)) {
+                    ImGui::Checkbox("Froxel Visualization", &debugFroxelVisualization);
+                    debug.setProperty("d.lighting.debug_froxel_visualization",
+                            debugFroxelVisualization);
+                }
+
                 auto dataSource = debug.getDataSource("d.view.frame_info");
                 if (dataSource.data) {
                     ImGuiExt::PlotLinesSeries("FrameInfo", 6,
@@ -935,28 +1065,11 @@ int main(int argc, char** argv) {
             camera->setScaling({1.0 / aspectRatio, 1.0});
         }
 
-        if (view->getStereoscopicOptions().enabled) {
-            Camera& c = view->getCamera();
-            auto od = app.viewer->getOcularDistance();
-            // Eye 0 is always rendered to the left side of the screen; Eye 1, the right side.
-            // For testing, we want to render a side-by-side layout so users can view with
-            // "cross-eyed" stereo.
-            // For cross-eyed stereo, Eye 0 is really the RIGHT eye, while Eye 1 is the LEFT eye.
-            const mat4 rightEye = mat4::translation(double3{ od, 0.0, 0.0});    // right eye
-            const mat4 leftEye  = mat4::translation(double3{-od, 0.0, 0.0});    // left eye
-            c.setEyeModelMatrix(0, rightEye);
-            c.setEyeModelMatrix(1, leftEye);
-            mat4 projections[2];
-            // Use an aspect ratio of 1.0. The viewport will be taken into account in
-            // FilamentApp.cpp.
-            projections[0] = mat4::perspective(70.0, 1.0, .1, 10.0);
-            projections[1] = mat4::perspective(70.0, 1.0, .1, 10.0);
-            c.setCustomEyeProjection(projections, 2, projections[0], .1, 10.0);
-            // FIXME: the aspect ratio will be incorrect until configureCamerasForWindow is
-            // triggered, which will happen the next time the window is resized.
-        } else {
-            view->getCamera().setEyeModelMatrix(0, {});
-            view->getCamera().setEyeModelMatrix(1, {});
+        static bool stereoscopicEnabled = false;
+        if (stereoscopicEnabled != view->getStereoscopicOptions().enabled) {
+            // Stereo was turned on/off.
+            FilamentApp::get().reconfigureCameras();
+            stereoscopicEnabled = view->getStereoscopicOptions().enabled;
         }
 
         app.scene.groundMaterial->setDefaultParameter(
@@ -1013,14 +1126,19 @@ int main(int argc, char** argv) {
     filamentApp.animate(animate);
     filamentApp.resize(resize);
 
-    filamentApp.setDropHandler([&] (std::string_view path) {
-        app.resourceLoader->asyncCancelLoad();
-        app.resourceLoader->evictResourceData();
-        app.viewer->removeAsset();
-        app.assetLoader->destroyAsset(app.asset);
-        loadAsset(path);
-        loadResources(path);
-        app.viewer->setAsset(app.asset, app.instance);
+    filamentApp.setDropHandler([&](std::string_view path) {
+        utils::Path const filename = getPathForAsset(path);
+        if (!filename.isEmpty()) {
+            if (checkAsset(filename)) {
+                app.resourceLoader->asyncCancelLoad();
+                app.resourceLoader->evictResourceData();
+                app.viewer->removeAsset();
+                app.assetLoader->destroyAsset(app.asset);
+                loadAsset(filename);
+                loadResources(filename);
+                app.viewer->setAsset(app.asset, app.instance);
+            }
+        }
     });
 
     filamentApp.run(app.config, setup, cleanup, gui, preRender, postRender);

@@ -1,9 +1,12 @@
-LAYOUT_LOCATION(LOCATION_POSITION) in vec4 position;
+LAYOUT_LOCATION(LOCATION_POSITION) ATTRIBUTE vec4 position;
 
 struct PostProcessVertexInputs {
 
     // We provide normalized texture coordinates to custom vertex shaders.
     vec2 normalizedUV;
+
+    // vertex position, can be modified by the user code
+    vec4 position;
 
 #ifdef VARIABLE_CUSTOM0
     vec4 VARIABLE_CUSTOM0;

@@ -18,11 +18,14 @@
 #define TNT_METALCONTEXT_H
 
 #include "MetalResourceTracker.h"
+#include "MetalShaderCompiler.h"
 #include "MetalState.h"
 
 #include <CoreVideo/CVMetalTextureCache.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/QuartzCore.h>
+
+#include <utils/FixedCircularBuffer.h>
 
 #include <array>
 #include <atomic>
@@ -53,6 +56,9 @@ struct MetalVertexBuffer;
 constexpr static uint8_t MAX_SAMPLE_COUNT = 8;  // Metal devices support at most 8 MSAA samples
 
 struct MetalContext {
+    explicit MetalContext(size_t metalFreedTextureListSize)
+        : texturesToDestroy(metalFreedTextureListSize) {}
+
     MetalDriver* driver;
     id<MTLDevice> device = nullptr;
     id<MTLCommandQueue> commandQueue = nullptr;
@@ -93,6 +99,7 @@ struct MetalContext {
     std::array<BufferState, MAX_SSBO_COUNT> ssboState;
     CullModeStateTracker cullModeState;
     WindingStateTracker windingState;
+    Handle<HwRenderPrimitive> currentRenderPrimitive;
 
     // State caches.
     DepthStencilStateCache depthStencilStateCache;
@@ -111,6 +118,14 @@ struct MetalContext {
     tsl::robin_set<MetalSamplerGroup*> samplerGroups;
     tsl::robin_set<MetalTexture*> textures;
 
+    // This circular buffer implements delayed destruction for Metal texture handles. It keeps a
+    // handle to a fixed number of the most recently destroyed texture handles. When we're asked to
+    // destroy a texture handle, we free its texture memory, but keep the MetalTexture object alive,
+    // marking it as "terminated". If we later are asked to use that texture, we can check its
+    // terminated status and throw an Objective-C error instead of crashing, which is helpful for
+    // debugging use-after-free issues in release builds.
+    utils::FixedCircularBuffer<Handle<HwTexture>> texturesToDestroy;
+
     MetalBufferPool* bufferPool;
 
     MetalSwapChain* currentDrawSwapChain = nil;
@@ -128,13 +143,18 @@ struct MetalContext {
     // Fences, only supported on macOS 10.14 and iOS 12 and above.
     API_AVAILABLE(macos(10.14), ios(12.0))
     MTLSharedEventListener* eventListener = nil;
-    uint64_t signalId = 1;
+    // signalId is incremented in the MetalFence constructor, which is called on
+    // both the driver (MetalTimerQueryFence::beginTimeElapsedQuery) and main
+    // threads (in createFenceS), so an atomic is necessary.
+    std::atomic<uint64_t> signalId = 1;
 
     MetalTimerQueryInterface* timerQueryImpl;
 
     std::stack<const char*> groupMarkers;
 
     MTLViewport currentViewport;
+
+    MetalShaderCompiler* shaderCompiler = nullptr;
 
 #if defined(FILAMENT_METAL_PROFILING)
     // Logging and profiling.

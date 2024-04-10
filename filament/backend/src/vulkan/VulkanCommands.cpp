@@ -47,7 +47,8 @@ VulkanCmdFence::VulkanCmdFence(VkFence ifence)
 
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanResourceAllocator* allocator, VkDevice device,
         VkCommandPool pool)
-    : mResourceManager(allocator) {
+    : mResourceManager(allocator),
+      mPipeline(VK_NULL_HANDLE) {
     // Create the low-level command buffer.
     const VkCommandBufferAllocateInfo allocateInfo{
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -155,7 +156,7 @@ VulkanCommands::VulkanCommands(VkDevice device, VkQueue queue, uint32_t queueFam
 #endif
 }
 
-VulkanCommands::~VulkanCommands() {
+void VulkanCommands::terminate() {
     wait();
     gc();
     vkDestroyCommandPool(mDevice, mPool, VKALLOC);
@@ -268,32 +269,24 @@ bool VulkanCommands::flush() {
             VK_NULL_HANDLE,
             VK_NULL_HANDLE,
     };
-
+    uint32_t waitSemaphoreCount = 0;
+    if (mSubmissionSignal) {
+        signals[waitSemaphoreCount++] = mSubmissionSignal;
+    }
+    if (mInjectedSignal) {
+        signals[waitSemaphoreCount++] = mInjectedSignal;
+    }
     VkCommandBuffer const cmdbuffer = currentbuf->buffer();
-
     VkSubmitInfo submitInfo{
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 0,
-            .pWaitSemaphores = signals,
+            .waitSemaphoreCount = waitSemaphoreCount,
+            .pWaitSemaphores = waitSemaphoreCount > 0 ? signals : nullptr,
             .pWaitDstStageMask = waitDestStageMasks,
             .commandBufferCount = 1,
             .pCommandBuffers = &cmdbuffer,
             .signalSemaphoreCount = 1u,
             .pSignalSemaphores = &renderingFinished,
     };
-
-    if (mSubmissionSignal) {
-        signals[submitInfo.waitSemaphoreCount++] = mSubmissionSignal;
-    }
-
-    if (mInjectedSignal) {
-        signals[submitInfo.waitSemaphoreCount++] = mInjectedSignal;
-    }
-
-    // To address a validation warning.
-    if (submitInfo.waitSemaphoreCount == 0) {
-        submitInfo.pWaitSemaphores = VK_NULL_HANDLE;
-    }
 
 #if FVK_ENABLED(FVK_DEBUG_COMMAND_BUFFER)
     slog.i << "Submitting cmdbuffer=" << cmdbuffer
@@ -443,8 +436,8 @@ void VulkanCommands::popGroupMarker() {
         auto const [marker, startTime] = mGroupMarkers->pop();
         auto const endTime = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> diff = endTime - startTime;
-        utils::slog.d << "<---- " << marker << " elapsed: " << (diff.count() * 1000) << " ms\n"
-                      << utils::io::flush;
+        utils::slog.d << "<---- " << marker << " elapsed: " << (diff.count() * 1000) << " ms"
+                      << utils::io::endl;
 #else
         mGroupMarkers->pop();
 #endif

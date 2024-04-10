@@ -22,21 +22,29 @@
 #include "HwRenderPrimitiveFactory.h"
 #include "UniformBuffer.h"
 
-#include "backend/DriverApiForward.h"
-
-#include <backend/Handle.h>
+#include <details/InstanceBuffer.h>
 
 #include <filament/Box.h>
 #include <filament/RenderableManager.h>
 
-#include <details/InstanceBuffer.h>
-
 #include <private/filament/UibStructs.h>
 
+#include <backend/DriverApiForward.h>
+#include <backend/Handle.h>
+
+#include <utils/compiler.h>
 #include <utils/Entity.h>
+#include <utils/Panic.h>
 #include <utils/SingleInstanceComponentManager.h>
 #include <utils/Slice.h>
 #include <utils/Range.h>
+
+#include <math/mat4.h>
+
+#include <algorithm>
+
+#include <stddef.h>
+#include <stdint.h>
 
 namespace filament {
 
@@ -49,9 +57,12 @@ class FSkinningBuffer;
 class FVertexBuffer;
 class FTexture;
 
+class MorphTargetBuffer;
+
 class FRenderableManager : public RenderableManager {
 public:
     using Instance = RenderableManager::Instance;
+    using GeometryType = RenderableManager::Builder::GeometryType;
 
     // TODO: consider renaming, this pertains to material variants, not strictly visibility.
     struct Visibility {
@@ -60,11 +71,13 @@ public:
         bool castShadows                : 1;
         bool receiveShadows             : 1;
         bool culling                    : 1;
+
         bool skinning                   : 1;
         bool morphing                   : 1;
         bool screenSpaceContactShadows  : 1;
         bool reversedWindingOrder       : 1;
         bool fog                        : 1;
+        GeometryType geometryType       : 2;
     };
 
     static_assert(sizeof(Visibility) == sizeof(uint16_t), "Visibility should be 16 bits");
@@ -92,14 +105,30 @@ public:
     }
 
     Instance getInstance(utils::Entity e) const noexcept {
-        return mManager.getInstance(e);
+        return { mManager.getInstance(e) };
+    }
+
+    size_t getComponentCount() const noexcept {
+        return mManager.getComponentCount();
+    }
+
+    bool empty() const noexcept {
+        return mManager.empty();
+    }
+
+    utils::Entity getEntity(Instance i) const noexcept {
+        return mManager.getEntity(i);
+    }
+
+    utils::Entity const* getEntities() const noexcept {
+        return mManager.getEntities();
     }
 
     void create(const RenderableManager::Builder& builder, utils::Entity entity);
 
     void destroy(utils::Entity e) noexcept;
 
-    inline void setAxisAlignedBoundingBox(Instance instance, const Box& aabb) noexcept;
+    inline void setAxisAlignedBoundingBox(Instance instance, const Box& aabb);
 
     inline void setLayerMask(Instance instance, uint8_t select, uint8_t values) noexcept;
 
@@ -120,13 +149,13 @@ public:
 
     inline void setPrimitives(Instance instance, utils::Slice<FRenderPrimitive> const& primitives) noexcept;
 
-    inline void setSkinning(Instance instance, bool enable) noexcept;
+    inline void setSkinning(Instance instance, bool enable);
     void setBones(Instance instance, Bone const* transforms, size_t boneCount, size_t offset = 0);
     void setBones(Instance instance, math::mat4f const* transforms, size_t boneCount, size_t offset = 0);
     void setSkinningBuffer(Instance instance, FSkinningBuffer* skinningBuffer,
             size_t count, size_t offset);
 
-    inline void setMorphing(Instance instance, bool enable) noexcept;
+    inline void setMorphing(Instance instance, bool enable);
     void setMorphWeights(Instance instance, float const* weights, size_t count, size_t offset);
     void setMorphTargetBufferAt(Instance instance, uint8_t level, size_t primitiveIndex,
             FMorphTargetBuffer* morphTargetBuffer, size_t offset, size_t count);
@@ -175,10 +204,6 @@ public:
     };
     static_assert(sizeof(InstancesInfo) == 16);
     inline InstancesInfo getInstancesInfo(Instance instance) const noexcept;
-
-    utils::Entity getEntity(Instance instance) const noexcept {
-        return mManager.getEntity(instance);
-    }
 
     inline size_t getLevelCount(Instance) const noexcept { return 1u; }
     size_t getPrimitiveCount(Instance instance, uint8_t level) const noexcept;
@@ -283,8 +308,12 @@ private:
 
 FILAMENT_DOWNCAST(RenderableManager)
 
-void FRenderableManager::setAxisAlignedBoundingBox(Instance instance, const Box& aabb) noexcept {
+void FRenderableManager::setAxisAlignedBoundingBox(Instance instance, const Box& aabb) {
     if (instance) {
+        ASSERT_PRECONDITION(
+                static_cast<Visibility const&>(
+                        mManager[instance].visibility).geometryType == GeometryType::DYNAMIC,
+                "This renderable has staticBounds enabled; its AABB cannot change.");
         mManager[instance].aabb = aabb;
     }
 }
@@ -356,16 +385,26 @@ bool FRenderableManager::getFogEnabled(RenderableManager::Instance instance) con
     return getVisibility(instance).fog;
 }
 
-void FRenderableManager::setSkinning(Instance instance, bool enable) noexcept {
+void FRenderableManager::setSkinning(Instance instance, bool enable) {
     if (instance) {
         Visibility& visibility = mManager[instance].visibility;
+
+        ASSERT_PRECONDITION(
+                visibility.geometryType != GeometryType::STATIC || !enable,
+                "Skinning can't be used with STATIC geometry");
+
         visibility.skinning = enable;
     }
 }
 
-void FRenderableManager::setMorphing(Instance instance, bool enable) noexcept {
+void FRenderableManager::setMorphing(Instance instance, bool enable) {
     if (instance) {
         Visibility& visibility = mManager[instance].visibility;
+
+        ASSERT_PRECONDITION(
+                visibility.geometryType != GeometryType::STATIC || !enable,
+                "Morphing can't be used with STATIC geometry");
+
         visibility.morphing = enable;
     }
 }
@@ -434,22 +473,22 @@ FRenderableManager::getInstancesInfo(Instance instance) const noexcept {
 }
 
 utils::Slice<FRenderPrimitive> const& FRenderableManager::getRenderPrimitives(
-        Instance instance, uint8_t level) const noexcept {
+        Instance instance, UTILS_UNUSED uint8_t level) const noexcept {
     return mManager[instance].primitives;
 }
 
 utils::Slice<FRenderPrimitive>& FRenderableManager::getRenderPrimitives(
-        Instance instance, uint8_t level) noexcept {
+        Instance instance, UTILS_UNUSED uint8_t level) noexcept {
     return mManager[instance].primitives;
 }
 
 utils::Slice<FRenderableManager::MorphTargets> const& FRenderableManager::getMorphTargets(
-        Instance instance, uint8_t level) const noexcept {
+        Instance instance, UTILS_UNUSED uint8_t level) const noexcept {
     return mManager[instance].morphTargets;
 }
 
 utils::Slice<FRenderableManager::MorphTargets>& FRenderableManager::getMorphTargets(
-        Instance instance, uint8_t level) noexcept {
+        Instance instance, UTILS_UNUSED uint8_t level) noexcept {
     return mManager[instance].morphTargets;
 }
 

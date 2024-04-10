@@ -23,6 +23,8 @@
 
 #include <bluevk/BlueVK.h>
 
+#include <utility>
+
 namespace filament::backend {
 
 VkFormat getVkFormat(ElementType type, bool normalized, bool integer);
@@ -88,9 +90,236 @@ utils::FixedCapacityVector<OutType> enumerate(
 #undef EXPAND_ENUM_NO_ARGS
 #undef EXPAND_ENUM_ARGS
 
+// Used across pipeline related classes.
+using UsageFlags = utils::bitset128;
 
 // Useful shorthands
 using VkFormatList = utils::FixedCapacityVector<VkFormat>;
+
+// An Array that will be fixed capacity, but the "size" (as in user added elements) is variable.
+// Note that this class is movable.
+template<typename T, uint16_t CAPACITY>
+class CappedArray {
+private:
+    using FixedSizeArray = std::array<T, CAPACITY>;
+public:
+    using const_iterator = typename FixedSizeArray::const_iterator;
+    using iterator = typename FixedSizeArray::iterator;
+
+    CappedArray() = default;
+
+    // Delete copy constructor/assignment.
+    CappedArray(CappedArray const& rhs) = delete;
+    CappedArray& operator=(CappedArray& rhs) = delete;
+
+    CappedArray(CappedArray&& rhs) noexcept {
+        this->swap(rhs);
+    }
+
+    CappedArray& operator=(CappedArray&& rhs) noexcept {
+        this->swap(rhs);
+        return *this;
+    }
+
+    inline ~CappedArray() {
+        clear();
+    }
+
+    inline const_iterator begin() const {
+        if (mInd == 0) {
+            return mArray.cend();
+        }
+        return mArray.cbegin();
+    }
+
+    inline const_iterator end() const {
+        if (mInd > 0 && mInd < CAPACITY) {
+            return mArray.begin() + mInd;
+        }
+        return mArray.cend();
+    }
+
+    inline T back() {
+        assert_invariant(mInd > 0);
+        return *(mArray.begin() + mInd);
+    }
+
+    inline void pop_back() {
+        assert_invariant(mInd > 0);
+        mInd--;
+    }
+
+    inline const_iterator find(T item) {
+        return std::find(begin(), end(), item);
+    }
+
+    inline void insert(T item) {
+        assert_invariant(mInd < CAPACITY);
+        mArray[mInd++] = item;
+    }
+
+    inline void erase(T item) {
+        PANIC_PRECONDITION("CappedArray::erase should not be called");
+    }
+
+    inline void clear() {
+        if (mInd == 0) {
+            return;
+        }
+        mInd = 0;
+    }
+
+    inline T& operator[](uint16_t ind) {
+        return mArray[ind];
+    }
+
+    inline T const& operator[](uint16_t ind) const {
+        return mArray[ind];
+    }
+
+    inline uint32_t size() const {
+        return mInd;
+    }
+
+    T* data() {
+        return mArray.data();
+    }
+
+    T const* data() const {
+        return mArray.data();
+    }
+
+    bool operator==(CappedArray const& b) const {
+        return this->mArray == b.mArray;
+    }
+
+private:
+    void swap(CappedArray& rhs) {
+        std::swap(mArray, rhs.mArray);
+        std::swap(mInd, rhs.mInd);
+    }
+
+    FixedSizeArray mArray;
+    uint32_t mInd = 0;
+};
+
+// TODO: ok to remove once Filament-side API is complete
+namespace descset {
+
+// Used to describe the descriptor binding in shader stages. We assume that the binding index does
+// not exceed 31. We also assume that we have two shader stages - vertex and fragment.  The below
+// types and struct are used across VulkanDescriptorSet and VulkanProgram.
+using UniformBufferBitmask = uint32_t;
+using SamplerBitmask = uint64_t;
+
+// We only have at most one input attachment, so this bitmask exists only to make the code more
+// general.
+using InputAttachmentBitmask = uint8_t;
+
+constexpr UniformBufferBitmask UBO_VERTEX_STAGE = 0x1;
+constexpr UniformBufferBitmask UBO_FRAGMENT_STAGE = (0x1ULL << (sizeof(UniformBufferBitmask) * 4));
+constexpr SamplerBitmask SAMPLER_VERTEX_STAGE = 0x1;
+constexpr SamplerBitmask SAMPLER_FRAGMENT_STAGE = (0x1ULL << (sizeof(SamplerBitmask) * 4));
+constexpr InputAttachmentBitmask INPUT_ATTACHMENT_VERTEX_STAGE = 0x1;
+constexpr InputAttachmentBitmask INPUT_ATTACHMENT_FRAGMENT_STAGE =
+        (0x1ULL << (sizeof(InputAttachmentBitmask) * 4));
+
+template<typename Bitmask>
+static constexpr Bitmask getVertexStage() noexcept {
+    if constexpr (std::is_same_v<Bitmask, UniformBufferBitmask>) {
+        return UBO_VERTEX_STAGE;
+    }
+    if constexpr (std::is_same_v<Bitmask, SamplerBitmask>) {
+        return SAMPLER_VERTEX_STAGE;
+    }
+    if constexpr (std::is_same_v<Bitmask, InputAttachmentBitmask>) {
+        return INPUT_ATTACHMENT_VERTEX_STAGE;
+    }
+}
+
+template<typename Bitmask>
+static constexpr Bitmask getFragmentStage() noexcept {
+    if constexpr (std::is_same_v<Bitmask, UniformBufferBitmask>) {
+        return UBO_FRAGMENT_STAGE;
+    }
+    if constexpr (std::is_same_v<Bitmask, SamplerBitmask>) {
+        return SAMPLER_FRAGMENT_STAGE;
+    }
+    if constexpr (std::is_same_v<Bitmask, InputAttachmentBitmask>) {
+        return INPUT_ATTACHMENT_FRAGMENT_STAGE;
+    }
+}
+
+typedef enum ShaderStageFlags2 : uint8_t {
+    NONE        =    0,
+    VERTEX      =    0x1,
+    FRAGMENT    =    0x2,
+} ShaderStageFlags2;
+
+enum class DescriptorType : uint8_t {
+    UNIFORM_BUFFER,
+    SAMPLER,
+    INPUT_ATTACHMENT,
+};
+
+enum class DescriptorFlags : uint8_t {
+    NONE = 0x00,
+    DYNAMIC_OFFSET = 0x01
+};
+
+struct DescriptorSetLayoutBinding {
+    DescriptorType type;
+    ShaderStageFlags2 stageFlags;
+    uint8_t binding;
+    DescriptorFlags flags;
+    uint16_t count;
+};
+
+struct DescriptorSetLayout {
+    utils::FixedCapacityVector<DescriptorSetLayoutBinding> bindings;
+};
+
+} // namespace descset
+
+// Use constexpr to statically generate a bit count table for 8-bit numbers.
+struct _BitCountHelper {
+    constexpr _BitCountHelper() : data{} {
+        for (uint16_t i = 0; i < 256; ++i) {
+            data[i] = 0;
+            for (auto j = i; j > 0; j /= 2) {
+                if (j & 1) {
+                    data[i]++;
+                }
+            }
+        }
+    }
+
+    template<typename MaskType>
+    constexpr uint8_t count(MaskType num) {
+        uint8_t count = 0;
+        for (uint8_t i = 0; i < sizeof(MaskType) * 8; i+=8) {
+            count += data[(num >> i) & 0xFF];
+        }
+        return count;
+    }
+
+    static _BitCountHelper BitCounter;
+private:
+    uint8_t data[256];
+};
+
+template<typename MaskType>
+inline uint8_t countBits(MaskType num) {
+    return _BitCountHelper::BitCounter.count(num);
+}
+
+// This is useful for counting the total number of descriptors for both vertex and fragment stages.
+template<typename MaskType>
+inline MaskType collapseStages(MaskType mask) {
+    constexpr uint8_t NBITS_DIV_2 = sizeof(MaskType) * 4;
+    // First zero out the top-half and then or the bottom-half against the original top-half.
+    return ((mask << NBITS_DIV_2) >> NBITS_DIV_2) | (mask >> NBITS_DIV_2);
+}
 
 } // namespace filament::backend
 

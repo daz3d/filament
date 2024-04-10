@@ -23,6 +23,7 @@
 #include "DFG.h"
 #include "PostProcessManager.h"
 #include "ResourceList.h"
+#include "HwVertexBufferInfoFactory.h"
 
 #include "components/CameraManager.h"
 #include "components/LightManager.h"
@@ -58,17 +59,6 @@
 #include <filament/Texture.h>
 #include <filament/VertexBuffer.h>
 
-#if FILAMENT_ENABLE_MATDBG
-#include <matdbg/DebugServer.h>
-#else
-namespace filament {
-namespace matdbg {
-class DebugServer;
-using MaterialKey = uint32_t;
-} // namespace matdbg
-} // namespace filament
-#endif
-
 #include <utils/compiler.h>
 #include <utils/Allocator.h>
 #include <utils/JobSystem.h>
@@ -78,7 +68,18 @@ using MaterialKey = uint32_t;
 #include <memory>
 #include <new>
 #include <random>
+#include <thread>
+#include <type_traits>
 #include <unordered_map>
+
+#if FILAMENT_ENABLE_MATDBG
+#include <matdbg/DebugServer.h>
+#else
+namespace filament::matdbg {
+class DebugServer;
+using MaterialKey = uint32_t;
+} // namespace filament::matdbg
+#endif
 
 namespace filament {
 
@@ -142,7 +143,7 @@ public:
     // the per-frame Area is used by all Renderer, so they must run in sequence and
     // have freed all allocated memory when done. If this needs to change in the future,
     // we'll simply have to use separate Areas (for instance).
-    LinearAllocatorArena& getPerRenderPassAllocator() noexcept { return mPerRenderPassAllocator; }
+    LinearAllocatorArena& getPerRenderPassArena() noexcept { return mPerRenderPassArena; }
 
     // Material IDs...
     uint32_t getMaterialId() const noexcept { return mMaterialId++; }
@@ -182,7 +183,13 @@ public:
         return CONFIG_MAX_INSTANCES;
     }
 
-    bool isStereoSupported() const noexcept { return getDriver().isStereoSupported(); }
+    bool isStereoSupported(StereoscopicType stereoscopicType) const noexcept {
+        return getDriver().isStereoSupported(stereoscopicType);
+    }
+
+    static size_t getMaxStereoscopicEyes() noexcept {
+        return CONFIG_MAX_STEREOSCOPIC_EYES;
+    }
 
     PostProcessManager const& getPostProcessManager() const noexcept {
         return mPostProcessManager;
@@ -231,7 +238,7 @@ public:
             default:
                 return backend::ShaderLanguage::ESSL3;
             case Backend::OPENGL:
-                return mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0
+                return getDriver().getFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0
                         ? backend::ShaderLanguage::ESSL1 : backend::ShaderLanguage::ESSL3;
             case Backend::VULKAN:
                 return backend::ShaderLanguage::SPIRV;
@@ -256,8 +263,8 @@ public:
         return mDefaultRenderTarget;
     }
 
-    template <typename T>
-    T* create(ResourceList<T>& list, typename T::Builder const& builder) noexcept;
+    template <typename T, typename ... ARGS>
+    T* create(ResourceList<T>& list, typename T::Builder const& builder, ARGS&& ... args) noexcept;
 
     FBufferObject* createBufferObject(const BufferObject::Builder& builder) noexcept;
     FVertexBuffer* createVertexBuffer(const VertexBuffer::Builder& builder) noexcept;
@@ -266,7 +273,7 @@ public:
     FMorphTargetBuffer* createMorphTargetBuffer(const MorphTargetBuffer::Builder& builder) noexcept;
     FInstanceBuffer* createInstanceBuffer(const InstanceBuffer::Builder& builder) noexcept;
     FIndirectLight* createIndirectLight(const IndirectLight::Builder& builder) noexcept;
-    FMaterial* createMaterial(const Material::Builder& builder) noexcept;
+    FMaterial* createMaterial(const Material::Builder& builder, std::unique_ptr<MaterialParser> materialParser) noexcept;
     FTexture* createTexture(const Texture::Builder& builder) noexcept;
     FSkybox* createSkybox(const Skybox::Builder& builder) noexcept;
     FColorGrading* createColorGrading(const ColorGrading::Builder& builder) noexcept;
@@ -333,6 +340,8 @@ public:
 
     void destroy(utils::Entity e);
 
+    void setPaused(bool paused);
+
     void flushAndWait();
 
     // flush the current buffer
@@ -397,6 +406,10 @@ public:
 
     bool isAutomaticInstancingEnabled() const noexcept {
         return mAutomaticInstancingEnabled;
+    }
+
+    HwVertexBufferInfoFactory& getVertexBufferInfoFactory() noexcept {
+        return mHwVertexBufferInfoFactory;
     }
 
     backend::Handle<backend::HwTexture> getOneTexture() const { return mDummyOneTexture; }
@@ -467,6 +480,7 @@ private:
     FLightManager mLightManager;
     FCameraManager mCameraManager;
     ResourceAllocator* mResourceAllocator = nullptr;
+    HwVertexBufferInfoFactory mHwVertexBufferInfoFactory;
 
     ResourceList<FBufferObject> mBufferObjects{ "BufferObject" };
     ResourceList<FRenderer> mRenderers{ "Renderer" };
@@ -487,7 +501,7 @@ private:
     ResourceList<FRenderTarget> mRenderTargets{ "RenderTarget" };
 
     // the fence list is accessed from multiple threads
-    utils::SpinLock mFenceListLock;
+    utils::Mutex mFenceListLock;
     ResourceList<FFence> mFences{"Fence"};
 
     mutable uint32_t mMaterialId = 0;
@@ -504,7 +518,7 @@ private:
 
     uint32_t mFlushCounter = 0;
 
-    LinearAllocatorArena mPerRenderPassAllocator;
+    RootArenaScope::Arena mPerRenderPassArena;
     HeapAllocatorArena mHeapAllocator;
 
     utils::JobSystem mJobSystem;
@@ -544,12 +558,20 @@ public:
     struct {
         struct {
             bool debug_directional_shadowmap = false;
+            bool display_shadow_texture = false;
             bool far_uses_shadowcasters = true;
             bool focus_shadowcasters = true;
             bool visualize_cascades = false;
             bool tightly_bound_scene = true;
             float dzn = -1.0f;
             float dzf =  1.0f;
+            float display_shadow_texture_scale = 0.25f;
+            int display_shadow_texture_layer = 0;
+            int display_shadow_texture_level = 0;
+            int display_shadow_texture_channel = 0;
+            int display_shadow_texture_layer_count = 0;
+            int display_shadow_texture_level_count = 0;
+            float display_shadow_texture_power = 1;
         } shadowmap;
         struct {
             bool camera_at_origin = true;
@@ -565,6 +587,12 @@ public:
             bool doFrameCapture = false;
             bool disable_buffer_padding = false;
         } renderer;
+        struct {
+            bool debug_froxel_visualization = false;
+        } lighting;
+        struct {
+            bool combine_multiview_images = true;
+        } stereo;
         matdbg::DebugServer* server = nullptr;
     } debug;
 };

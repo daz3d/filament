@@ -18,9 +18,9 @@
 #include "VulkanTexture.h"
 #include "VulkanUtility.h"
 
+#include <DataReshaper.h>
+#include <backend/DriverEnums.h>
 #include <private/backend/BackendUtils.h>
-
-#include "DataReshaper.h"
 
 #include <utils/Panic.h>
 
@@ -100,8 +100,12 @@ VulkanTexture::VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice,
 
     // Filament expects blit() to work with any texture, so we almost always set these usage flags.
     // TODO: investigate performance implications of setting these flags.
-    const VkImageUsageFlags blittable = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+    constexpr VkImageUsageFlags blittable = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    if (any(usage & (TextureUsage::BLIT_DST | TextureUsage::BLIT_SRC))) {
+        imageInfo.usage |= blittable;
+    }
 
     if (any(usage & TextureUsage::SAMPLEABLE)) {
 
@@ -159,7 +163,7 @@ VulkanTexture::VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice,
     imageInfo.samples = (VkSampleCountFlagBits) samples;
 
     VkResult error = vkCreateImage(mDevice, &imageInfo, VKALLOC, &mTextureImage);
-    if (error || FVK_ENABLED_BOOL(FVK_DEBUG_TEXTURE)) {
+    if (error || FVK_ENABLED(FVK_DEBUG_TEXTURE)) {
         utils::slog.d << "vkCreateImage: "
             << "image = " << mTextureImage << ", "
             << "result = " << error << ", "
@@ -271,6 +275,8 @@ void VulkanTexture::updateImage(const PixelBufferDescriptor& data, uint32_t widt
         updateImageWithBlit(*hostData, width, height, depth, miplevel);
         return;
     }
+
+    assert_invariant(hostData->size > 0 && "Data is empty");
 
     // Otherwise, use vkCmdCopyBufferToImage.
     void* mapped = nullptr;

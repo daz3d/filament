@@ -32,6 +32,7 @@
 #include "private/backend/SamplerGroup.h"
 
 #include <utils/bitset.h>
+#include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
 
@@ -144,10 +145,32 @@ private:
     MetalBuffer buffer;
 };
 
-struct MetalVertexBuffer : public HwVertexBuffer {
-    MetalVertexBuffer(MetalContext& context, uint8_t bufferCount, uint8_t attributeCount,
-            uint32_t vertexCount, AttributeArray const& attributes);
+struct MetalVertexBufferInfo : public HwVertexBufferInfo {
+    MetalVertexBufferInfo(MetalContext& context,
+            uint8_t bufferCount, uint8_t attributeCount, AttributeArray const& attributes);
 
+    // This struct is used to create the pipeline description to describe vertex assembly.
+    VertexDescription vertexDescription = {};
+
+    struct Entry {
+        uint8_t sourceBufferIndex = 0;
+        uint8_t stride = 0;
+        // maps to ->
+        uint8_t bufferArgumentIndex = 0;
+
+        Entry(uint8_t sourceBufferIndex, uint8_t stride, uint8_t bufferArgumentIndex)
+                : sourceBufferIndex(sourceBufferIndex),
+                  stride(stride),
+                  bufferArgumentIndex(bufferArgumentIndex) {}
+    };
+    utils::FixedCapacityVector<Entry> bufferMapping;
+};
+
+struct MetalVertexBuffer : public HwVertexBuffer {
+    MetalVertexBuffer(MetalContext& context,
+            uint32_t vertexCount, uint32_t bufferCount, Handle<HwVertexBufferInfo> vbih);
+
+    Handle<HwVertexBufferInfo> vbih;
     utils::FixedCapacityVector<MetalBuffer*> buffers;
 };
 
@@ -159,27 +182,30 @@ struct MetalIndexBuffer : public HwIndexBuffer {
 };
 
 struct MetalRenderPrimitive : public HwRenderPrimitive {
-    void setBuffers(MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer);
+    MetalRenderPrimitive();
+    void setBuffers(MetalVertexBufferInfo const* const vbi,
+            MetalVertexBuffer* vertexBuffer, MetalIndexBuffer* indexBuffer);
     // The pointers to MetalVertexBuffer and MetalIndexBuffer are "weak".
     // The MetalVertexBuffer and MetalIndexBuffer must outlive the MetalRenderPrimitive.
 
     MetalVertexBuffer* vertexBuffer = nullptr;
     MetalIndexBuffer* indexBuffer = nullptr;
-
-    // This struct is used to create the pipeline description to describe vertex assembly.
-    VertexDescription vertexDescription = {};
 };
 
-struct MetalProgram : public HwProgram {
-    MetalProgram(id<MTLDevice> device, const Program& program) noexcept;
+class MetalProgram : public HwProgram {
+public:
+    MetalProgram(MetalContext& context, Program&& program) noexcept;
 
-    id<MTLFunction> vertexFunction;
-    id<MTLFunction> fragmentFunction;
-    id<MTLFunction> computeFunction;
+    const MetalShaderCompiler::MetalFunctionBundle& getFunctions();
+    const Program::SamplerGroupInfo& getSamplerGroupInfo() { return samplerGroupInfo; }
+
+private:
+    void initialize();
 
     Program::SamplerGroupInfo samplerGroupInfo;
-
-    bool isValid = false;
+    MetalContext& mContext;
+    MetalShaderCompiler::MetalFunctionBundle mFunctionBundle;
+    MetalShaderCompiler::program_token_t mToken;
 };
 
 struct PixelBufferShape {
@@ -228,8 +254,8 @@ public:
     // - using the texture as a render target attachment
     // - calling setMinMaxLevels
     // A texture's available mips are consistent throughout a render pass.
-    void setLodRange(uint32_t minLevel, uint32_t maxLevel);
-    void extendLodRangeTo(uint32_t level);
+    void setLodRange(uint16_t minLevel, uint16_t maxLevel);
+    void extendLodRangeTo(uint16_t level);
 
     static MTLPixelFormat decidePixelFormat(MetalContext* context, TextureFormat format);
 
@@ -242,6 +268,26 @@ public:
     id<MTLTexture> msaaSidecar = nil;
 
     MTLPixelFormat devicePixelFormat;
+
+    // Frees memory associated with this texture and marks it as "terminated".
+    // Used to track "use after free" scenario.
+    void terminate() noexcept;
+    bool isTerminated() const noexcept { return terminated; }
+    inline void checkUseAfterFree(const char* samplerGroupDebugName, size_t textureIndex) const {
+        if (UTILS_LIKELY(!isTerminated())) {
+            return;
+        }
+        NSString* reason =
+                [NSString stringWithFormat:
+                                  @"Filament Metal texture use after free, sampler group = "
+                                  @"%s, texture index = %zu",
+                          samplerGroupDebugName, textureIndex];
+        NSException* useAfterFreeException =
+                [NSException exceptionWithName:@"MetalTextureUseAfterFree"
+                                        reason:reason
+                                      userInfo:nil];
+        [useAfterFreeException raise];
+    }
 
 private:
     void loadSlice(uint32_t level, MTLRegion region, uint32_t byteOffset, uint32_t slice,
@@ -259,14 +305,17 @@ private:
     id<MTLTexture> swizzledTextureView = nil;
     id<MTLTexture> lodTextureView = nil;
 
-    uint32_t minLod = UINT_MAX;
-    uint32_t maxLod = 0;
+    uint16_t minLod = std::numeric_limits<uint16_t>::max();
+    uint16_t maxLod = 0;
+
+    bool terminated = false;
 };
 
 class MetalSamplerGroup : public HwSamplerGroup {
 public:
-    explicit MetalSamplerGroup(size_t size) noexcept
+    explicit MetalSamplerGroup(size_t size, utils::FixedSizeString<32> name) noexcept
         : size(size),
+          debugName(name),
           textureHandles(size, Handle<HwTexture>()),
           textures(size, nil),
           samplers(size, nil) {}
@@ -276,12 +325,10 @@ public:
         textureHandles[index] = th;
     }
 
-#ifndef NDEBUG
     // This method is only used for debugging, to ensure all texture handles are alive.
     const auto& getTextureHandles() const {
         return textureHandles;
     }
-#endif
 
     // Encode a MTLTexture into this SamplerGroup at the given index.
     inline void setFinalizedTexture(size_t index, id<MTLTexture> t) {
@@ -327,6 +374,7 @@ public:
     void useResources(id<MTLRenderCommandEncoder> renderPassEncoder);
 
     size_t size;
+    utils::FixedSizeString<32> debugName;
 
 public:
 

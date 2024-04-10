@@ -18,9 +18,11 @@ package com.google.android.filament;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.Size;
 
 import com.google.android.filament.proguard.UsedByNative;
+import com.google.android.filament.Engine.FeatureLevel;
 
 import java.nio.Buffer;
 import java.util.ArrayList;
@@ -46,6 +48,8 @@ public class Material {
         static final BlendingMode[] sBlendingModeValues = BlendingMode.values();
         static final RefractionMode[] sRefractionModeValues = RefractionMode.values();
         static final RefractionType[] sRefractionTypeValues = RefractionType.values();
+        static final ReflectionMode[] sReflectionModeValues = ReflectionMode.values();
+        static final FeatureLevel[] sFeatureLevelValues = FeatureLevel.values();
         static final VertexDomain[] sVertexDomainValues = VertexDomain.values();
         static final CullingMode[] sCullingModeValues = CullingMode.values();
         static final VertexBuffer.VertexAttribute[] sVertexAttributeValues =
@@ -182,6 +186,18 @@ public class Material {
     }
 
     /**
+     * Supported reflection modes
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/lighting:reflections">
+     * Lighting: reflections</a>
+     */
+    public enum ReflectionMode {
+        DEFAULT,
+        SCREEN_SPACE
+    }
+
+    /**
      * Supported types of vertex domains
      *
      * @see
@@ -221,6 +237,31 @@ public class Material {
 
         /** Front and back culling. Geometry is not visible. */
         FRONT_AND_BACK
+    }
+
+    public enum CompilerPriorityQueue {
+        HIGH,
+        LOW
+    }
+
+    public static class UserVariantFilterBit {
+        /** Directional lighting */
+        public static int DIRECTIONAL_LIGHTING = 0x01;
+        /** Dynamic lighting */
+        public static int DYNAMIC_LIGHTING = 0x02;
+        /** Shadow receiver */
+        public static int SHADOW_RECEIVER = 0x04;
+        /** Skinning */
+        public static int SKINNING = 0x08;
+        /** Fog */
+        public static int FOG = 0x10;
+        /** Variance shadow maps */
+        public static int VSM = 0x20;
+        /** Screen-space reflections */
+        public static int SSR = 0x40;
+        /** Instanced stereo rendering */
+        public static int STE = 0x80;
+        public static int ALL = 0xFF;
     }
 
     @UsedByNative("Material.cpp")
@@ -337,6 +378,55 @@ public class Material {
         }
     }
 
+
+    /**
+     * Asynchronously ensures that a subset of this Material's variants are compiled. After issuing
+     * several compile() calls in a row, it is recommended to call {@link Engine#flush}
+     * such that the backend can start the compilation work as soon as possible.
+     * The provided callback is guaranteed to be called on the main thread after all specified
+     * variants of the material are compiled. This can take hundreds of milliseconds.
+     *<p>
+     * If all the material's variants are already compiled, the callback will be scheduled as
+     * soon as possible, but this might take a few dozen millisecond, corresponding to how
+     * many previous frames are enqueued in the backend. This also varies by backend. Therefore,
+     * it is recommended to only call this method once per material shortly after creation.
+     *</p>
+     *<p>
+     * If the same variant is scheduled for compilation multiple times, the first scheduling
+     * takes precedence; later scheduling are ignored.
+     *</p>
+     *<p>
+     * caveat: A consequence is that if a variant is scheduled on the low priority queue and later
+     * scheduled again on the high priority queue, the later scheduling is ignored.
+     * Therefore, the second callback could be called before the variant is compiled.
+     * However, the first callback, if specified, will trigger as expected.
+     *</p>
+     *<p>
+     * The callback is guaranteed to be called. If the engine is destroyed while some material
+     * variants are still compiling or in the queue, these will be discarded and the corresponding
+     * callback will be called. In that case however the Material pointer passed to the callback
+     * is guaranteed to be invalid (either because it's been destroyed by the user already, or,
+     * because it's been cleaned-up by the Engine).
+     *</p>
+     *<p>
+     * {@link UserVariantFilterBit#ALL} should be used with caution. Only variants that an application
+     * needs should be included in the variants argument. For example, the STE variant is only used
+     * for stereoscopic rendering. If an application is not planning to render in stereo, this bit
+     * should be turned off to avoid unnecessary material compilations.
+     *</p>
+     * @param priority      Which priority queue to use, LOW or HIGH.
+     * @param variants      Variants to include to the compile command.
+     * @param handler       An {@link java.util.concurrent.Executor Executor}. On Android this can also be a {@link android.os.Handler Handler}.
+     * @param callback      callback called on the main thread when the compilation is done on
+     *                      by backend.
+     */
+    public void compile(@NonNull CompilerPriorityQueue priority,
+                        int variants,
+                        @Nullable Object handler,
+                        @Nullable Runnable callback) {
+        nCompile(getNativeObject(), priority.ordinal(), variants, handler, callback);
+    }
+
     /**
      * Creates a new instance of this material. Material instances should be freed using
      * {@link Engine#destroyMaterialInstance(MaterialInstance)}.
@@ -435,6 +525,28 @@ public class Material {
      */
     public RefractionType getRefractionType() {
         return EnumCache.sRefractionTypeValues[nGetRefractionType(getNativeObject())];
+    }
+
+    /**
+     * Returns the reflection mode of this material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/lighting:reflections">
+     * Lighting: reflections</a>
+     */
+    public ReflectionMode getReflectionMode() {
+        return EnumCache.sReflectionModeValues[nGetReflectionMode(getNativeObject())];
+    }
+
+    /**
+     * Returns the minimum required feature level for this material.
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/general:featurelevel">
+     * General: featureLevel</a>
+     */
+    public FeatureLevel getFeatureLevel() {
+        return EnumCache.sFeatureLevelValues[nGetFeatureLevel(getNativeObject())];
     }
 
     /**
@@ -916,6 +1028,7 @@ public class Material {
     private static native long nCreateInstanceWithName(long nativeMaterial, @NonNull String name);
     private static native long nGetDefaultInstance(long nativeMaterial);
 
+    private static native void nCompile(long nativeMaterial, int priority, int variants, Object handler, Runnable runnable);
     private static native String nGetName(long nativeMaterial);
     private static native int nGetShading(long nativeMaterial);
     private static native int nGetInterpolation(long nativeMaterial);
@@ -932,6 +1045,8 @@ public class Material {
     private static native float nGetSpecularAntiAliasingThreshold(long nativeMaterial);
     private static native int nGetRefractionMode(long nativeMaterial);
     private static native int nGetRefractionType(long nativeMaterial);
+    private static native int nGetReflectionMode(long nativeMaterial);
+    private static native int nGetFeatureLevel(long nativeMaterial);
 
 
     private static native int nGetParameterCount(long nativeMaterial);
