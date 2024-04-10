@@ -154,6 +154,10 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
         CodeGenerator::generateDefine(out, "FLIP_UV_ATTRIBUTE", material.flipUV);
         CodeGenerator::generateDefine(out, "LEGACY_MORPHING", material.useLegacyMorphing);
     }
+    if (stage == ShaderStage::FRAGMENT) {
+        CodeGenerator::generateDefine(out, "MATERIAL_HAS_CUSTOM_DEPTH",
+                material.userMaterialHasCustomDepth);
+    }
 
     if (mTargetLanguage == TargetLanguage::SPIRV ||
         mFeatureLevel >= FeatureLevel::FEATURE_LEVEL_1) {
@@ -229,6 +233,10 @@ utils::io::sstream& CodeGenerator::generateProlog(utils::io::sstream& out, Shade
         generateSpecializationConstant(out, "CONFIG_FROXEL_BUFFER_HEIGHT",
                 +ReservedSpecializationConstants::CONFIG_FROXEL_BUFFER_HEIGHT, 1024);
     }
+
+    // directional shadowmap visualization
+    generateSpecializationConstant(out, "CONFIG_DEBUG_DIRECTIONAL_SHADOWMAP",
+            +ReservedSpecializationConstants::CONFIG_DEBUG_DIRECTIONAL_SHADOWMAP, false);
 
     // Workaround a Metal pipeline compilation error with the message:
     // "Could not statically determine the target of a texture". See light_indirect.fs

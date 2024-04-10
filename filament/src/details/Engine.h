@@ -510,7 +510,7 @@ private: //DAZ Add
     HeapAllocatorArena mHeapAllocator;
 
     utils::JobSystem mJobSystem;
-    static uint32_t getJobSystemThreadPoolSize() noexcept;
+    static uint32_t getJobSystemThreadPoolSize(Engine::Config const& config) noexcept;
 
     std::default_random_engine mRandomEngine;
 
@@ -545,6 +545,7 @@ public:
     // these are the debug properties used by FDebug. They're accessed directly by modules who need them.
     struct {
         struct {
+            bool debug_directional_shadowmap = false;
             bool far_uses_shadowcasters = true;
             bool focus_shadowcasters = true;
             bool visualize_cascades = false;
