@@ -47,9 +47,16 @@ set(SRCS
         src/TangentsJob.cpp
         src/TangentsJob.h
         src/UbershaderProvider.cpp
+        src/Utility.cpp
+        src/Utility.h
         src/Wireframe.cpp
         src/Wireframe.h
         src/downcast.h
+        src/extended/AssetLoaderExtended.h
+        src/extended/TangentsJobExtended.cpp
+        src/extended/TangentsJobExtended.h
+        src/extended/TangentSpaceMeshWrapper.cpp
+        src/extended/TangentSpaceMeshWrapper.h
 )
 
 # ==================================================================================================
@@ -67,6 +74,13 @@ set(TRANSPARENCY default)
 
 set(UBERZ_OUTPUT_PATH "${RESOURCE_DIR}/default.uberz")
 
+set (MATC_FLAGS ${MATC_BASE_FLAGS})
+if (FILAMENT_SAMPLES_STEREO_TYPE STREQUAL "instanced")
+    set (MATC_FLAGS ${MATC_FLAGS} -PstereoscopicType=instanced)
+elseif (FILAMENT_SAMPLES_STEREO_TYPE STREQUAL "multiview")
+    set (MATC_FLAGS ${MATC_FLAGS} -PstereoscopicType=multiview)
+endif ()
+
 function(build_ubershader NAME SRC SHADINGMODEL BLENDING)
     set(DEST "${RESOURCE_DIR}/${NAME}")
     configure_file(materials/${SRC}.mat.in "${DEST}.mat" COPYONLY)
@@ -83,7 +97,7 @@ function(build_ubershader NAME SRC SHADINGMODEL BLENDING)
 
     add_custom_command(
         OUTPUT "${NAME}.filamat"
-        COMMAND matc ${MATC_BASE_FLAGS} ${TEMPLATE_ARGS} -o "${NAME}.filamat" "${NAME}.mat"
+        COMMAND matc ${MATC_FLAGS} ${TEMPLATE_ARGS} -o "${NAME}.filamat" "${NAME}.mat"
         DEPENDS matc "${DEST}.mat"
         WORKING_DIRECTORY ${RESOURCE_DIR}
         COMMENT "Compiling material ${NAME}")
@@ -176,6 +190,11 @@ if (WEBGL_PTHREADS)
     target_compile_definitions(gltfio_core PUBLIC -DFILAMENT_WASM_THREADS)
 endif()
 
+set(GLTFIO_WARNINGS -Wall -Werror)
+if (NOT MSVC)
+    target_compile_options(gltfio_core PRIVATE ${GLTFIO_WARNINGS})
+endif()
+
 if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     # ==================================================================================================
@@ -185,10 +204,6 @@ if (NOT WEBGL AND NOT ANDROID AND NOT IOS)
     target_link_libraries(${TARGET} PUBLIC filamat gltfio_core)
     target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
     set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
-
-    # ==================================================================================================
-    # Compiler flags
-    # ==================================================================================================
     if (NOT MSVC)
         target_compile_options(${TARGET} PRIVATE -Wno-deprecated-register)
     endif()
@@ -229,7 +244,7 @@ if (TNT_DEV AND NOT WEBGL AND NOT ANDROID AND NOT IOS)
 
     target_link_libraries(${TEST_TARGET} PRIVATE ${TARGET} gtest uberarchive)
     if (NOT MSVC)
-        target_compile_options(${TEST_TARGET} PRIVATE -Wno-deprecated-register)
+        target_compile_options(${TEST_TARGET} PRIVATE ${GLTFIO_WARNINGS})
     endif()
     set_target_properties(${TEST_TARGET} PROPERTIES FOLDER Tests)
 endif()

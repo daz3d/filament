@@ -17,32 +17,52 @@
 #ifndef TNT_FILAMENT_DETAILS_SHADOWMAPMANAGER_H
 #define TNT_FILAMENT_DETAILS_SHADOWMAPMANAGER_H
 
-#include <filament/Viewport.h>
-
+#include "Culler.h"
 #include "ShadowMap.h"
 #include "TypedUniformBuffer.h"
+
+#include <filament/LightManager.h>
+#include <filament/Options.h>
+
+#include <private/filament/EngineEnums.h>
+#include <private/filament/UibStructs.h>
+
+#include "components/RenderableManager.h"
 
 #include "details/Engine.h"
 #include "details/Scene.h"
 
-#include <private/filament/EngineEnums.h>
+#include "fg/FrameGraphId.h"
+#include "fg/FrameGraphTexture.h"
 
-#include <backend/DriverApiForward.h>
 #include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 
-#include <utils/FixedCapacityVector.h>
+#include <utils/BitmaskEnum.h>
+#include <utils/compiler.h>
+#include <utils/debug.h>
+#include <utils/Range.h>
+#include <utils/Slice.h>
 
-#include <math/vec3.h>
+#include <math/mat4.h>
+#include <math/vec4.h>
 
 #include <array>
 #include <memory>
+#include <new>
+#include <type_traits>
+#include <vector>
+
+#include <stdint.h>
+#include <stddef.h>
 
 namespace filament {
 
+class FCamera;
 class FView;
 class FrameGraph;
 class RenderPass;
+class RenderPassBuilder;
 
 struct ShadowMappingUniforms {
     math::float4 cascadeSplits;
@@ -54,7 +74,7 @@ struct ShadowMappingUniforms {
 class ShadowMapManager {
 public:
 
-    using ShadowMappingUniforms = ShadowMappingUniforms;
+    using ShadowMappingUniforms = filament::ShadowMappingUniforms;
 
     using ShadowType = ShadowMap::ShadowType;
 
@@ -64,39 +84,49 @@ public:
         SCREEN_SPACE = 0x2u,
     };
 
+    class Builder {
+        friend class ShadowMapManager;
+        uint32_t mDirectionalShadowMapCount = 0;
+        uint32_t mSpotShadowMapCount = 0;
+        struct ShadowMap {
+            size_t lightIndex;
+            ShadowType shadowType;
+            uint16_t shadowIndex;
+            uint8_t face;
+            LightManager::ShadowOptions const* options;
+        };
+        std::vector<ShadowMap> mShadowMaps;
+    public:
+        Builder& directionalShadowMap(size_t lightIndex,
+                LightManager::ShadowOptions const* options) noexcept;
 
-    explicit ShadowMapManager(FEngine& engine);
+        Builder& shadowMap(size_t lightIndex, bool spotlight,
+                LightManager::ShadowOptions const* options) noexcept;
+
+        bool hasShadowMaps() const noexcept {
+            return mDirectionalShadowMapCount || mSpotShadowMapCount;
+        }
+    };
+
     ~ShadowMapManager();
 
-    void terminate(FEngine& engine);
+    static void createIfNeeded(FEngine& engine,
+            std::unique_ptr<ShadowMapManager>& inOutShadowMapManager);
 
-    // Reset shadow map layout.
-    void reset() noexcept;
-
-    void setDirectionalShadowMap(size_t lightIndex,
-            LightManager::ShadowOptions const* options) noexcept;
-
-    void addShadowMap(size_t lightIndex, bool spotlight,
-            LightManager::ShadowOptions const* options) noexcept;
+    static void terminate(FEngine& engine,
+            std::unique_ptr<ShadowMapManager>& shadowMapManager);
 
     // Updates all the shadow maps and performs culling.
     // Returns true if any of the shadow maps have visible shadows.
-    ShadowMapManager::ShadowTechnique update(FEngine& engine, FView& view,
+    ShadowMapManager::ShadowTechnique update(Builder const& builder,
+            FEngine& engine, FView& view,
             CameraInfo const& cameraInfo,
             FScene::RenderableSoa& renderableData, FScene::LightSoa const& lightData) noexcept;
 
     // Renders all the shadow maps.
-    FrameGraphId<FrameGraphTexture> render(FEngine& engine, FrameGraph& fg, RenderPass const& pass,
+    FrameGraphId<FrameGraphTexture> render(FEngine& engine, FrameGraph& fg,
+            RenderPassBuilder const& passBuilder,
             FView& view, CameraInfo const& mainCameraInfo, math::float4 const& userTime) noexcept;
-
-    ShadowMap* getShadowMap(size_t index) noexcept {
-        assert_invariant(index < CONFIG_MAX_SHADOWMAPS);
-        return std::launder(reinterpret_cast<ShadowMap*>(&mShadowMapCache[index]));
-    }
-
-    ShadowMap const* getShadowMap(size_t index) const noexcept {
-        return const_cast<ShadowMapManager*>(this)->getShadowMap(index);
-    }
 
     // valid after calling update() above
     ShadowMappingUniforms getShadowMappingUniforms() const noexcept {
@@ -105,9 +135,19 @@ public:
 
     auto& getShadowUniformsHandle() const { return mShadowUbh; }
 
-    bool hasSpotShadows() const { return !mSpotShadowMaps.empty(); }
+    bool hasSpotShadows() const { return !mSpotShadowMapCount; }
+
+    // for debugging only
+    FCamera const* getDirectionalShadowCamera() const noexcept {
+        if (!mInitialized) return nullptr;
+        return getShadowMap(0).getDebugCamera();
+    }
 
 private:
+    explicit ShadowMapManager(FEngine& engine);
+
+    void terminate(FEngine& engine);
+
     ShadowMapManager::ShadowTechnique updateCascadeShadowMaps(FEngine& engine,
             FView& view, CameraInfo cameraInfo, FScene::RenderableSoa& renderableData,
             FScene::LightSoa const& lightData, ShadowMap::SceneInfo sceneInfo) noexcept;
@@ -184,19 +224,34 @@ private:
 
     ShadowMap::SceneInfo mSceneInfo;
 
-    utils::FixedCapacityVector<ShadowMap*> mCascadeShadowMaps{
-            utils::FixedCapacityVector<ShadowMap*>::with_capacity(
-                    CONFIG_MAX_SHADOW_CASCADES) };
-
-    utils::FixedCapacityVector<ShadowMap*> mSpotShadowMaps{
-            utils::FixedCapacityVector<ShadowMap*>::with_capacity(
-                    CONFIG_MAX_SHADOWMAPS - CONFIG_MAX_SHADOW_CASCADES) };
-
     // Inline storage for all our ShadowMap objects, we can't easily use a std::array<> directly.
     // Because ShadowMap doesn't have a default ctor, and we avoid out-of-line allocations.
     // Each ShadowMap is currently 40 bytes (total of 2.5KB for 64 shadow maps)
     using ShadowMapStorage = std::aligned_storage<sizeof(ShadowMap), alignof(ShadowMap)>::type;
-    std::array<ShadowMapStorage, CONFIG_MAX_SHADOWMAPS> mShadowMapCache;
+    using ShadowMapCacheContainer = std::array<ShadowMapStorage, CONFIG_MAX_SHADOWMAPS>;
+    ShadowMapCacheContainer mShadowMapCache;
+    uint32_t mDirectionalShadowMapCount = 0;
+    uint32_t mSpotShadowMapCount = 0;
+    bool mInitialized = false;
+
+    ShadowMap& getShadowMap(size_t index) noexcept {
+        assert_invariant(index < CONFIG_MAX_SHADOWMAPS);
+        return *std::launder(reinterpret_cast<ShadowMap*>(&mShadowMapCache[index]));
+    }
+
+    ShadowMap const& getShadowMap(size_t index) const noexcept {
+        return const_cast<ShadowMapManager*>(this)->getShadowMap(index);
+    }
+
+    utils::Slice<ShadowMap> getCascadedShadowMap() noexcept {
+        ShadowMap* const p = &getShadowMap(0);
+        return { p, mDirectionalShadowMapCount };
+    }
+
+    utils::Slice<ShadowMap> getSpotShadowMaps() noexcept {
+        ShadowMap* const p = &getShadowMap(CONFIG_MAX_SHADOW_CASCADES);
+        return { p, mSpotShadowMapCount };
+    }
 };
 
 } // namespace filament

@@ -145,6 +145,9 @@ static void computeToneMapPlot(ColorGradingSettings& settings, float* plot) {
             );
             hdrMax = settings.genericToneMapper.hdrMax;
             break;
+        case ToneMapping::PBR_NEUTRAL:
+            mapper = new PBRNeutralToneMapper;
+            break;
         case ToneMapping::DISPLAY_RANGE:
             mapper = new DisplayRangeToneMapper;
             break;
@@ -196,7 +199,7 @@ static void colorGradingUI(Settings& settings, float* rangePlot, float* curvePlo
 
         int toneMapping = (int) colorGrading.toneMapping;
         ImGui::Combo("Tone-mapping", &toneMapping,
-                "Linear\0ACES (legacy)\0ACES\0Filmic\0AgX\0Generic\0Display Range\0\0");
+                "Linear\0ACES (legacy)\0ACES\0Filmic\0AgX\0Generic\0PBR Neutral\0Display Range\0\0");
         colorGrading.toneMapping = (decltype(colorGrading.toneMapping)) toneMapping;
         if (colorGrading.toneMapping == ToneMapping::GENERIC) {
             if (ImGui::CollapsingHeader("Tonemap parameters")) {
@@ -792,6 +795,29 @@ void ViewerGui::updateUserInterface() {
         ImGui::Checkbox("Lens Flare", &mSettings.view.bloom.lensFlare);
     }
 
+    if (ImGui::CollapsingHeader("TAA Options")) {
+        ImGui::Checkbox("Upscaling", &mSettings.view.taa.upscaling);
+        ImGui::Checkbox("History Reprojection", &mSettings.view.taa.historyReprojection);
+        ImGui::SliderFloat("Feedback", &mSettings.view.taa.feedback, 0.0f, 1.0f);
+        ImGui::Checkbox("Filter History", &mSettings.view.taa.filterHistory);
+        ImGui::Checkbox("Filter Input", &mSettings.view.taa.filterInput);
+        ImGui::SliderFloat("FilterWidth", &mSettings.view.taa.filterWidth, 0.2f, 2.0f);
+        ImGui::SliderFloat("LOD bias", &mSettings.view.taa.lodBias, -8.0f, 0.0f);
+        ImGui::Checkbox("Use YCoCg", &mSettings.view.taa.useYCoCg);
+        ImGui::Checkbox("Prevent Flickering", &mSettings.view.taa.preventFlickering);
+        int jitterSequence = (int)mSettings.view.taa.jitterPattern;
+        int boxClipping = (int)mSettings.view.taa.boxClipping;
+        int boxType = (int)mSettings.view.taa.boxType;
+        ImGui::Combo("Jitter Pattern", &jitterSequence, "RGSS x4\0Uniform Helix x4\0Halton x8\0Halton x16\0Halton x32\0\0");
+        ImGui::Combo("Box Clipping", &boxClipping, "Accurate\0Clamp\0None\0\0");
+        ImGui::Combo("Box Type", &boxType, "AABB\0Variance\0Both\0\0");
+        ImGui::SliderFloat("Variance Gamma", &mSettings.view.taa.varianceGamma, 0.75f, 1.25f);
+        ImGui::SliderFloat("RCAS", &mSettings.view.taa.sharpness, 0.0f, 1.0f);
+        mSettings.view.taa.boxClipping = (TemporalAntiAliasingOptions::BoxClipping)boxClipping;
+        mSettings.view.taa.boxType = (TemporalAntiAliasingOptions::BoxType)boxType;
+        mSettings.view.taa.jitterPattern = (TemporalAntiAliasingOptions::JitterPattern)jitterSequence;
+    }
+
     if (ImGui::CollapsingHeader("SSAO Options")) {
         auto& ssao = mSettings.view.ssao;
 
@@ -1014,6 +1040,7 @@ void ViewerGui::updateUserInterface() {
             ImGui::Checkbox("Enabled##dofEnabled", &mSettings.view.dof.enabled);
             ImGui::SliderFloat("Focus distance", &mSettings.viewer.cameraFocusDistance, 0.0f, 30.0f);
             ImGui::SliderFloat("Blur scale", &mSettings.view.dof.cocScale, 0.1f, 10.0f);
+            ImGui::SliderFloat("CoC aspect-ratio", &mSettings.view.dof.cocAspectRatio, 0.25f, 4.0f);
             ImGui::SliderInt("Ring count", &dofRingCount, 1, 17);
             ImGui::SliderInt("Max CoC", &dofMaxCoC, 1, 32);
             ImGui::Checkbox("Native Resolution", &mSettings.view.dof.nativeResolution);
@@ -1045,7 +1072,7 @@ void ViewerGui::updateUserInterface() {
 
             std::vector<std::string> names;
             names.reserve(cameraCount + 1);
-            names.push_back("Free camera");
+            names.emplace_back("Free camera");
             int c = 0;
             for (size_t i = 0; i < cameraCount; i++) {
                 const char* n = mAsset->getName(cameras[i]);
@@ -1060,20 +1087,20 @@ void ViewerGui::updateUserInterface() {
 
             std::vector<const char*> cstrings;
             cstrings.reserve(names.size());
-            for (size_t i = 0; i < names.size(); i++) {
-                cstrings.push_back(names[i].c_str());
+            for (const auto & name : names) {
+                cstrings.push_back(name.c_str());
             }
 
             ImGui::ListBox("Cameras", &mCurrentCamera, cstrings.data(), cstrings.size());
         }
 
-        StereoscopicOptions stereoOptions = mView->getStereoscopicOptions();
-        ImGui::Checkbox("Instanced stereo", &stereoOptions.enabled);
-        if (stereoOptions.enabled) {
-            ImGui::SliderFloat("Ocular distance", &mOcularDistance, 0.0f, 10.0f);
+        ImGui::Checkbox("Instanced stereo", &mSettings.view.stereoscopicOptions.enabled);
+        ImGui::SliderFloat(
+                "Ocular distance", &mSettings.viewer.cameraEyeOcularDistance, 0.0f, 1.0f);
 
-        }
-        mView->setStereoscopicOptions(stereoOptions);
+        float toeInDegrees = mSettings.viewer.cameraEyeToeIn / f::PI * 180.0f;
+        ImGui::SliderFloat("Toe in", &toeInDegrees, 0.0f, 30.0, "%.3f°");
+        mSettings.viewer.cameraEyeToeIn = toeInDegrees / 180.0f * f::PI;
 
         ImGui::Unindent();
     }
@@ -1083,8 +1110,16 @@ void ViewerGui::updateUserInterface() {
     // At this point, all View settings have been modified,
     //  so we can now push them into the Filament View.
     applySettings(mEngine, mSettings.view, mView);
+
+    auto lights = utils::FixedCapacityVector<utils::Entity>::with_capacity(mScene->getEntityCount());
+    mScene->forEach([&](utils::Entity entity) {
+        if (lm.hasComponent(entity)) {
+            lights.push_back(entity);
+        }
+    });
+
     applySettings(mEngine, mSettings.lighting, mIndirectLight, mSunlight,
-                  lm.getEntities(), lm.getComponentCount(), &lm, mScene, mView);
+            lights.data(), lights.size(), &lm, mScene, mView);
 
     // TODO(prideout): add support for hierarchy, animation and variant selection in remote mode. To
     // support these features, we will need to send a message (list of strings) from DebugServer to

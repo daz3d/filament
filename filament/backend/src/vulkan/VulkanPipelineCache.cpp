@@ -34,8 +34,6 @@ using namespace bluevk;
 
 namespace filament::backend {
 
-static VulkanPipelineCache::RasterState createDefaultRasterState();
-
 static VkShaderStageFlags getShaderStageFlags(VulkanPipelineCache::UsageFlags key, uint16_t binding) {
     // NOTE: if you modify this function, you also need to modify getUsageFlags.
     assert_invariant(binding < MAX_SAMPLER_COUNT);
@@ -73,8 +71,7 @@ VulkanPipelineCache::UsageFlags VulkanPipelineCache::disableUsageFlags(uint16_t 
 }
 
 VulkanPipelineCache::VulkanPipelineCache(VulkanResourceAllocator* allocator)
-    : mCurrentRasterState(createDefaultRasterState()),
-      mResourceAllocator(allocator),
+    : mResourceAllocator(allocator),
       mPipelineBoundResources(allocator) {
     mDummyBufferWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     mDummyBufferWriteInfo.pNext = nullptr;
@@ -360,9 +357,7 @@ VulkanPipelineCache::PipelineCacheEntry* VulkanPipelineCache::createPipeline() n
 
     // If we reach this point, we need to create and stash a brand new pipeline object.
     shaderStages[0].module = mPipelineRequirements.shaders[0];
-    shaderStages[0].pSpecializationInfo = mSpecializationRequirements;
     shaderStages[1].module = mPipelineRequirements.shaders[1];
-    shaderStages[1].pSpecializationInfo = mSpecializationRequirements;
 
     // Expand our size-optimized structs into the proper Vk structs.
     uint32_t numVertexAttribs = 0;
@@ -568,11 +563,18 @@ VulkanPipelineCache::PipelineLayoutCacheEntry* VulkanPipelineCache::getOrCreateP
 void VulkanPipelineCache::bindProgram(VulkanProgram* program) noexcept {
     mPipelineRequirements.shaders[0] = program->getVertexShader();
     mPipelineRequirements.shaders[1] = program->getFragmentShader();
-    mSpecializationRequirements = &program->getSpecConstInfo();
+
+    // If this is a debug build, validate the current shader.
+#if FVK_ENABLED(FVK_DEBUG_SHADER_MODULE)
+    if (mPipelineRequirements.shaders[0] == VK_NULL_HANDLE ||
+            mPipelineRequirements.shaders[1] == VK_NULL_HANDLE) {
+        utils::slog.e << "Binding missing shader: " << program->name.c_str() << utils::io::endl;
+    }
+#endif
 }
 
 void VulkanPipelineCache::bindRasterState(const RasterState& rasterState) noexcept {
-    mPipelineRequirements.rasterState = mCurrentRasterState = rasterState;
+    mPipelineRequirements.rasterState = rasterState;
 }
 
 void VulkanPipelineCache::bindRenderPass(VkRenderPass renderPass, int subpassIndex) noexcept {
@@ -634,12 +636,8 @@ void VulkanPipelineCache::unbindImageView(VkImageView imageView) noexcept {
 
 void VulkanPipelineCache::bindUniformBufferObject(uint32_t bindingIndex,
         VulkanBufferObject* bufferObject, VkDeviceSize offset, VkDeviceSize size) noexcept {
-    bindUniformBuffer(bindingIndex, bufferObject->buffer.getGpuBuffer(), offset, size);
-    mPipelineBoundResources.acquire(bufferObject);
-}
+    VkBuffer buffer = bufferObject->buffer.getGpuBuffer();
 
-void VulkanPipelineCache::bindUniformBuffer(uint32_t bindingIndex, VkBuffer buffer,
-        VkDeviceSize offset, VkDeviceSize size) noexcept {
     ASSERT_POSTCONDITION(bindingIndex < UBUFFER_BINDING_COUNT,
             "Uniform bindings overflow: index = %d, capacity = %d.", bindingIndex,
             UBUFFER_BINDING_COUNT);
@@ -655,6 +653,8 @@ void VulkanPipelineCache::bindUniformBuffer(uint32_t bindingIndex, VkBuffer buff
 
     key.uniformBufferOffsets[bindingIndex] = offset;
     key.uniformBufferSizes[bindingIndex] = size;
+
+    mPipelineBoundResources.acquire(bufferObject);
 }
 
 void VulkanPipelineCache::bindSamplers(VkDescriptorImageInfo samplers[SAMPLER_BINDING_COUNT],
@@ -918,23 +918,6 @@ bool VulkanPipelineCache::DescEqual::operator()(const DescriptorKey& k1,
         }
     }
     return true;
-}
-
-static VulkanPipelineCache::RasterState createDefaultRasterState() {
-    return VulkanPipelineCache::RasterState {
-        .cullMode = VK_CULL_MODE_NONE,
-        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable = VK_FALSE,
-        .blendEnable = VK_FALSE,
-        .depthWriteEnable = VK_TRUE,
-        .alphaToCoverageEnable = true,
-        .colorWriteMask = 0xf,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-        .colorTargetCount = 1,
-        .depthCompareOp = SamplerCompareFunc::LE,
-        .depthBiasConstantFactor = 0.0f,
-        .depthBiasSlopeFactor = 0.0f,
-    };
 }
 
 } // namespace filament::backend

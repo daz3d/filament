@@ -23,6 +23,7 @@
 
 #include <utils/CString.h>
 
+#include "backend/DriverEnums.h"
 #include "filamat/MaterialBuilder.h"
 #include "CodeGenerator.h"
 #include "SibGenerator.h"
@@ -50,13 +51,13 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
             litVariants && filament::Variant::isShadowReceiverVariant(variant));
     CodeGenerator::generateDefine(out, "VARIANT_HAS_VSM",
             filament::Variant::isVSMVariant(variant));
-    CodeGenerator::generateDefine(out, "VARIANT_HAS_INSTANCED_STEREO",
-            filament::Variant::isStereoVariant(variant));
+    CodeGenerator::generateDefine(out, "VARIANT_HAS_STEREO",
+            hasStereo(variant, featureLevel));
 
     switch (stage) {
         case ShaderStage::VERTEX:
         CodeGenerator::generateDefine(out, "VARIANT_HAS_SKINNING_OR_MORPHING",
-                variant.hasSkinningOrMorphing());
+                hasSkinningOrMorphing(variant, featureLevel));
             break;
         case ShaderStage::FRAGMENT:
             CodeGenerator::generateDefine(out, "VARIANT_HAS_FOG",
@@ -156,6 +157,9 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
             case BlendingMode::SCREEN:
                 CodeGenerator::generateDefine(out, "BLEND_MODE_SCREEN", true);
                 break;
+            case BlendingMode::CUSTOM:
+                CodeGenerator::generateDefine(out, "BLEND_MODE_CUSTOM", true);
+                break;
         }
 
         switch (material.postLightingBlendingMode) {
@@ -173,6 +177,9 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(utils::io::sstream& 
                 break;
             case BlendingMode::SCREEN:
                 CodeGenerator::generateDefine(out, "POST_LIGHTING_BLEND_MODE_SCREEN", true);
+                break;
+            case BlendingMode::CUSTOM:
+                CodeGenerator::generateDefine(out, "POST_LIGHTING_BLEND_MODE_CUSTOM", true);
                 break;
             default:
                 break;
@@ -342,12 +349,13 @@ ShaderGenerator::ShaderGenerator(
     }
 }
 
-void ShaderGenerator::fixupExternalSamplers(ShaderModel sm,
-        std::string& shader, MaterialInfo const& material) noexcept {
+void ShaderGenerator::fixupExternalSamplers(ShaderModel sm, std::string& shader,
+        MaterialBuilder::FeatureLevel featureLevel,
+        MaterialInfo const& material) noexcept {
     // External samplers are only supported on GL ES at the moment, we must
     // skip the fixup on desktop targets
     if (material.hasExternalSamplers && sm == ShaderModel::MOBILE) {
-        CodeGenerator::fixupExternalSamplers(shader, material.sib);
+        CodeGenerator::fixupExternalSamplers(shader, material.sib, featureLevel);
     }
 }
 
@@ -396,7 +404,7 @@ std::string ShaderGenerator::createVertexProgram(ShaderModel shaderModel,
     generateSurfaceMaterialVariantProperties(vs, mProperties, mDefines);
 
     AttributeBitset attributes = material.requiredAttributes;
-    if (variant.hasSkinningOrMorphing()) {
+    if (hasSkinningOrMorphing(variant, featureLevel)) {
         attributes.set(VertexAttribute::BONE_INDICES);
         attributes.set(VertexAttribute::BONE_WEIGHTS);
         if (material.useLegacyMorphing) {
@@ -436,7 +444,7 @@ std::string ShaderGenerator::createVertexProgram(ShaderModel shaderModel,
                 UniformBindingPoints::SHADOW, UibGenerator::getShadowUib());
     }
 
-    if (variant.hasSkinningOrMorphing()) {
+    if (hasSkinningOrMorphing(variant, featureLevel)) {
         cg.generateUniforms(vs, ShaderStage::VERTEX,
                 UniformBindingPoints::PER_RENDERABLE_BONES,
                 UibGenerator::getPerRenderableBonesUib());
@@ -751,6 +759,23 @@ std::string ShaderGenerator::createPostProcessFragmentProgram(ShaderModel sm,
     CodeGenerator::generatePostProcessMain(fs, ShaderStage::FRAGMENT);
     CodeGenerator::generateEpilog(fs);
     return fs.c_str();
+}
+
+bool ShaderGenerator::hasSkinningOrMorphing(
+        filament::Variant variant, MaterialBuilder::FeatureLevel featureLevel) noexcept {
+    return variant.hasSkinningOrMorphing()
+            // HACK(exv): Ignore skinning/morphing variant when targeting ESSL 1.0. We should
+            // either properly support skinning on FL0 or build a system in matc which allows
+            // the set of included variants to differ per-feature level.
+            && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;
+}
+
+bool ShaderGenerator::hasStereo(
+        filament::Variant variant, MaterialBuilder::FeatureLevel featureLevel) noexcept {
+    return variant.hasStereo()
+            // HACK(exv): Ignore stereo variant when targeting ESSL 1.0. We should properly build a
+            // system in matc which allows the set of included variants to differ per-feature level.
+            && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;
 }
 
 } // namespace filament

@@ -33,6 +33,7 @@
 #include <utils/Mutex.h>
 
 #include <atomic>
+#include <optional>
 
 namespace filament {
 
@@ -126,7 +127,6 @@ public:
     Shading getShading() const noexcept { return mShading; }
     Interpolation getInterpolation() const noexcept { return mInterpolation; }
     BlendingMode getBlendingMode() const noexcept { return mBlendingMode; }
-    BlendingMode getRenderBlendingMode() const noexcept { return mRenderBlendingMode; }
     VertexDomain getVertexDomain() const noexcept { return mVertexDomain; }
     MaterialDomain getMaterialDomain() const noexcept { return mMaterialDomain; }
     CullingMode getCullingMode() const noexcept { return mCullingMode; }
@@ -164,6 +164,14 @@ public:
     uint32_t generateMaterialInstanceId() const noexcept { return mMaterialInstanceId++; }
 
     void destroyPrograms(FEngine& engine);
+
+    // return the id of a specialization constant specified by name for this material
+    std::optional<uint32_t> getSpecializationConstantId(std::string_view name) const noexcept ;
+
+    // Sets a specialization constant by id. call is no-op if the id is invalid.
+    // Return true is the value was changed.
+    template<typename T, typename = Builder::is_supported_constant_parameter_t<T>>
+    bool setConstant(uint32_t id, T value) noexcept;
 
 #if FILAMENT_ENABLE_MATDBG
     void applyPendingEdits() noexcept;
@@ -214,13 +222,13 @@ private:
     mutable std::array<backend::Handle<backend::HwProgram>, VARIANT_COUNT> mCachedPrograms;
 
     backend::RasterState mRasterState;
-    BlendingMode mRenderBlendingMode = BlendingMode::OPAQUE;
     TransparencyMode mTransparencyMode = TransparencyMode::DEFAULT;
     bool mIsVariantLit = false;
     backend::FeatureLevel mFeatureLevel = backend::FeatureLevel::FEATURE_LEVEL_1;
     Shading mShading = Shading::UNLIT;
 
     BlendingMode mBlendingMode = BlendingMode::OPAQUE;
+    std::array<backend::BlendFunction, 4> mCustomBlendFunctions = {};
     Interpolation mInterpolation = Interpolation::SMOOTH;
     VertexDomain mVertexDomain = VertexDomain::OBJECT;
     MaterialDomain mMaterialDomain = MaterialDomain::SURFACE;
@@ -261,6 +269,11 @@ private:
 
     SamplerGroupBindingInfoList mSamplerGroupBindingInfoList;
     SamplerBindingToNameMap mSamplerBindingToNameMap;
+    // Constants defined by this Material
+    utils::FixedCapacityVector<MaterialConstant> mMaterialConstants;
+    // A map from the Constant name to the mMaterialConstant index
+    std::unordered_map<std::string_view, uint32_t> mSpecializationConstantsNameToIndex;
+    // current specialization constants for the HwProgram
     utils::FixedCapacityVector<backend::Program::SpecializationConstant> mSpecializationConstants;
 
 #if FILAMENT_ENABLE_MATDBG

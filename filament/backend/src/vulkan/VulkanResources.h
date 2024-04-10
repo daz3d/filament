@@ -17,6 +17,8 @@
 #ifndef TNT_FILAMENT_BACKEND_VULKANRESOURCES_H
 #define TNT_FILAMENT_BACKEND_VULKANRESOURCES_H
 
+#include "VulkanUtility.h"
+
 #include <backend/Handle.h>
 
 #include <tsl/robin_set.h>
@@ -43,10 +45,14 @@ enum class VulkanResourceType : uint8_t {
     TEXTURE,
     TIMER_QUERY,
     VERTEX_BUFFER,
+    VERTEX_BUFFER_INFO,
+    DESCRIPTOR_SET,
 
     // Below are resources that are managed manually (i.e. not ref counted).
     FENCE,
     HEAP_ALLOCATED,
+
+    END_TYPE,  // A placeholder
 };
 
 #define IS_HEAP_ALLOC_TYPE(f)                                                                      \
@@ -62,15 +68,16 @@ struct VulkanResourceBase {
 protected:
     explicit VulkanResourceBase(VulkanResourceType type)
         : mRefCount(IS_HEAP_ALLOC_TYPE(type) ? 1 : 0),
-          mType(type),
-          mHandleId(0) {}
-
-private:
-    inline VulkanResourceType getType() {
-        return mType;
+          mType(uint32_t(type)),
+          mHandleId(0) {
     }
 
-    inline HandleBase::HandleId getId() {
+private:
+    inline VulkanResourceType getType() const noexcept {
+        return VulkanResourceType(mType);
+    }
+
+    inline HandleBase::HandleId getId() const noexcept {
         return mHandleId;
     }
 
@@ -79,25 +86,27 @@ private:
     }
 
     inline void ref() noexcept {
-        if (IS_HEAP_ALLOC_TYPE(mType)) {
+        if (IS_HEAP_ALLOC_TYPE(getType())) {
             return;
         }
+        assert_invariant(mRefCount < ((1<<24) - 1));
         ++mRefCount;
     }
 
     inline void deref() noexcept {
-        if (IS_HEAP_ALLOC_TYPE(mType)) {
+        if (IS_HEAP_ALLOC_TYPE(getType())) {
             return;
         }
+        assert_invariant(mRefCount > 0);
         --mRefCount;
     }
 
-    inline size_t refcount() noexcept {
+    inline size_t refcount() const noexcept {
         return mRefCount;
     }
 
-    size_t mRefCount = 0;
-    VulkanResourceType mType = VulkanResourceType::BUFFER_OBJECT;
+    uint32_t mRefCount : 24; // 16M is enough for the refcount
+    uint32_t mType : 8; // must be uint32_t or MSVC doesn't pack it. no codegen impact w/ clang.
     HandleBase::HandleId mHandleId;
 
     friend struct VulkanThreadSafeResource;
@@ -106,6 +115,8 @@ private:
     template<typename RT, typename ST>
     friend class VulkanResourceManagerImpl;
 };
+
+static_assert(sizeof(VulkanResourceBase) == 8, "VulkanResourceBase should be 8 bytes");
 
 struct VulkanThreadSafeResource {
 protected:
@@ -156,62 +167,7 @@ namespace {
 // When the size of the resource set is known to be small, (for example for VulkanRenderPrimitive),
 // we just use a std::array to back the set.
 template<std::size_t SIZE>
-class FixedCapacityResourceSet {
-private:
-    using FixedSizeArray = std::array<VulkanResource*, SIZE>;
-
-public:
-    using const_iterator = typename FixedSizeArray::const_iterator;
-
-    inline ~FixedCapacityResourceSet() {
-        clear();
-    }
-
-    inline const_iterator begin() {
-        if (mInd == 0) {
-            return mArray.cend();
-        }
-        return mArray.cbegin();
-    }
-
-    inline const_iterator end() {
-        if (mInd == 0) {
-            return mArray.cend();
-        }
-        if (mInd < SIZE) {
-            return mArray.begin() + mInd;
-        }
-        return mArray.cend();
-    }
-
-    inline const_iterator find(VulkanResource* resource) {
-        return std::find(begin(), end(), resource);
-    }
-
-    inline void insert(VulkanResource* resource) {
-        assert_invariant(mInd < SIZE);
-        mArray[mInd++] = resource;
-    }
-
-    inline void erase(VulkanResource* resource) {
-        assert_invariant(false && "FixedCapacityResourceSet::erase should not be called");
-    }
-
-    inline void clear() {
-        if (mInd == 0) {
-            return;
-        }
-        mInd = 0;
-    }
-
-    inline size_t size() {
-        return mInd;
-    }
-
-private:
-    FixedSizeArray mArray{nullptr};
-    size_t mInd = 0;
-};
+using FixedCapacityResourceSet = CappedArray<VulkanResource*, SIZE>;
 
 // robin_set/map are useful for sets that are acquire only and the set will be iterated when the set
 // is cleared.

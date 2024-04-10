@@ -18,27 +18,42 @@
 #define TNT_FILAMENT_BACKEND_OPENGL_OPENGLDRIVER_H
 
 #include "DriverBase.h"
-#include "GLUtils.h"
 #include "OpenGLContext.h"
+#include "OpenGLTimerQuery.h"
 #include "ShaderCompilerService.h"
-
-#include "private/backend/Driver.h"
-#include "private/backend/HandleAllocator.h"
 
 #include <backend/platforms/OpenGLPlatform.h>
 
 #include <backend/AcquiredImage.h>
+#include <backend/DriverEnums.h>
+#include <backend/Handle.h>
+#include <backend/Platform.h>
 #include <backend/Program.h>
 #include <backend/TargetBufferInfo.h>
 
+#include "private/backend/Driver.h"
+#include "private/backend/HandleAllocator.h"
+
+#include <utils/FixedCapacityVector.h>
 #include <utils/compiler.h>
-#include <utils/Allocator.h>
+#include <utils/debug.h>
 
 #include <math/vec4.h>
 
 #include <tsl/robin_map.h>
 
-#include <set>
+#include <array>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <stddef.h>
+#include <stdint.h>
 
 #ifndef FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB
 #    define FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB 4
@@ -51,15 +66,17 @@ class PixelBufferDescriptor;
 struct TargetBufferInfo;
 
 class OpenGLProgram;
-class OpenGLTimerQueryInterface;
+class TimerQueryFactoryInterface;
 
 class OpenGLDriver final : public DriverBase {
-    inline explicit OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfig& driverConfig) noexcept;
+    inline explicit OpenGLDriver(OpenGLPlatform* platform,
+            const Platform::DriverConfig& driverConfig) noexcept;
     ~OpenGLDriver() noexcept final;
     Dispatcher getDispatcher() const noexcept final;
 
 public:
-    static Driver* create(OpenGLPlatform* platform, void* sharedGLContext, const Platform::DriverConfig& driverConfig) noexcept;
+    static Driver* create(OpenGLPlatform* platform, void* sharedGLContext,
+            const Platform::DriverConfig& driverConfig) noexcept;
 
 	//DAZ ADD
     uint32_t getTextureOGLId(const backend::Handle<backend::HwTexture>& handle)noexcept override;
@@ -86,11 +103,9 @@ public:
         }
 
         struct {
+            GLuint id;
             union {
-                struct {
-                    GLuint id;
-                    GLenum binding;
-                };
+                GLenum binding;
                 void* buffer;
             };
         } gl;
@@ -99,8 +114,22 @@ public:
         uint16_t age = 0;
     };
 
+    struct GLVertexBufferInfo : public HwVertexBufferInfo {
+        GLVertexBufferInfo() noexcept = default;
+        GLVertexBufferInfo(uint8_t bufferCount, uint8_t attributeCount,
+                AttributeArray const& attributes)
+                : HwVertexBufferInfo(bufferCount, attributeCount),
+                  attributes(attributes) {
+        }
+        AttributeArray attributes;
+    };
+
     struct GLVertexBuffer : public HwVertexBuffer {
-        using HwVertexBuffer::HwVertexBuffer;
+        GLVertexBuffer() noexcept = default;
+        GLVertexBuffer(uint32_t vertexCount, Handle<HwVertexBufferInfo> vbih)
+                : HwVertexBuffer(vertexCount), vbih(vbih) {
+        }
+        Handle<HwVertexBufferInfo> vbih;
         struct {
             // 4 * MAX_VERTEX_ATTRIBUTE_COUNT bytes
             std::array<GLuint, MAX_VERTEX_ATTRIBUTE_COUNT> buffers{};
@@ -128,6 +157,7 @@ public:
     struct GLRenderPrimitive : public HwRenderPrimitive {
         using HwRenderPrimitive::HwRenderPrimitive;
         OpenGLContext::RenderPrimitive gl;
+        Handle<HwVertexBufferInfo> vbih;
     };
 
     struct GLTexture : public HwTexture {
@@ -152,15 +182,7 @@ public:
         OpenGLPlatform::ExternalTexture* externalTexture = nullptr;
     };
 
-    struct GLTimerQuery : public HwTimerQuery {
-        struct State {
-            struct {
-                GLuint query;
-            } gl;
-            std::atomic<int64_t> elapsed{};
-        };
-        std::shared_ptr<State> state;
-    };
+    using GLTimerQuery = filament::backend::GLTimerQuery;
 
     struct GLStream : public HwStream {
         using HwStream::HwStream;
@@ -214,8 +236,8 @@ private:
     OpenGLContext mContext;
     ShaderCompilerService mShaderCompilerService;
 
-    friend class OpenGLTimerQueryFactory;
-    friend class TimerQueryNative;
+    friend class TimerQueryFactory;
+    friend class TimerQueryNativeFactory;
     OpenGLContext& getContext() noexcept { return mContext; }
 
     ShaderCompilerService& getShaderCompilerService() noexcept {
@@ -249,13 +271,13 @@ private:
     HandleAllocatorGL mHandleAllocator;
 
     template<typename D, typename ... ARGS>
-    Handle<D> initHandle(ARGS&& ... args) noexcept {
+    Handle<D> initHandle(ARGS&& ... args) {
         return mHandleAllocator.allocateAndConstruct<D>(std::forward<ARGS>(args) ...);
     }
 
     template<typename D, typename B, typename ... ARGS>
     typename std::enable_if<std::is_base_of<B, D>::value, D>::type*
-    construct(Handle<B> const& handle, ARGS&& ... args) noexcept {
+    construct(Handle<B> const& handle, ARGS&& ... args) {
         return mHandleAllocator.destroyAndConstruct<D, B>(handle, std::forward<ARGS>(args) ...);
     }
 
@@ -269,7 +291,7 @@ private:
     typename std::enable_if_t<
             std::is_pointer_v<Dp> &&
             std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
-    handle_cast(Handle<B>& handle) noexcept {
+    handle_cast(Handle<B>& handle) {
         return mHandleAllocator.handle_cast<Dp, B>(handle);
     }
 
@@ -277,7 +299,7 @@ private:
     inline typename std::enable_if_t<
             std::is_pointer_v<Dp> &&
             std::is_base_of_v<B, typename std::remove_pointer_t<Dp>>, Dp>
-    handle_cast(Handle<B> const& handle) noexcept {
+    handle_cast(Handle<B> const& handle) {
         return mHandleAllocator.handle_cast<Dp, B>(handle);
     }
 
@@ -295,7 +317,7 @@ private:
     void updateVertexArrayObject(GLRenderPrimitive* rp, GLVertexBuffer const* vb);
 
     void framebufferTexture(TargetBufferInfo const& binfo,
-            GLRenderTarget const* rt, GLenum attachment) noexcept;
+            GLRenderTarget const* rt, GLenum attachment, uint8_t layerCount) noexcept;
 
     void setRasterState(RasterState rs) noexcept;
 
@@ -316,14 +338,14 @@ private:
     void renderBufferStorage(GLuint rbo, GLenum internalformat, uint32_t width,
             uint32_t height, uint8_t samples) const noexcept;
 
-    void textureStorage(GLTexture* t,
-            uint32_t width, uint32_t height, uint32_t depth) noexcept;
+    void textureStorage(OpenGLDriver::GLTexture* t, uint32_t width, uint32_t height,
+            uint32_t depth, bool useProtectedMemory) noexcept;
 
     /* State tracking GL wrappers... */
 
            void bindTexture(GLuint unit, GLTexture const* t) noexcept;
            void bindSampler(GLuint unit, GLuint sampler) noexcept;
-    inline void useProgram(OpenGLProgram* p) noexcept;
+    inline bool useProgram(OpenGLProgram* p) noexcept;
 
     enum class ResolveAction { LOAD, STORE };
     void resolvePass(ResolveAction action, GLRenderTarget const* rt,
@@ -350,8 +372,8 @@ private:
     }
 
     using AttachmentArray = std::array<GLenum, MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT + 2>;
-    static GLsizei getAttachments(AttachmentArray& attachments,
-            GLRenderTarget const* rt, TargetBufferFlags buffers) noexcept;
+    static GLsizei getAttachments(AttachmentArray& attachments, TargetBufferFlags buffers,
+            bool isDefaultFramebuffer) noexcept;
 
     // state required to represent the current render pass
     Handle<HwRenderTarget> mRenderPassTarget;
@@ -360,13 +382,18 @@ private:
     GLboolean mRenderPassDepthWrite{};
     GLboolean mRenderPassStencilWrite{};
 
+    GLRenderPrimitive const* mBoundRenderPrimitive = nullptr;
+    bool mValidProgram = false;
+
+
     void clearWithRasterPipe(TargetBufferFlags clearFlags,
             math::float4 const& linearColor, GLfloat depth, GLint stencil) noexcept;
 
     void setScissor(Viewport const& scissor) noexcept;
 
     // ES2 only. Uniform buffer emulation binding points
-    std::array<std::pair<void const*, uint16_t>, Program::UNIFORM_BINDING_COUNT> mUniformBindings = {};
+    GLuint mLastAssignedEmulatedUboId = 0;
+    std::array<std::tuple<GLuint, void const*, uint16_t>, Program::UNIFORM_BINDING_COUNT> mUniformBindings = {};
 
     // sampler buffer binding points (nullptr if not used)
     std::array<GLSamplerGroup*, Program::SAMPLER_BINDING_COUNT> mSamplerBindings = {};   // 4 pointers
@@ -401,8 +428,8 @@ private:
     void executeEveryNowAndThenOps() noexcept;
     std::vector<std::function<bool()>> mEveryNowAndThenOps;
 
-    // timer query implementation
-    OpenGLTimerQueryInterface* mTimerQueryImpl = nullptr;
+    const Platform::DriverConfig mDriverConfig;
+    Platform::DriverConfig const& getDriverConfig() const noexcept { return mDriverConfig; }
 
     // for ES2 sRGB support
     GLSwapChain* mCurrentDrawSwapChain = nullptr;

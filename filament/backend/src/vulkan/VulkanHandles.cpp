@@ -16,12 +16,15 @@
 
 #include "VulkanHandles.h"
 
+#include "VulkanDriver.h"
 #include "VulkanConstants.h"
+#include "VulkanDriver.h"
 #include "VulkanMemory.h"
+#include "spirv/VulkanSpirvUtils.h"
 
 #include <backend/platforms/VulkanPlatform.h>
 
-#include <utils/Panic.h>
+#include <utils/Panic.h>    // ASSERT_POSTCONDITION
 
 using namespace bluevk;
 
@@ -46,60 +49,59 @@ static void clampToFramebuffer(VkRect2D* rect, uint32_t fbWidth, uint32_t fbHeig
     rect->extent.height = std::max(top - y, 0);
 }
 
-VulkanProgram::VulkanProgram(VkDevice device, const Program& builder) noexcept
+VulkanProgram::VulkanProgram(VkDevice device, Program const& builder) noexcept
     : HwProgram(builder.getName()),
       VulkanResource(VulkanResourceType::PROGRAM),
-      mInfo(new PipelineInfo(builder.getSpecializationConstants().size())),
+      mInfo(new PipelineInfo()),
       mDevice(device) {
-    auto& blobs = builder.getShadersSource();
+    Program::ShaderSource const& blobs = builder.getShadersSource();
     auto& modules = mInfo->shaders;
+
+    auto const& specializationConstants = builder.getSpecializationConstants();
+
+    std::vector<uint32_t> shader;
     for (size_t i = 0; i < MAX_SHADER_MODULES; i++) {
-        const auto& blob = blobs[i];
-        uint32_t* data = (uint32_t*)blob.data();
+        Program::ShaderBlob const& blob = blobs[i];
+
+        uint32_t* data = (uint32_t*) blob.data();
+        size_t dataSize = blob.size();
+
+        if (!specializationConstants.empty()) {
+            workaroundSpecConstant(blob, specializationConstants, shader);
+            data = (uint32_t*) shader.data();
+            dataSize = shader.size() * 4;
+        }
+
         VkShaderModule& module = modules[i];
         VkShaderModuleCreateInfo moduleInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = blob.size(),
+            .codeSize = dataSize,
             .pCode = data,
         };
         VkResult result = vkCreateShaderModule(mDevice, &moduleInfo, VKALLOC, &module);
         ASSERT_POSTCONDITION(result == VK_SUCCESS, "Unable to create shader module.");
-    }
 
-    // Note that bools are 4-bytes in Vulkan
-    // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBool32.html
-    constexpr uint32_t const CONSTANT_SIZE = 4;
-
-    // populate the specialization constants requirements right now
-    auto const& specializationConstants = builder.getSpecializationConstants();
-    uint32_t const specConstCount = static_cast<uint32_t>(specializationConstants.size());
-    char* specData = mInfo->specConstData.get();
-    if (specConstCount > 0) {
-        mInfo->specializationInfo = {
-            .mapEntryCount = specConstCount,
-            .pMapEntries = mInfo->specConsts.data(),
-            .dataSize = specConstCount * CONSTANT_SIZE,
-            .pData = specData,
-        };
-    }
-    for (uint32_t i = 0; i < specConstCount; ++i) {
-        uint32_t const offset = i * CONSTANT_SIZE;
-        mInfo->specConsts[i] = {
-            .constantID = specializationConstants[i].id,
-            .offset = offset,
-            .size = CONSTANT_SIZE,
-        };
-        using SpecConstant = Program::SpecializationConstant::Type;
-        char const* addr = (char*)specData + offset;
-        SpecConstant const& arg = specializationConstants[i].value;
-        if (std::holds_alternative<bool>(arg)) {
-            *((VkBool32*)addr) = std::get<bool>(arg) ? VK_TRUE : VK_FALSE;
-        } else if (std::holds_alternative<float>(arg)) {
-            *((float*)addr) = std::get<float>(arg);
-        } else {
-            *((int32_t*)addr) = std::get<int32_t>(arg);
+#if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
+        std::string name{ builder.getName().c_str(), builder.getName().size() };
+        switch (static_cast<ShaderStage>(i)) {
+            case ShaderStage::VERTEX:
+                name += "_vs";
+                break;
+            case ShaderStage::FRAGMENT:
+                name += "_fs";
+                break;
+            default:
+                PANIC_POSTCONDITION("Unexpected stage");
+                break;
         }
+        VulkanDriver::DebugUtils::setName(VK_OBJECT_TYPE_SHADER_MODULE,
+                reinterpret_cast<uint64_t>(module), name.c_str());
+#endif
     }
+
+#if FVK_ENABLED_DEBUG_SAMPLER_NAME
+    auto& bindingToName = mInfo->bindingToName;
+#endif
 
     auto& groupInfo = builder.getSamplerGroupInfo();
     auto& bindingToSamplerIndex = mInfo->bindingToSamplerIndex;
@@ -111,19 +113,23 @@ VulkanProgram::VulkanProgram(VkDevice device, const Program& builder) noexcept
             uint32_t const binding = samplers[i].binding;
             bindingToSamplerIndex[binding] = (groupInd << 8) | (0xff & i);
             usage = VulkanPipelineCache::getUsageFlags(binding, group.stageFlags, usage);
+
+#if FVK_ENABLED_DEBUG_SAMPLER_NAME
+            bindingToName[binding] = samplers[i].name.c_str();
+#endif
         }
     }
 
-    #if FVK_ENABLED(FVK_DEBUG_SHADER_MODULE)
-        utils::slog.d << "Created VulkanProgram " << builder << ", shaders = (" << bundle.vertex
-                      << ", " << bundle.fragment << ")" << utils::io::endl;
-    #endif
+#if FVK_ENABLED(FVK_DEBUG_SHADER_MODULE)
+    utils::slog.d << "Created VulkanProgram " << builder << ", shaders = (" << modules[0]
+                  << ", " << modules[1] << ")" << utils::io::endl;
+#endif
 }
 
 VulkanProgram::VulkanProgram(VkDevice device, VkShaderModule vs, VkShaderModule fs,
         CustomSamplerInfoList const& samplerInfo) noexcept
     : VulkanResource(VulkanResourceType::PROGRAM),
-      mInfo(new PipelineInfo(0)),
+      mInfo(new PipelineInfo()),
       mDevice(device) {
     mInfo->shaders[0] = vs;
     mInfo->shaders[1] = fs;
@@ -283,22 +289,21 @@ uint8_t VulkanRenderTarget::getColorTargetCount(const VulkanRenderPass& pass) co
     return count;
 }
 
-VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
-        VulkanResourceAllocator* allocator, uint8_t bufferCount, uint8_t attributeCount,
-        uint32_t elementCount, AttributeArray const& attribs)
-    : HwVertexBuffer(bufferCount, attributeCount, elementCount, attribs),
-      VulkanResource(VulkanResourceType::VERTEX_BUFFER),
-      mInfo(new PipelineInfo(attribs.size())),
-      mResources(allocator) {
-    auto attribDesc = mInfo->mSoa.data<PipelineInfo::ATTRIBUTE_DESCRIPTION>();
-    auto bufferDesc = mInfo->mSoa.data<PipelineInfo::BUFFER_DESCRIPTION>();
-    auto offsets = mInfo->mSoa.data<PipelineInfo::OFFSETS>();
-    auto attribToBufferIndex = mInfo->mSoa.data<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>();
-    std::fill(mInfo->mSoa.begin<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>(),
-            mInfo->mSoa.end<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>(), -1);
+VulkanVertexBufferInfo::VulkanVertexBufferInfo(
+        uint8_t bufferCount, uint8_t attributeCount, AttributeArray const& attributes)
+    : HwVertexBufferInfo(bufferCount, attributeCount),
+      VulkanResource(VulkanResourceType::VERTEX_BUFFER_INFO),
+      mInfo(attributes.size()) {
 
-    for (uint32_t attribIndex = 0; attribIndex < attribs.size(); attribIndex++) {
-        Attribute attrib = attribs[attribIndex];
+    auto attribDesc = mInfo.mSoa.data<PipelineInfo::ATTRIBUTE_DESCRIPTION>();
+    auto bufferDesc = mInfo.mSoa.data<PipelineInfo::BUFFER_DESCRIPTION>();
+    auto offsets = mInfo.mSoa.data<PipelineInfo::OFFSETS>();
+    auto attribToBufferIndex = mInfo.mSoa.data<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>();
+    std::fill(mInfo.mSoa.begin<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>(),
+            mInfo.mSoa.end<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>(), -1);
+
+    for (uint32_t attribIndex = 0; attribIndex < attributes.size(); attribIndex++) {
+        Attribute attrib = attributes[attribIndex];
         bool const isInteger = attrib.flags & Attribute::FLAG_INTEGER_TARGET;
         bool const isNormalized = attrib.flags & Attribute::FLAG_NORMALIZED;
         VkFormat vkformat = getVkFormat(attrib.type, isNormalized, isInteger);
@@ -310,7 +315,7 @@ VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& 
         // expects to receive floats or ints.
         if (attrib.buffer == Attribute::BUFFER_UNUSED) {
             vkformat = isInteger ? VK_FORMAT_R8G8B8A8_UINT : VK_FORMAT_R8G8B8A8_SNORM;
-            attrib = attribs[0];
+            attrib = attributes[0];
         }
         offsets[attribIndex] = attrib.offset;
         attribDesc[attribIndex] = {
@@ -326,14 +331,23 @@ VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& 
     }
 }
 
-VulkanVertexBuffer::~VulkanVertexBuffer() {
-    delete mInfo;
+VulkanVertexBuffer::VulkanVertexBuffer(VulkanContext& context, VulkanStagePool& stagePool,
+        VulkanResourceAllocator* allocator,
+        uint32_t vertexCount, Handle<HwVertexBufferInfo> vbih)
+    : HwVertexBuffer(vertexCount),
+      VulkanResource(VulkanResourceType::VERTEX_BUFFER),
+      vbih(vbih),
+      mBuffers(MAX_VERTEX_BUFFER_COUNT), // TODO: can we do better here?
+      mResources(allocator) {
 }
 
-void VulkanVertexBuffer::setBuffer(VulkanBufferObject* bufferObject, uint32_t index) {
-    size_t count = attributes.size();
-    auto vkbuffers = mInfo->mSoa.data<PipelineInfo::VK_BUFFER>();
-    auto attribToBuffer = mInfo->mSoa.data<PipelineInfo::ATTRIBUTE_TO_BUFFER_INDEX>();
+void VulkanVertexBuffer::setBuffer(VulkanResourceAllocator const& allocator,
+        VulkanBufferObject* bufferObject, uint32_t index) {
+    VulkanVertexBufferInfo const* const vbi =
+            const_cast<VulkanResourceAllocator&>(allocator).handle_cast<VulkanVertexBufferInfo*>(vbih);
+    size_t const count = vbi->getAttributeCount();
+    VkBuffer* const vkbuffers = getVkBuffers();
+    int8_t const* const attribToBuffer = vbi->getAttributeToBuffer();
     for (uint8_t attribIndex = 0; attribIndex < count; attribIndex++) {
         if (attribToBuffer[attribIndex] == static_cast<int8_t>(index)) {
             vkbuffers[attribIndex] = bufferObject->buffer.getGpuBuffer();
@@ -348,35 +362,6 @@ VulkanBufferObject::VulkanBufferObject(VmaAllocator allocator, VulkanStagePool& 
       VulkanResource(VulkanResourceType::BUFFER_OBJECT),
       buffer(allocator, stagePool, getBufferObjectUsage(bindingType), byteCount),
       bindingType(bindingType) {}
-
-void VulkanRenderPrimitive::setPrimitiveType(PrimitiveType pt) {
-    this->type = pt;
-    switch (pt) {
-        case PrimitiveType::POINTS:
-            primitiveTopology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-            break;
-        case PrimitiveType::LINES:
-            primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-            break;
-        case PrimitiveType::LINE_STRIP:
-            primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-            break;
-        case PrimitiveType::TRIANGLES:
-            primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-            break;
-        case PrimitiveType::TRIANGLE_STRIP:
-            primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-            break;
-    }
-}
-
-void VulkanRenderPrimitive::setBuffers(VulkanVertexBuffer* vertexBuffer,
-        VulkanIndexBuffer* indexBuffer) {
-    this->vertexBuffer = vertexBuffer;
-    this->indexBuffer = indexBuffer;
-    mResources.acquire(vertexBuffer);
-    mResources.acquire(indexBuffer);
-}
 
 VulkanTimerQuery::VulkanTimerQuery(std::tuple<uint32_t, uint32_t> indices)
     : VulkanThreadSafeResource(VulkanResourceType::TIMER_QUERY),
@@ -408,5 +393,16 @@ bool VulkanTimerQuery::isCompleted() noexcept {
 }
 
 VulkanTimerQuery::~VulkanTimerQuery() = default;
+
+VulkanRenderPrimitive::VulkanRenderPrimitive(VulkanResourceAllocator* resourceAllocator,
+        PrimitiveType pt, Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh)
+        : VulkanResource(VulkanResourceType::RENDER_PRIMITIVE),
+          mResources(resourceAllocator) {
+    type = pt;
+    vertexBuffer = resourceAllocator->handle_cast<VulkanVertexBuffer*>(vbh);
+    indexBuffer = resourceAllocator->handle_cast<VulkanIndexBuffer*>(ibh);
+    mResources.acquire(vertexBuffer);
+    mResources.acquire(indexBuffer);
+}
 
 } // namespace filament::backend

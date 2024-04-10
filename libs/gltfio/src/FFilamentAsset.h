@@ -45,6 +45,7 @@
 #include "DependencyGraph.h"
 #include "DracoCache.h"
 #include "FFilamentInstance.h"
+#include "Utility.h"
 
 #include <tsl/htrie_map.h>
 
@@ -71,7 +72,7 @@ namespace utils {
 
 namespace filament::gltfio {
 
-class Wireframe;
+struct Wireframe;
 
 // Encapsulates VertexBuffer::setBufferAt() or IndexBuffer::setBuffer().
 struct BufferSlot {
@@ -289,6 +290,9 @@ struct FFilamentAsset : public FilamentAsset {
     // or ResourceLoader have been destroyed.
     using SourceHandle = std::shared_ptr<SourceAsset>;
     SourceHandle mSourceAsset;
+
+    // The mapping of root nodes to scene membership sets.
+    tsl::robin_map<cgltf_node*, SceneMask> mRootNodes;
 
     // Stores all information related to a single cgltf_texture.
     // Note that more than one cgltf_texture can map to a single Filament texture,

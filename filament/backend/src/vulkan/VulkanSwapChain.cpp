@@ -35,7 +35,7 @@ VulkanSwapChain::VulkanSwapChain(VulkanPlatform* platform, VulkanContext const& 
       mStagePool(stagePool),
       mHeadless(extent.width != 0 && extent.height != 0 && !nativeWindow),
       mFlushAndWaitOnResize(platform->getCustomization().flushAndWaitOnWindowResize),
-      mImageReady(VK_NULL_HANDLE),
+      mCurrentImageReadyIndex(0),
       mAcquired(false),
       mIsFirstRenderPass(true) {
     swapChain = mPlatform->createSwapChain(nativeWindow, flags, extent);
@@ -46,10 +46,15 @@ VulkanSwapChain::VulkanSwapChain(VulkanPlatform* platform, VulkanContext const& 
     };
 
     // No need to wait on this semaphore before drawing when in Headless mode.
-    if (!mHeadless) {
-        VkResult result =
-                vkCreateSemaphore(mPlatform->getDevice(), &createInfo, nullptr, &mImageReady);
-        ASSERT_POSTCONDITION(result == VK_SUCCESS, "Failed to create semaphore");
+    if (mHeadless) {
+		// Set all sempahores to VK_NULL_HANDLE
+		memset(mImageReady, 0, sizeof(mImageReady[0]) * IMAGE_READY_SEMAPHORE_COUNT);
+	} else {
+		for (uint32_t i = 0; i < IMAGE_READY_SEMAPHORE_COUNT; ++i) {
+			VkResult result =
+					vkCreateSemaphore(mPlatform->getDevice(), &createInfo, nullptr, mImageReady + i);
+			ASSERT_POSTCONDITION(result == VK_SUCCESS, "Failed to create semaphore");
+		}
     }
 
     update();
@@ -62,9 +67,11 @@ VulkanSwapChain::~VulkanSwapChain() {
     mCommands->wait();
 
     mPlatform->destroy(swapChain);
-    if (mImageReady != VK_NULL_HANDLE) {
-        vkDestroySemaphore(mPlatform->getDevice(), mImageReady, VKALLOC);
-    }
+	for (uint32_t i = 0; i < IMAGE_READY_SEMAPHORE_COUNT; ++i) {
+		if (mImageReady[i] != VK_NULL_HANDLE) {
+			vkDestroySemaphore(mPlatform->getDevice(), mImageReady[i], VKALLOC);
+		}
+	}
 }
 
 void VulkanSwapChain::update() {
@@ -99,11 +106,16 @@ void VulkanSwapChain::present() {
         mColors[mCurrentSwapIndex]->transitionLayout(cmdbuf, subresources, VulkanLayout::PRESENT);
     }
     mCommands->flush();
-    VkSemaphore const finishedDrawing = mCommands->acquireFinishedSignal();
-    VkResult const result = mPlatform->present(swapChain, mCurrentSwapIndex, finishedDrawing);
-    ASSERT_POSTCONDITION(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR
-                                 || result == VK_ERROR_OUT_OF_DATE_KHR,
-            "Cannot present in swapchain.");
+
+    // We only present if it is not headless.  No-op for headless (but note that we still need the
+    // flush() in the above line).
+    if (!mHeadless) {
+        VkSemaphore const finishedDrawing = mCommands->acquireFinishedSignal();
+        VkResult const result = mPlatform->present(swapChain, mCurrentSwapIndex, finishedDrawing);
+        ASSERT_POSTCONDITION(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
+                                     result == VK_ERROR_OUT_OF_DATE_KHR,
+                "Cannot present in swapchain.");
+    }
 
     // We presented the last acquired buffer.
     mAcquired = false;
@@ -126,11 +138,13 @@ void VulkanSwapChain::acquire(bool& resized) {
         update();
     }
 
-    VkResult const result = mPlatform->acquire(swapChain, mImageReady, &mCurrentSwapIndex);
+	mCurrentImageReadyIndex = (mCurrentImageReadyIndex + 1) % IMAGE_READY_SEMAPHORE_COUNT;
+	const VkSemaphore imageReady = mImageReady[mCurrentImageReadyIndex];
+    VkResult const result = mPlatform->acquire(swapChain, imageReady, &mCurrentSwapIndex);
     ASSERT_POSTCONDITION(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR,
             "Cannot acquire in swapchain.");
-    if (mImageReady != VK_NULL_HANDLE) {
-        mCommands->injectDependency(mImageReady);
+    if (imageReady != VK_NULL_HANDLE) {
+        mCommands->injectDependency(imageReady);
     }
     mAcquired = true;
 }

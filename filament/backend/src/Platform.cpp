@@ -28,14 +28,16 @@ bool Platform::pumpEvents() noexcept {
 }
 
 void Platform::setBlobFunc(InsertBlobFunc&& insertBlob, RetrieveBlobFunc&& retrieveBlob) noexcept {
-    if (!mInsertBlob && !mRetrieveBlob) {
-        mInsertBlob = std::move(insertBlob);
-        mRetrieveBlob = std::move(retrieveBlob);
-    }
+    mInsertBlob = std::move(insertBlob);
+    mRetrieveBlob = std::move(retrieveBlob);
 }
 
-bool Platform::hasBlobFunc() const noexcept {
-    return mInsertBlob && mRetrieveBlob;
+bool Platform::hasInsertBlobFunc() const noexcept {
+    return bool(mInsertBlob);
+}
+
+bool Platform::hasRetrieveBlobFunc() const noexcept {
+    return bool(mRetrieveBlob);
 }
 
 void Platform::insertBlob(void const* key, size_t keySize, void const* value, size_t valueSize) {
@@ -49,6 +51,20 @@ size_t Platform::retrieveBlob(void const* key, size_t keySize, void* value, size
         return mRetrieveBlob(key, keySize, value, valueSize);
     }
     return 0;
+}
+
+void Platform::setDebugUpdateStatFunc(DebugUpdateStatFunc&& debugUpdateStat) noexcept {
+    mDebugUpdateStat = std::move(debugUpdateStat);
+}
+
+bool Platform::hasDebugUpdateStatFunc() const noexcept {
+    return bool(mDebugUpdateStat);
+}
+
+void Platform::debugUpdateStat(const char* key, uint64_t value) {
+    if (mDebugUpdateStat) {
+        mDebugUpdateStat(key, value);
+    }
 }
 
 } // namespace filament::backend

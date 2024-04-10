@@ -157,8 +157,6 @@ public:
     void bindPrimitiveTopology(VkPrimitiveTopology topology) noexcept;
     void bindUniformBufferObject(uint32_t bindingIndex, VulkanBufferObject* bufferObject,
             VkDeviceSize offset = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept;
-    void bindUniformBuffer(uint32_t bindingIndex, VkBuffer buffer,
-            VkDeviceSize offset = 0, VkDeviceSize size = VK_WHOLE_SIZE) noexcept;
     void bindSamplers(VkDescriptorImageInfo samplers[SAMPLER_BINDING_COUNT],
             VulkanTexture* textures[SAMPLER_BINDING_COUNT], UsageFlags flags) noexcept;
     void bindInputAttachment(uint32_t bindingIndex, VkDescriptorImageInfo imageInfo) noexcept;
@@ -193,19 +191,19 @@ public:
         mDummyTargetInfo.imageView = imageView;
     }
 
-    // Acquires a resource to be bound to the current pipeline. The ownership of the resource
-    // will be transferred to the corresponding pipeline when pipeline is bound.
-    void acquireResource(VulkanResource* resource) {
-        mPipelineBoundResources.acquire(resource);
-    }
-
-    inline RasterState getCurrentRasterState() const noexcept {
-        return mCurrentRasterState;
-    }
-
-    // We need to update this outside of bindRasterState due to VulkanDriver::draw.
-    inline void setCurrentRasterState(RasterState const& rasterState) noexcept {
-        mCurrentRasterState = rasterState;
+    static VkPrimitiveTopology getPrimitiveTopology(PrimitiveType pt) noexcept {
+        switch (pt) {
+            case PrimitiveType::POINTS:
+                return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+            case PrimitiveType::LINES:
+                return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            case PrimitiveType::LINE_STRIP:
+                return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+            case PrimitiveType::TRIANGLES:
+                return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            case PrimitiveType::TRIANGLE_STRIP:
+                return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        }
     }
 
 private:
@@ -413,10 +411,8 @@ private:
     VmaAllocator mAllocator = VK_NULL_HANDLE;
 
     // Current requirements for the pipeline layout, pipeline, and descriptor sets.
-    RasterState mCurrentRasterState;
     PipelineKey mPipelineRequirements = {};
     DescriptorKey mDescriptorRequirements = {};
-    VkSpecializationInfo const* mSpecializationRequirements = nullptr;
 
     // Current bindings for the pipeline and descriptor sets.
     PipelineKey mBoundPipeline = {};

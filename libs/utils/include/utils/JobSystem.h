@@ -17,15 +17,6 @@
 #ifndef TNT_UTILS_JOBSYSTEM_H
 #define TNT_UTILS_JOBSYSTEM_H
 
-#include <assert.h>
-
-#include <atomic>
-#include <functional>
-#include <thread>
-#include <vector>
-
-#include <tsl/robin_map.h>
-
 #include <utils/Allocator.h>
 #include <utils/architecture.h>
 #include <utils/compiler.h>
@@ -34,7 +25,21 @@
 #include <utils/memalign.h>
 #include <utils/Mutex.h>
 #include <utils/Slice.h>
+#include <utils/ostream.h>
 #include <utils/WorkStealingDequeue.h>
+
+#include <tsl/robin_map.h>
+
+#include <atomic>
+#include <functional>
+#include <mutex>
+#include <type_traits>
+#include <thread>
+#include <vector>
+
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 
 namespace utils {
 
@@ -169,8 +174,9 @@ public:
     // the caller must ensure the object will outlive the Job
     template<typename T, void(T::*method)(JobSystem&, Job*)>
     Job* createJob(Job* parent, T* data) noexcept {
-        Job* job = create(parent, [](void* user, JobSystem& js, Job* job) {
-            (*static_cast<T**>(user)->*method)(js, job);
+        Job* job = create(parent, +[](void* storage, JobSystem& js, Job* job) {
+            T* const that = static_cast<T*>(reinterpret_cast<void**>(storage)[0]);
+            (that->*method)(js, job);
         });
         if (job) {
             job->storage[0] = data;
@@ -182,8 +188,8 @@ public:
     template<typename T, void(T::*method)(JobSystem&, Job*)>
     Job* createJob(Job* parent, T data) noexcept {
         static_assert(sizeof(data) <= sizeof(Job::storage), "user data too large");
-        Job* job = create(parent, [](void* user, JobSystem& js, Job* job) {
-            T* that = static_cast<T*>(user);
+        Job* job = create(parent, [](void* storage, JobSystem& js, Job* job) {
+            T* const that = static_cast<T*>(storage);
             (that->*method)(js, job);
             that->~T();
         });
@@ -197,10 +203,10 @@ public:
     template<typename T>
     Job* createJob(Job* parent, T functor) noexcept {
         static_assert(sizeof(functor) <= sizeof(Job::storage), "functor too large");
-        Job* job = create(parent, [](void* user, JobSystem& js, Job* job){
-            T& that = *static_cast<T*>(user);
-            that(js, job);
-            that.~T();
+        Job* job = create(parent, [](void* storage, JobSystem& js, Job* job){
+            T* const that = static_cast<T*>(storage);
+            that->operator()(js, job);
+            that->~T();
         });
         if (job) {
             new(job->storage) T(std::move(functor));
@@ -252,7 +258,7 @@ public:
     void signal() noexcept;
 
     /*
-     * Add job to this thread's execution queue and and keep a reference to it.
+     * Add job to this thread's execution queue and keep a reference to it.
      * Current thread must be owned by JobSystem's thread pool. See adopt().
      *
      * This job MUST BE waited on with wait(), or released with release().
@@ -386,7 +392,7 @@ private:
     uint8_t mParallelSplitCount = 0;                    // # of split allowable in parallel_for
     Job* mRootJob = nullptr;
 
-    utils::SpinLock mThreadMapLock; // this should have very little contention
+    utils::Mutex mThreadMapLock; // this should have very little contention
     tsl::robin_map<std::thread::id, ThreadState *> mThreadMap;
 };
 

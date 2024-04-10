@@ -25,13 +25,32 @@
 
 #include <filament/Texture.h>
 
+#include <backend/DriverEnums.h>
+#include <backend/Handle.h>
+
 #include <ibl/Cubemap.h>
 #include <ibl/CubemapIBL.h>
 #include <ibl/CubemapUtils.h>
 #include <ibl/Image.h>
 
+#include <math/half.h>
+#include <math/scalar.h>
+#include <math/vec3.h>
+
+#include <utils/Allocator.h>
+#include <utils/algorithm.h>
+#include <utils/compiler.h>
+#include <utils/debug.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
+
+#include <algorithm>
+#include <array>
+#include <type_traits>
+#include <utility>
+
+#include <stddef.h>
+#include <stdint.h>
 
 using namespace utils;
 
@@ -58,7 +77,7 @@ struct Texture::BuilderDetails {
     uint8_t mLevels = 1;
     Sampler mTarget = Sampler::SAMPLER_2D;
     InternalFormat mFormat = InternalFormat::RGBA8;
-    Usage mUsage = Usage::DEFAULT;
+    Usage mUsage = Usage::NONE;
     bool mTextureIsSwizzled = false;
     std::array<Swizzle, 4> mSwizzle = {
            Swizzle::CHANNEL_0, Swizzle::CHANNEL_1,
@@ -125,6 +144,43 @@ Texture* Texture::Builder::build(Engine& engine) {
     ASSERT_PRECONDITION(Texture::isTextureFormatSupported(engine, mImpl->mFormat),
             "Texture format %u not supported on this platform", mImpl->mFormat);
 
+    const bool isProtectedTexturesSupported =
+            downcast(engine).getDriverApi().isProtectedTexturesSupported();
+    const bool useProtectedMemory = bool(mImpl->mUsage & TextureUsage::PROTECTED);
+
+    ASSERT_PRECONDITION((isProtectedTexturesSupported && useProtectedMemory) || !useProtectedMemory,
+            "Texture is PROTECTED but protected textures are not supported");
+
+    uint8_t maxLevelCount;
+    switch (mImpl->mTarget) {
+        case SamplerType::SAMPLER_2D:
+        case SamplerType::SAMPLER_2D_ARRAY:
+        case SamplerType::SAMPLER_CUBEMAP:
+        case SamplerType::SAMPLER_EXTERNAL:
+        case SamplerType::SAMPLER_CUBEMAP_ARRAY:
+            maxLevelCount = FTexture::maxLevelCount(mImpl->mWidth, mImpl->mHeight);
+            break;
+        case SamplerType::SAMPLER_3D:
+            maxLevelCount = FTexture::maxLevelCount(std::max(
+                    { mImpl->mWidth, mImpl->mHeight, mImpl->mDepth }));
+            break;
+    }
+    mImpl->mLevels = std::min(mImpl->mLevels, maxLevelCount);
+
+    if (mImpl->mUsage == TextureUsage::NONE) {
+        mImpl->mUsage = TextureUsage::DEFAULT;
+        if (mImpl->mLevels > 1 &&
+            (mImpl->mWidth > 1 || mImpl->mHeight > 1) &&
+            mImpl->mTarget != SamplerType::SAMPLER_EXTERNAL) {
+            const bool formatMipmappable =
+                    downcast(engine).getDriverApi().isTextureFormatMipmappable(mImpl->mFormat);
+            if (formatMipmappable) {
+                // by default mipmappable textures have the BLIT usage bits set
+                mImpl->mUsage |= TextureUsage::BLIT_SRC | TextureUsage::BLIT_DST;
+            }
+        }
+    }
+
     const bool sampleable = bool(mImpl->mUsage & TextureUsage::SAMPLEABLE);
     const bool swizzled = mImpl->mTextureIsSwizzled;
     const bool imported = mImpl->mImportedId;
@@ -163,30 +219,15 @@ Texture* Texture::Builder::build(Engine& engine) {
 // ------------------------------------------------------------------------------------------------
 
 FTexture::FTexture(FEngine& engine, const Builder& builder) {
+    FEngine::DriverApi& driver = engine.getDriverApi();
     mWidth  = static_cast<uint32_t>(builder->mWidth);
     mHeight = static_cast<uint32_t>(builder->mHeight);
     mDepth  = static_cast<uint32_t>(builder->mDepth);
     mFormat = builder->mFormat;
     mUsage = builder->mUsage;
     mTarget = builder->mTarget;
+    mLevelCount = builder->mLevels;
 
-    uint8_t maxLevelCount;
-    switch (builder->mTarget) {
-        case SamplerType::SAMPLER_2D:
-        case SamplerType::SAMPLER_2D_ARRAY:
-        case SamplerType::SAMPLER_CUBEMAP:
-        case SamplerType::SAMPLER_EXTERNAL:
-        case SamplerType::SAMPLER_CUBEMAP_ARRAY:
-            maxLevelCount = FTexture::maxLevelCount(mWidth, mHeight);
-            break;
-        case SamplerType::SAMPLER_3D:
-            maxLevelCount = FTexture::maxLevelCount(std::max(mWidth, std::max(mHeight, mDepth)));
-            break;
-    }
-
-    mLevelCount = std::min(builder->mLevels, maxLevelCount);
-
-    FEngine::DriverApi& driver = engine.getDriverApi();
     if (UTILS_LIKELY(builder->mImportedId == 0)) {
         if (UTILS_LIKELY(!builder->mTextureIsSwizzled)) {
             mHandle = driver.createTexture(
@@ -230,20 +271,20 @@ size_t FTexture::getDepth(size_t level) const noexcept {
 void FTexture::setImage(FEngine& engine, size_t level,
         uint32_t xoffset, uint32_t yoffset, uint32_t zoffset,
         uint32_t width, uint32_t height, uint32_t depth,
-        FTexture::PixelBufferDescriptor&& buffer) const {
+        FTexture::PixelBufferDescriptor&& p) const {
 
     if (UTILS_UNLIKELY(!engine.hasFeatureLevel(FeatureLevel::FEATURE_LEVEL_1))) {
-        ASSERT_PRECONDITION(buffer.stride == 0 || buffer.stride == width,
+        ASSERT_PRECONDITION(p.stride == 0 || p.stride == width,
                 "PixelBufferDescriptor stride must be 0 (or width) at FEATURE_LEVEL_0");
     }
 
     // this should have been validated already
     assert_invariant(isTextureFormatSupported(engine, mFormat));
 
-    ASSERT_PRECONDITION(buffer.type == PixelDataType::COMPRESSED ||
-            validatePixelFormatAndType(mFormat, buffer.format, buffer.type),
+    ASSERT_PRECONDITION(p.type == PixelDataType::COMPRESSED ||
+                        validatePixelFormatAndType(mFormat, p.format, p.type),
             "The combination of internal format=%u and {format=%u, type=%u} is not supported.",
-            unsigned(mFormat), unsigned(buffer.format), unsigned(buffer.type));
+            unsigned(mFormat), unsigned(p.format), unsigned(p.type));
 
     ASSERT_PRECONDITION(!mStream, "setImage() called on a Stream texture.");
 
@@ -267,7 +308,7 @@ void FTexture::setImage(FEngine& engine, size_t level,
             unsigned(yoffset), unsigned(height), unsigned(valueForLevel(level, mHeight)),
             unsigned(level));
 
-    ASSERT_PRECONDITION(buffer.buffer, "Data buffer is nullptr.");
+    ASSERT_PRECONDITION(p.buffer, "Data buffer is nullptr.");
 
     uint32_t effectiveTextureDepthOrLayers;
     switch (mTarget) {
@@ -295,8 +336,21 @@ void FTexture::setImage(FEngine& engine, size_t level,
             "zoffset (%u) + depth (%u) > texture depth (%u) at level (%u)",
             unsigned(zoffset), unsigned(depth), effectiveTextureDepthOrLayers, unsigned(level));
 
+    using PBD = PixelBufferDescriptor;
+    size_t const stride = p.stride ? p.stride : width;
+    size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);
+    size_t const bpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);
+    size_t const bpl = bpr * height; // TODO: PBD should have a "layer stride"
+    // TODO: PBD should have a p.depth (# layers to skip)
+    ASSERT_PRECONDITION(bpp * p.left + bpr * p.top + bpl * (0 + depth) <= p.size,
+        "buffer overflow: (size=%lu, stride=%lu, left=%u, top=%u) smaller than specified region "
+        "{{%u,%u,%u},{%u,%u,%u)}}",
+        size_t(p.size), size_t(p.stride), unsigned(p.left), unsigned(p.top),
+        unsigned(xoffset), unsigned(yoffset), unsigned(zoffset),
+        unsigned(width), unsigned(height), unsigned(depth));
+
     engine.getDriverApi().update3DImage(mHandle,
-            uint8_t(level), xoffset, yoffset, zoffset, width, height, depth, std::move(buffer));
+            uint8_t(level), xoffset, yoffset, zoffset, width, height, depth, std::move(p));
 }
 
 // deprecated
@@ -397,6 +451,9 @@ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
     ASSERT_PRECONDITION(mTarget != SamplerType::SAMPLER_EXTERNAL,
             "External Textures are not mipmappable.");
 
+    ASSERT_PRECONDITION(mTarget != SamplerType::SAMPLER_3D,
+            "3D Textures are not mipmappable.");
+
     const bool formatMipmappable = engine.getDriverApi().isTextureFormatMipmappable(mFormat);
     ASSERT_PRECONDITION(formatMipmappable,
             "Texture format %u is not mipmappable.", (unsigned)mFormat);
@@ -405,78 +462,15 @@ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
         return;
     }
 
-    if (engine.getDriverApi().canGenerateMipmaps()) {
-        engine.getDriverApi().generateMipmaps(mHandle);
-        return;
-    }
-
-    auto generateMipsForLayer = [this, &engine](TargetBufferInfo proto) {
-        FEngine::DriverApi& driver = engine.getDriverApi();
-
-        // Wrap miplevel 0 in a render target so that we can use it as a blit source.
-        uint8_t level = 0;
-        uint32_t srcw = mWidth;
-        uint32_t srch = mHeight;
-        proto.handle = mHandle;
-        proto.level = level++;
-        backend::Handle<backend::HwRenderTarget> srcrth = driver.createRenderTarget(
-                TargetBufferFlags::COLOR, srcw, srch, mSampleCount, proto, {}, {});
-
-        // Perform a blit for all miplevels down to 1x1.
-        backend::Handle<backend::HwRenderTarget> dstrth;
-        do {
-            uint32_t const dstw = std::max(srcw >> 1u, 1u);
-            uint32_t const dsth = std::max(srch >> 1u, 1u);
-            proto.level = level++;
-            dstrth = driver.createRenderTarget(
-                    TargetBufferFlags::COLOR, dstw, dsth, mSampleCount, proto, {}, {});
-            driver.blit(TargetBufferFlags::COLOR,
-                    dstrth, { 0, 0, dstw, dsth },
-                    srcrth, { 0, 0, srcw, srch },
-                    SamplerMagFilter::LINEAR);
-            driver.destroyRenderTarget(srcrth);
-            srcrth = dstrth;
-            srcw = dstw;
-            srch = dsth;
-        } while ((srcw > 1 || srch > 1) && level < mLevelCount);
-        driver.destroyRenderTarget(dstrth);
-    };
-
-    switch (mTarget) {
-        case SamplerType::SAMPLER_2D:
-            generateMipsForLayer({});
-            break;
-        case SamplerType::SAMPLER_2D_ARRAY:
-            UTILS_NOUNROLL
-            for (uint16_t layer = 0, c = mDepth; layer < c; ++layer) {
-                generateMipsForLayer({ .layer = layer });
-            }
-            break;
-        case SamplerType::SAMPLER_CUBEMAP_ARRAY:
-            UTILS_NOUNROLL
-            for (uint16_t layer = 0, c = mDepth * 6; layer < c; ++layer) {
-                generateMipsForLayer({ .layer = layer });
-            }
-            break;
-        case SamplerType::SAMPLER_CUBEMAP:
-            UTILS_NOUNROLL
-            for (uint8_t face = 0; face < 6; ++face) {
-                generateMipsForLayer({ .layer = face });
-            }
-            break;
-        case SamplerType::SAMPLER_EXTERNAL:
-            // not mipmapable
-            break;
-        case SamplerType::SAMPLER_3D:
-            // TODO: handle SAMPLER_3D -- this can't be done with a 2D blit, this would require
-            //       a fragment shader
-            slog.w << "Texture::generateMipmap does not support SAMPLER_3D yet on this h/w." << io::endl;
-            break;
-    }
+    engine.getDriverApi().generateMipmaps(mHandle);
 }
 
 bool FTexture::isTextureFormatSupported(FEngine& engine, InternalFormat format) noexcept {
     return engine.getDriverApi().isTextureFormatSupported(format);
+}
+
+bool FTexture::isProtectedTexturesSupported(FEngine& engine) noexcept {
+    return engine.getDriverApi().isProtectedTexturesSupported();
 }
 
 bool FTexture::isTextureSwizzleSupported(FEngine& engine) noexcept {

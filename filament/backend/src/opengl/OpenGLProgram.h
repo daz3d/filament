@@ -28,6 +28,9 @@
 #include <utils/compiler.h>
 #include <utils/FixedCapacityVector.h>
 
+#include <array>
+#include <limits>
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -59,7 +62,7 @@ public:
             // - the content of any bound sampler buffer has changed
             // ... since last time we used this program
 
-            // turns out the former might be relatively cheap to check, the later requires
+            // Turns out the former might be relatively cheap to check, the latter requires
             // a bit less. Compared to what updateSamplers() actually does, which is
             // pretty little, I'm not sure if we'll get ahead.
 
@@ -72,7 +75,7 @@ public:
     } gl; // 12 bytes
 
     // For ES2 only
-    void updateUniforms(uint32_t index, void const* buffer, uint16_t age) noexcept;
+    void updateUniforms(uint32_t index, GLuint id, void const* buffer, uint16_t age) noexcept;
     void setRec709ColorSpace(bool rec709) const noexcept;
 
 private:
@@ -98,6 +101,7 @@ private:
     struct UniformsRecord {
         Program::UniformInfo uniforms;
         LocationInfo locations;
+        mutable GLuint id = 0;
         mutable uint16_t age = std::numeric_limits<uint16_t>::max();
     };
     UniformsRecord const* mUniformsRecords = nullptr;
