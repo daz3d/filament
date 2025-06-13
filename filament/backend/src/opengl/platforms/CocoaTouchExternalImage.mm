@@ -28,6 +28,7 @@
 #include <utils/compiler.h>
 #include <utils/Panic.h>
 #include <utils/debug.h>
+#include <utils/Log.h>
 
 namespace filament::backend {
 
@@ -118,7 +119,7 @@ CocoaTouchExternalImage::CocoaTouchExternalImage(const CVOpenGLESTextureCacheRef
 
     glGenFramebuffers(1, &mFBO);
 
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 }
 
 CocoaTouchExternalImage::~CocoaTouchExternalImage() noexcept {
@@ -135,13 +136,14 @@ bool CocoaTouchExternalImage::set(CVPixelBufferRef image) noexcept {
     }
 
     OSType formatType = CVPixelBufferGetPixelFormatType(image);
-    ASSERT_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA ||
-                         formatType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-            "iOS external images must be in either 32BGRA or 420f format.");
+    FILAMENT_CHECK_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA ||
+            formatType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+            << "iOS external images must be in either 32BGRA or 420f format.";
 
     size_t planeCount = CVPixelBufferGetPlaneCount(image);
-    ASSERT_POSTCONDITION(planeCount == 0 || planeCount == 2,
-            "The OpenGL backend does not support images with plane counts of %d.", planeCount);
+    FILAMENT_CHECK_POSTCONDITION(planeCount == 0 || planeCount == 2)
+            << "The OpenGL backend does not support images with plane counts of " << planeCount
+            << ".";
 
     // The pixel buffer must be locked whenever we do rendering with it. We'll unlock it before
     // releasing.
@@ -245,7 +247,7 @@ GLuint CocoaTouchExternalImage::encodeColorConversionPass(GLuint yPlaneTexture,
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
 
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 
     // source textures
     glBindSampler(0, mSharedGl.sampler);
@@ -259,8 +261,8 @@ GLuint CocoaTouchExternalImage::encodeColorConversionPass(GLuint yPlaneTexture,
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
 
-    CHECK_GL_ERROR(utils::slog.e)
-    CHECK_GL_FRAMEBUFFER_STATUS(utils::slog.e, GL_FRAMEBUFFER)
+    CHECK_GL_ERROR()
+    CHECK_GL_FRAMEBUFFER_STATUS(GL_FRAMEBUFFER)
 
     // geometry
     glBindVertexArray(0);
@@ -273,7 +275,7 @@ GLuint CocoaTouchExternalImage::encodeColorConversionPass(GLuint yPlaneTexture,
     glUseProgram(mSharedGl.program);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 
     mState.restore();
 

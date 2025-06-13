@@ -49,6 +49,12 @@ Java_com_google_android_filament_View_nSetCamera(JNIEnv*, jclass,
     view->setCamera(camera);
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_View_nHasCamera(JNIEnv*, jclass, jlong nativeView) {
+    View* view = (View*) nativeView;
+    return (jboolean)view->hasCamera();
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_google_android_filament_View_nSetColorGrading(JNIEnv*, jclass,
         jlong nativeView, jlong nativeColorGrading) {
@@ -214,6 +220,20 @@ Java_com_google_android_filament_View_nIsFrontFaceWindingInverted(JNIEnv*,
         jclass, jlong nativeView) {
     View* view = (View*) nativeView;
     return static_cast<jboolean>(view->isFrontFaceWindingInverted());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nSetTransparentPickingEnabled(JNIEnv*,
+        jclass, jlong nativeView, jboolean enabled) {
+    View* view = (View*) nativeView;
+    view->setTransparentPickingEnabled(enabled);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_google_android_filament_View_nIsTransparentPickingEnabled(JNIEnv*,
+        jclass, jlong nativeView) {
+    View* view = (View*) nativeView;
+    return static_cast<jboolean>(view->isTransparentPickingEnabled());
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -524,4 +544,13 @@ Java_com_google_android_filament_View_nGetFogEntity(JNIEnv *env, jclass clazz,
         jlong nativeView) {
     View *view = (View *) nativeView;
     return (jint)view->getFogEntity().getId();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_View_nClearFrameHistory(JNIEnv *env, jclass clazz,
+        jlong nativeView, jlong nativeEngine) {
+    View *view = (View *) nativeView;
+    Engine *engine = (Engine *) nativeEngine;
+    view->clearFrameHistory(*engine);
 }

@@ -56,7 +56,13 @@ bool operator==(const MaterialKey& k1, const MaterialKey& k2) {
         (k1.volumeThicknessUV == k2.volumeThicknessUV) &&
         (k1.hasSheen == k2.hasSheen) &&
         (k1.hasIOR == k2.hasIOR) &&
-        (k1.hasVolume == k2.hasVolume);
+        (k1.hasVolume == k2.hasVolume) &&
+        (k1.hasSpecular == k2.hasSpecular) &&
+        (k1.hasSpecularTexture == k2.hasSpecularTexture) &&
+        (k1.hasSpecularColorTexture == k2.hasSpecularColorTexture) &&
+        (k1.specularTextureUV == k2.specularTextureUV) &&
+        (k1.specularColorTextureUV == k2.specularColorTextureUV)
+        ;
 }
 
 // Filament supports up to 2 UV sets. glTF has arbitrary texcoord set indices, but it allows
@@ -143,6 +149,21 @@ void constrainMaterial(MaterialKey* key, UvMap* uvmap) {
             retval[key->volumeThicknessUV] = (UvSet) index++;
         }
     }
+    if (key->hasSpecularTexture && retval[key->specularTextureUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasSpecularTexture = false;
+        } else {
+            retval[key->specularTextureUV] = (UvSet) index++;
+        }
+    }
+    if (key->hasSpecularColorTexture && retval[key->specularColorTextureUV] == UNUSED) {
+        if (index > MAX_INDEX) {
+            key->hasSpecularColorTexture = false;
+        } else {
+            retval[key->specularColorTextureUV] = (UvSet) index++;
+        }
+    }
+
     // NOTE: KHR_materials_clearcoat does not provide separate UVs, we'll assume UV0
     *uvmap = retval;
 }
@@ -167,6 +188,8 @@ void processShaderString(std::string* shader, const UvMap& uvmap, const Material
     const auto& sheenColorUV = uvstrings[uvmap[config.sheenColorUV]];
     const auto& sheenRoughnessUV = uvstrings[uvmap[config.sheenRoughnessUV]];
     const auto& volumeThicknessUV = uvstrings[uvmap[config.volumeThicknessUV]];
+    const auto& specularUV = uvstrings[uvmap[config.specularTextureUV]];
+    const auto& specularColorUV = uvstrings[uvmap[config.specularColorTextureUV]];
 
     replaceAll("${normal}", normalUV);
     replaceAll("${color}", baseColorUV);
@@ -180,6 +203,8 @@ void processShaderString(std::string* shader, const UvMap& uvmap, const Material
     replaceAll("${sheenColor}", sheenColorUV);
     replaceAll("${sheenRoughness}", sheenRoughnessUV);
     replaceAll("${volumeThickness}", volumeThicknessUV);
+    replaceAll("${specular}", specularUV);
+    replaceAll("${specularColor}", specularColorUV);
 }
 
 } // namespace filament::gltfio

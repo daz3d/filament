@@ -21,6 +21,7 @@
 #include <backend/Program.h>
 
 #include <utils/JobSystem.h>
+#include <utils/Logger.h>
 #include <utils/Mutex.h>
 
 #include <chrono>
@@ -106,32 +107,48 @@ bool MetalShaderCompiler::isParallelShaderCompileSupported() const noexcept {
             continue;
         }
 
-        assert_invariant(source[source.size() - 1] == '\0');
-
-        // the shader string is null terminated and the length includes the null character
-        NSString* objcSource = [[NSString alloc] initWithBytes:source.data()
-                                                        length:source.size() - 1
-                                                      encoding:NSUTF8StringEncoding];
-
-        // By default, Metal uses the most recent language version.
-        MTLCompileOptions* options = [MTLCompileOptions new];
-
-        // Disable Fast Math optimizations.
-        // This ensures that operations adhere to IEEE standards for floating-point arithmetic,
-        // which is crucial for half precision floats in scenarios where fast math optimizations
-        // lead to inaccuracies, such as in handling special values like NaN or Infinity.
-        options.fastMathEnabled = NO;
-
         NSError* error = nil;
-        id<MTLLibrary> library = [device newLibraryWithSource:objcSource
-                                                      options:options
-                                                        error:&error];
+        id<MTLLibrary> library = nil;
+        switch (program.getShaderLanguage()) {
+            case ShaderLanguage::MSL: {
+                // By default, Metal uses the most recent language version.
+                MTLCompileOptions* options = [MTLCompileOptions new];
+
+                // Disable Fast Math optimizations.
+                // This ensures that operations adhere to IEEE standards for floating-point
+                // arithmetic, which is crucial for half precision floats in scenarios where fast
+                // math optimizations lead to inaccuracies, such as in handling special values like
+                // NaN or Infinity.
+                options.fastMathEnabled = NO;
+
+                assert_invariant(source[source.size() - 1] == '\0');
+                // the shader string is null terminated and the length includes the null character
+                NSString* objcSource = [[NSString alloc] initWithBytes:source.data()
+                                                                length:source.size() - 1
+                                                              encoding:NSUTF8StringEncoding];
+                library = [device newLibraryWithSource:objcSource options:options error:&error];
+                break;
+            }
+            case ShaderLanguage::METAL_LIBRARY: {
+                dispatch_data_t data = dispatch_data_create(source.data(), source.size(),
+                        dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+                        DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+                library = [device newLibraryWithData:data error:&error];
+                break;
+            }
+            case ShaderLanguage::ESSL1:
+            case ShaderLanguage::ESSL3:
+            case ShaderLanguage::SPIRV:
+            case ShaderLanguage::WGSL:
+                break;
+        }
+
         if (library == nil) {
             NSString* errorMessage = @"unknown error";
             if (error) {
                 auto description =
                         [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
-                utils::slog.w << description << utils::io::endl;
+                LOG(WARNING) << description;
                 errorMessage = error.localizedDescription;
             }
             PANIC_LOG("Failed to compile Metal program.");
@@ -154,6 +171,23 @@ bool MetalShaderCompiler::isParallelShaderCompileSupported() const noexcept {
         id<MTLFunction> function = [library newFunctionWithName:@"main0"
                                                  constantValues:constants
                                                           error:&error];
+        if (function == nil) {
+            // If the library loads but functions within it fail to load, it usually means the
+            // GPU backend crashed. (This can happen if it's a Metallib shader that was compiled
+            // with a minimum iOS version that's newer than this device.)
+            NSString* errorMessage = @"unknown error";
+            if (error) {
+                auto description =
+                        [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
+                LOG(WARNING) << description;
+                errorMessage = error.localizedDescription;
+            }
+            PANIC_LOG("Failed to load main0 in Metal program.");
+            NSString* programName =
+                [NSString stringWithFormat:@"%s::main0", program.getName().c_str_safe()];
+            return MetalFunctionBundle::error(errorMessage, programName);
+        }
+
         if (!program.getName().empty()) {
             function.label = @(program.getName().c_str());
         }
@@ -194,9 +228,11 @@ MetalShaderCompiler::program_token_t MetalShaderCompiler::createProgram(
             CompilerPriorityQueue const priorityQueue = program.getPriorityQueue();
             mCompilerThreadPool.queue(priorityQueue, token,
                     [this, name, device = mDevice, program = std::move(program), token]() {
-                        MetalFunctionBundle compiledProgram = compileProgram(program, device);
-                        token->set(compiledProgram);
-                        mCallbackManager.put(token->handle);
+                        @autoreleasepool {
+                            MetalFunctionBundle compiledProgram = compileProgram(program, device);
+                            token->set(compiledProgram);
+                            mCallbackManager.put(token->handle);
+                        }
                     });
 
             break;

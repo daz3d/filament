@@ -7,6 +7,192 @@ A new header is inserted each time a *tag* is created.
 Instead, if you are authoring a PR for the main branch, add your release note to
 [NEW_RELEASE_NOTES.md](./NEW_RELEASE_NOTES.md).
 
+## v1.62.0
+
+- samples: samples now have a CLI to select backend api
+- materials: sampler now export their type in the material binary [⚠️ **New Material Version**]
+- materials: new mutable specialization constants feature. See the [materials documentation](https://google.github.io/filament/Materials.html) for details. [⚠️ **New Material Version**]
+
+## v1.61.1
+
+
+## v1.61.0
+
+- materials: sampler now export their type in the material binary [⚠️ **New Material Version**]
+- samples/texturedquad.cpp now has CLI to select backend api
+- samples/hellopbr.cpp CLI now allows for selecting webgpu
+
+## v1.60.1
+
+
+## v1.60.0
+
+- materials: remove dependence on per-view descset layout from filamat. [⚠️ **New Material Version**]
+- matc non-functional change: Update GLSL postprocessor to
+  isolate calls to SPVRemap from calls to SPIRV-Cross.
+
+
+## v1.59.5
+
+
+## v1.59.4
+
+
+## v1.59.3
+
+
+## v1.59.2
+
+- Fix build/compile errors when upgrading to MacOS 15.4
+
+## v1.59.1
+
+
+## v1.59.0
+
+- materials: five custom variables (varyings) are now available on the condition that the `color` attribute is not requested (b/404930099). [⚠️ **New Material Version**]
+
+## v1.58.2
+
+- engine: Generate 1D instead of 3D LUTs for color grading whenever possible.
+
+## v1.58.1
+
+
+## v1.58.0
+
+- materials: add an optional `transformName` field to sampler material parameters. [⚠️ **New Material Version**]
+
+## v1.57.3
+
+- android: breaking changes to API KTX1Loader::createIndirectLight and KTX1Loader::createSkybox
+
+## v1.57.2
+
+- Support including PlatformMetal.h in C++ files.
+
+## v1.57.1
+
+
+## v1.57.0
+
+- matdbg: Add support for debugging ESSL 1.0 shaders
+- backend: New platform API to better handle external textures [⚠️ **New Material Version**]
+
+## v1.56.8
+
+
+## v1.56.7
+
+
+## v1.56.6
+
+fix crash: the 'target_node' of Animation Channel may be nullpointer.
+
+## v1.56.5
+
+
+## v1.56.4
+
+
+## v1.56.3
+
+
+## v1.56.2
+
+- vk: fix stage pool gc logic
+
+## v1.56.1
+
+## v1.56.0
+
+- backend: descriptor layouts distinguish samplers and external samplers (b/376089915) [⚠️ **New Material Version**]
+
+## v1.55.1
+
+
+## v1.55.0
+- Add descriptor sets to describe shader resources. [⚠️ **New Material Version**]
+
+## v1.54.5
+
+
+## v1.54.4
+
+- Add support for multi-layered render target with array textures.
+
+## v1.54.3
+
+
+## v1.54.2
+
+- Add a `name` API to Filament objects for debugging handle use-after-free assertions
+
+## v1.54.1
+
+
+## v1.54.0
+
+- materials: add a new `stereoscopicType` material parameter. [⚠️ **New Material Version**]
+- Fix a crash when compiling shaders on IMG devices
+
+## v1.53.5
+
+- engine: Fix bug causing certain sampler parameters to not be applied correctly in GLES 2.0 and on
+  certain GLES 3.0 drivers.
+
+## v1.53.4
+
+
+## v1.53.3
+
+- Add drag and drop support for IBL files for desktop gltf_viewer.
+
+## v1.53.2
+
+
+## v1.53.1
+
+
+## v1.53.0
+
+- engine: fix skinning normals with large transforms (b/342459864) [⚠️ **New Material Version**]
+
+## v1.52.3
+
+
+## v1.52.2
+
+
+## v1.52.1
+
+- Add instructions for using Mesa for software rasterization
+
+## v1.51.9
+
+
+## v1.51.8
+
+- filagui: Fix regression which broke WebGL
+- Add a new Engine::Config setting to control preferred shader language
+- Add `getEyeIndex` vertex API
+- ios: Remove bitcode from iOS builds
+
+## v1.51.7
+
+- Add new matedit tool
+- filagui: Support rendering `GL_TEXTURE_EXTERNAL_OES` textures.
+- `setFrameScheduledCallback` now takes a `utils::Invocable`.
+- engine: Add `isPaused()`
+
+## v1.51.6
+
+- Add new matedit tool
+- filagui: Support rendering `GL_TEXTURE_EXTERNAL_OES` textures.
+
+## v1.51.5
+
+
 ## v1.51.4
 
 
@@ -569,7 +755,7 @@ Instead, if you are authoring a PR for the main branch, add your release note to
 
 - engine: Binary size improvements.
 - engine: Add basic support for instanced renderables [**NEW API**].
-- engine: Fix, first imaged passsed to `Stream::SetAcquiredImage` is ignored and leaked.
+- engine: Fix, first imaged passed to `Stream::SetAcquiredImage` is ignored and leaked.
 - Vulkan: Robustness improvements.
 - Java: Fix, lookAt z axis negated.
 - gltfio: Be graceful when model has > 4 weights per vert.

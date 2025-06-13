@@ -25,7 +25,9 @@
 #include "details/Fence.h"
 #include "details/IndexBuffer.h"
 #include "details/IndirectLight.h"
+#include "details/InstanceBuffer.h"
 #include "details/Material.h"
+#include "details/MorphTargetBuffer.h"
 #include "details/Renderer.h"
 #include "details/Scene.h"
 #include "details/SkinningBuffer.h"
@@ -36,22 +38,51 @@
 #include "details/VertexBuffer.h"
 #include "details/View.h"
 
+#include <filament/ColorGrading.h>
+#include <filament/Engine.h>
 #include <filament/MaterialEnums.h>
+
+#include <private/filament/DescriptorSets.h>
+#include <private/filament/EngineEnums.h>
+#include <private/filament/Variant.h>
 
 #include <private/backend/PlatformFactory.h>
 
 #include <backend/DriverEnums.h>
 
-#include <utils/compiler.h>
-#include <utils/debug.h>
-#include <utils/Log.h>
+#include <private/utils/Tracing.h>
+
+#include <utils/Allocator.h>
+#include <utils/CallStack.h>
+#include <utils/Invocable.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
 #include <utils/PrivateImplementation-impl.h>
-#include <utils/Systrace.h>
 #include <utils/ThreadUtils.h>
+#include <utils/compiler.h>
+#include <utils/debug.h>
+#include <utils/ostream.h>
+
+#include <math/vec3.h>
+#include <math/vec4.h>
 
 #include <algorithm>
+#include <array>
+#include <chrono>
+#include <initializer_list>
 #include <memory>
+#include <mutex>
+#include <new>
+#include <optional>
+#include <thread>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "generated/resources/materials.h"
 
@@ -66,16 +97,18 @@ using namespace filaflat;
 struct Engine::BuilderDetails {
     Backend mBackend = Backend::DEFAULT;
     Platform* mPlatform = nullptr;
-    Engine::Config mConfig;
+    Config mConfig;
     FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
     void* mSharedContext = nullptr;
     bool mPaused = false;
-    static Config validateConfig(const Config* pConfig) noexcept;
+    std::unordered_map<std::string_view, bool> mFeatureFlags;
+
+    static Config validateConfig(Config config) noexcept;
 };
 
-Engine* FEngine::create(Engine::Builder const& builder) {
-    SYSTRACE_ENABLE();
-    SYSTRACE_CALL();
+Engine* FEngine::create(Builder const& builder) {
+    FILAMENT_TRACING_ENABLE(FILAMENT_TRACING_CATEGORY_FILAMENT);
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     FEngine* instance = new FEngine(builder);
 
@@ -84,7 +117,7 @@ Engine* FEngine::create(Engine::Builder const& builder) {
 
     // Normally we launch a thread and create the context and Driver from there (see FEngine::loop).
     // In the single-threaded case, we do so in the here and now.
-    if (!UTILS_HAS_THREADING) {
+    if constexpr (!UTILS_HAS_THREADING) {
         Platform* platform = builder->mPlatform;
         void* const sharedContext = builder->mSharedContext;
 
@@ -94,15 +127,20 @@ Engine* FEngine::create(Engine::Builder const& builder) {
             instance->mOwnPlatform = true;
         }
         if (platform == nullptr) {
-            slog.e << "Selected backend not supported in this build." << io::endl;
+            LOG(ERROR) << "Selected backend not supported in this build.";
             delete instance;
             return nullptr;
         }
         DriverConfig const driverConfig{
                 .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),
-                .textureUseAfterFreePoolSize = instance->getConfig().textureUseAfterFreePoolSize,
-                .disableParallelShaderCompile = instance->getConfig().disableParallelShaderCompile,
-                .disableHandleUseAfterFreeCheck = instance->getConfig().disableHandleUseAfterFreeCheck
+                .metalUploadBufferSizeBytes = instance->getConfig().metalUploadBufferSizeBytes,
+                .disableParallelShaderCompile = instance->features.backend.disable_parallel_shader_compile,
+                .disableHandleUseAfterFreeCheck = instance->features.backend.disable_handle_use_after_free_check,
+                .disableHeapHandleTags = instance->features.backend.disable_heap_handle_tags,
+                .forceGLES2Context = instance->getConfig().forceGLES2Context,
+                .stereoscopicType = instance->getConfig().stereoscopicType,
+                .assertNativeWindowIsValid = instance->features.backend.opengl.assert_native_window_is_valid,
+                .metalDisablePanicOnDrawableFailure = instance->getConfig().metalDisablePanicOnDrawableFailure,
         };
         instance->mDriver = platform->createDriver(sharedContext, driverConfig);
 
@@ -124,7 +162,7 @@ Engine* FEngine::create(Engine::Builder const& builder) {
     // now we can initialize the largest part of the engine
     instance->init();
 
-    if (!UTILS_HAS_THREADING) {
+    if constexpr (!UTILS_HAS_THREADING) {
         instance->execute();
     }
 
@@ -133,9 +171,9 @@ Engine* FEngine::create(Engine::Builder const& builder) {
 
 #if UTILS_HAS_THREADING
 
-void FEngine::create(Engine::Builder const& builder, Invocable<void(void*)>&& callback) {
-    SYSTRACE_ENABLE();
-    SYSTRACE_CALL();
+void FEngine::create(Builder const& builder, Invocable<void(void*)>&& callback) {
+    FILAMENT_TRACING_ENABLE(FILAMENT_TRACING_CATEGORY_FILAMENT);
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     FEngine* instance = new FEngine(builder);
 
@@ -143,7 +181,7 @@ void FEngine::create(Engine::Builder const& builder, Invocable<void(void*)>&& ca
     instance->mDriverThread = std::thread(&FEngine::loop, instance);
 
     // launch a thread to call the callback -- so it can't do any damage.
-    std::thread callbackThread = std::thread([instance, callback = std::move(callback)]() {
+    std::thread callbackThread = std::thread([instance, callback = std::move(callback)] {
         instance->mDriverBarrier.await();
         callback(instance);
     });
@@ -156,11 +194,10 @@ FEngine* FEngine::getEngine(void* token) {
 
     FEngine* instance = static_cast<FEngine*>(token);
 
-    ASSERT_PRECONDITION(ThreadUtils::isThisThread(instance->mMainThreadId),
-            "Engine::createAsync() and Engine::getEngine() must be called on the same thread.");
+    FILAMENT_CHECK_PRECONDITION(ThreadUtils::isThisThread(instance->mMainThreadId))
+            << "Engine::createAsync() and Engine::getEngine() must be called on the same thread.";
 
-    // we use mResourceAllocator as a proxy for "am I already initialized"
-    if (!instance->mResourceAllocator) {
+    if (!instance->mInitialized) {
         if (UTILS_UNLIKELY(!instance->mDriver)) {
             // something went horribly wrong during driver initialization
             instance->mDriverThread.join();
@@ -177,7 +214,7 @@ FEngine* FEngine::getEngine(void* token) {
 
 #endif
 
-// these must be static because only a pointer is copied to the render stream
+// These must be static because only a pointer is copied to the render stream
 // Note that these coordinates are specified in OpenGL clip space. Other backends can transform
 // these in the vertex shader as needed.
 static constexpr float4 sFullScreenTriangleVertices[3] = {
@@ -187,9 +224,9 @@ static constexpr float4 sFullScreenTriangleVertices[3] = {
 };
 
 // these must be static because only a pointer is copied to the render stream
-static const uint16_t sFullScreenTriangleIndices[3] = { 0, 1, 2 };
+static constexpr uint16_t sFullScreenTriangleIndices[3] = { 0, 1, 2 };
 
-FEngine::FEngine(Engine::Builder const& builder) :
+FEngine::FEngine(Builder const& builder) :
         mBackend(builder->mBackend),
         mActiveFeatureLevel(builder->mFeatureLevel),
         mPlatform(builder->mPlatform),
@@ -197,7 +234,6 @@ FEngine::FEngine(Engine::Builder const& builder) :
         mPostProcessManager(*this),
         mEntityManager(EntityManager::get()),
         mRenderableManager(*this),
-        mTransformManager(),
         mLightManager(*this),
         mCameraManager(*this),
         mCommandBufferQueue(
@@ -214,21 +250,48 @@ FEngine::FEngine(Engine::Builder const& builder) :
         mMainThreadId(ThreadUtils::getThreadId()),
         mConfig(builder->mConfig)
 {
-    // we're assuming we're on the main thread here.
+    // update a feature flag from Engine::Config if the flag is not specified in the Builder
+    auto const featureFlagsBackwardCompatibility =
+            [this, &builder](std::string_view const name, bool const value) {
+        if (builder->mFeatureFlags.find(name) == builder->mFeatureFlags.end()) {
+            auto* const p = getFeatureFlagPtr(name, true);
+            if (p) {
+                *p = value;
+            }
+        }
+    };
+
+    // update all the features flags specified in the builder
+    for (auto const& feature : builder->mFeatureFlags) {
+        auto* const p = getFeatureFlagPtr(feature.first, true);
+        if (p) {
+            *p = feature.second;
+        }
+    }
+
+    // update "old" feature flags that were specified in Engine::Config
+    featureFlagsBackwardCompatibility("backend.disable_parallel_shader_compile",
+            mConfig.disableParallelShaderCompile);
+    featureFlagsBackwardCompatibility("backend.disable_handle_use_after_free_check",
+            mConfig.disableHandleUseAfterFreeCheck);
+    featureFlagsBackwardCompatibility("backend.opengl.assert_native_window_is_valid",
+            mConfig.assertNativeWindowIsValid);
+
+    // We're assuming we're on the main thread here.
     // (it may not be the case)
     mJobSystem.adopt();
 
-    slog.i << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
-           << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)") << io::endl;
+    LOG(INFO) << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
+              << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)");
 }
 
-uint32_t FEngine::getJobSystemThreadPoolSize(Engine::Config const& config) noexcept {
+uint32_t FEngine::getJobSystemThreadPoolSize(Config const& config) noexcept {
     if (config.jobSystemThreadCount > 0) {
         return config.jobSystemThreadCount;
     }
 
     // 1 thread for the user, 1 thread for the backend
-    int threadCount = (int)std::thread::hardware_concurrency() - 2;
+    int threadCount = int(std::thread::hardware_concurrency()) - 2;
     // make sure we have at least 1 thread though
     threadCount = std::max(1, threadCount);
     return threadCount;
@@ -240,7 +303,7 @@ uint32_t FEngine::getJobSystemThreadPoolSize(Engine::Config const& config) noexc
  */
 
 void FEngine::init() {
-    SYSTRACE_CALL();
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     // this must be first.
     assert_invariant( intptr_t(&mDriverApiStorage) % alignof(DriverApi) == 0 );
@@ -254,16 +317,16 @@ void FEngine::init() {
     assert_invariant(mActiveFeatureLevel > FeatureLevel::FEATURE_LEVEL_0);
 #endif
 
-    slog.i << "Backend feature level: " << int(driverApi.getFeatureLevel()) << io::endl;
-    slog.i << "FEngine feature level: " << int(mActiveFeatureLevel) << io::endl;
+    LOG(INFO) << "Backend feature level: " << int(driverApi.getFeatureLevel());
+    LOG(INFO) << "FEngine feature level: " << int(mActiveFeatureLevel);
 
 
-    mResourceAllocator = new ResourceAllocator(mConfig, driverApi);
+    mResourceAllocatorDisposer = std::make_shared<ResourceAllocatorDisposer>(driverApi);
 
     mFullScreenTriangleVb = downcast(VertexBuffer::Builder()
             .vertexCount(3)
             .bufferCount(1)
-            .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT4, 0)
+            .attribute(POSITION, 0, VertexBuffer::AttributeType::FLOAT4, 0)
             .build(*this));
 
     mFullScreenTriangleVb->setBufferAt(*this, 0,
@@ -283,7 +346,8 @@ void FEngine::init() {
 
     // Compute a clip-space [-1 to 1] to texture space [0 to 1] matrix, taking into account
     // backend differences.
-    const bool textureSpaceYFlipped = mBackend == Backend::METAL || mBackend == Backend::VULKAN;
+    const bool textureSpaceYFlipped = mBackend == Backend::METAL || mBackend == Backend::VULKAN ||
+                                      mBackend == Backend::WEBGPU;
     if (textureSpaceYFlipped) {
         mUvFromClipMatrix = mat4f(mat4f::row_major_init{
                 0.5f,  0.0f,   0.0f, 0.5f,
@@ -301,8 +365,6 @@ void FEngine::init() {
     }
 
     // initialize the dummy textures so that their contents are not undefined
-    static const uint32_t zeroes[6] = {0};
-    static const uint32_t ones = 0xffffffff;
 
     mDefaultIblTexture = downcast(Texture::Builder()
             .width(1).height(1).levels(1)
@@ -310,11 +372,19 @@ void FEngine::init() {
             .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
             .build(*this));
 
+    static constexpr std::array<uint32_t, 6> zeroCubemap{};
+    static constexpr std::array<uint32_t, 1> zeroRGBA{};
+    static constexpr std::array<uint32_t, 1> oneRGBA{ 0xffffffff };
+    static constexpr std::array<float   , 1> oneFloat{ 1.0f };
+    auto const size = [](auto&& array) {
+        return array.size() * sizeof(decltype(array[0]));
+    };
+
     driverApi.update3DImage(mDefaultIblTexture->getHwHandle(), 0, 0, 0, 0, 1, 1, 6,
-            { zeroes, sizeof(zeroes), Texture::Format::RGBA, Texture::Type::UBYTE });
+            { zeroCubemap.data(), size(zeroCubemap), Texture::Format::RGBA, Texture::Type::UBYTE });
 
     // 3 bands = 9 float3
-    const float sh[9 * 3] = { 0.0f };
+    constexpr float sh[9 * 3] = { 0.0f };
     mDefaultIbl = downcast(IndirectLight::Builder()
             .irradiance(3, reinterpret_cast<const float3*>(sh))
             .build(*this));
@@ -333,10 +403,26 @@ void FEngine::init() {
             TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
     driverApi.update3DImage(mDummyOneTexture, 0, 0, 0, 0, 1, 1, 1,
-            { &ones, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
+            { oneRGBA.data(), size(oneRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
 
     driverApi.update3DImage(mDummyZeroTexture, 0, 0, 0, 0, 1, 1, 1,
-            { zeroes, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
+            { zeroRGBA.data(), size(zeroRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
+
+
+    mPerViewDescriptorSetLayoutSsrVariant = {
+            mHwDescriptorSetLayoutFactory,
+            driverApi,
+            descriptor_sets::getSsrVariantLayout() };
+
+    mPerViewDescriptorSetLayoutDepthVariant = {
+            mHwDescriptorSetLayoutFactory,
+            driverApi,
+            descriptor_sets::getDepthVariantLayout() };
+
+    mPerRenderableDescriptorSetLayout = {
+            mHwDescriptorSetLayoutFactory,
+            driverApi,
+            descriptor_sets::getPerRenderableLayout() };
 
 #ifdef FILAMENT_ENABLE_FEATURE_LEVEL_0
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
@@ -347,41 +433,54 @@ void FEngine::init() {
     } else
 #endif
     {
-        mDefaultColorGrading = downcast(ColorGrading::Builder().build(*this));
-
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
         switch (mConfig.stereoscopicType) {
+            case StereoscopicType::NONE:
             case StereoscopicType::INSTANCED:
                 defaultMaterialBuilder.package(
-                    MATERIALS_DEFAULTMATERIAL_DATA, MATERIALS_DEFAULTMATERIAL_SIZE);
+                        MATERIALS_DEFAULTMATERIAL_DATA, MATERIALS_DEFAULTMATERIAL_SIZE);
                 break;
             case StereoscopicType::MULTIVIEW:
 #ifdef FILAMENT_ENABLE_MULTIVIEW
                 defaultMaterialBuilder.package(
-                    MATERIALS_DEFAULTMATERIAL_MULTIVIEW_DATA, MATERIALS_DEFAULTMATERIAL_MULTIVIEW_SIZE);
+                        MATERIALS_DEFAULTMATERIAL_MULTIVIEW_DATA,
+                        MATERIALS_DEFAULTMATERIAL_MULTIVIEW_SIZE);
 #else
                 assert_invariant(false);
 #endif
                 break;
         }
-        mDefaultMaterial = downcast(defaultMaterialBuilder.build(*const_cast<FEngine*>(this)));
+        mDefaultMaterial = downcast(defaultMaterialBuilder.build(*this));
+    }
 
-        float3 dummyPositions[1] = {};
-        short4 dummyTangents[1] = {};
+    if (UTILS_UNLIKELY(getSupportedFeatureLevel() >= FeatureLevel::FEATURE_LEVEL_1)) {
+        mDefaultColorGrading = downcast(ColorGrading::Builder().build(*this));
+
+        constexpr float3 dummyPositions[1] = {};
+        constexpr short4 dummyTangents[1] = {};
         mDummyMorphTargetBuffer->setPositionsAt(*this, 0, dummyPositions, 1, 0);
         mDummyMorphTargetBuffer->setTangentsAt(*this, 0, dummyTangents, 1, 0);
 
         mDummyOneTextureArray = driverApi.createTexture(SamplerType::SAMPLER_2D_ARRAY, 1,
                 TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
+        mDummyOneTextureArrayDepth = driverApi.createTexture(SamplerType::SAMPLER_2D_ARRAY, 1,
+                TextureFormat::DEPTH32F, 1, 1, 1, 1, TextureUsage::DEFAULT);
+
         mDummyZeroTextureArray = driverApi.createTexture(SamplerType::SAMPLER_2D_ARRAY, 1,
                 TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
         driverApi.update3DImage(mDummyOneTextureArray, 0, 0, 0, 0, 1, 1, 1,
-                { &ones, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
+                { oneRGBA.data(), size(oneRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
+
+        driverApi.update3DImage(mDummyOneTextureArrayDepth, 0, 0, 0, 0, 1, 1, 1,
+                { oneFloat.data(), size(oneFloat), Texture::Format::DEPTH_COMPONENT, Texture::Type::FLOAT });
 
         driverApi.update3DImage(mDummyZeroTextureArray, 0, 0, 0, 0, 1, 1, 1,
-                { zeroes, 4, Texture::Format::RGBA, Texture::Type::UBYTE });
+                { zeroRGBA.data(), size(zeroRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
+
+        mDummyUniformBuffer = driverApi.createBufferObject(CONFIG_MINSPEC_UBO_SIZE,
+                BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
 
         mLightManager.init(*this);
         mDFG.init(*this);
@@ -390,7 +489,7 @@ void FEngine::init() {
     mPostProcessManager.init();
 
     mDebugRegistry.registerProperty("d.shadowmap.debug_directional_shadowmap",
-            &debug.shadowmap.debug_directional_shadowmap, [this]() {
+            &debug.shadowmap.debug_directional_shadowmap, [this] {
                 mMaterials.forEach([this](FMaterial* material) {
                     if (material->getMaterialDomain() == MaterialDomain::SURFACE) {
 
@@ -406,7 +505,7 @@ void FEngine::init() {
             });
 
     mDebugRegistry.registerProperty("d.lighting.debug_froxel_visualization",
-            &debug.lighting.debug_froxel_visualization, [this]() {
+            &debug.lighting.debug_froxel_visualization, [this] {
                 mMaterials.forEach([this](FMaterial* material) {
                     if (material->getMaterialDomain() == MaterialDomain::SURFACE) {
 
@@ -420,11 +519,13 @@ void FEngine::init() {
                     }
                 });
             });
+
+    mInitialized = true;
 }
 
 FEngine::~FEngine() noexcept {
-    SYSTRACE_CALL();
-    delete mResourceAllocator;
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
+    assert_invariant(!mResourceAllocatorDisposer);
     delete mDriver;
     if (mOwnPlatform) {
         PlatformFactory::destroy(&mPlatform);
@@ -432,20 +533,19 @@ FEngine::~FEngine() noexcept {
 }
 
 void FEngine::shutdown() {
-    SYSTRACE_CALL();
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     // by construction this should never be nullptr
-    assert_invariant(mResourceAllocator);
+    assert_invariant(mResourceAllocatorDisposer);
 
-    ASSERT_PRECONDITION(ThreadUtils::isThisThread(mMainThreadId),
-            "Engine::shutdown() called from the wrong thread!");
+    FILAMENT_CHECK_PRECONDITION(ThreadUtils::isThisThread(mMainThreadId))
+            << "Engine::shutdown() called from the wrong thread!";
 
 #ifndef NDEBUG
     // print out some statistics about this run
     size_t const wm = mCommandBufferQueue.getHighWatermark();
     size_t const wmpct = wm / (getCommandBufferSize() / 100);
-    slog.d << "CircularBuffer: High watermark "
-           << wm / 1024 << " KiB (" << wmpct << "%)" << io::endl;
+    DLOG(INFO) << "CircularBuffer: High watermark " << wm / 1024 << " KiB (" << wmpct << "%)";
 #endif
 
     DriverApi& driver = getDriverApi();
@@ -455,22 +555,42 @@ void FEngine::shutdown() {
      */
 
     mPostProcessManager.terminate(driver);  // free-up post-process manager resources
-    mResourceAllocator->terminate();
+    mResourceAllocatorDisposer->terminate();
+    mResourceAllocatorDisposer.reset();
     mDFG.terminate(*this);                  // free-up the DFG
     mRenderableManager.terminate();         // free-up all renderables
     mLightManager.terminate();              // free-up all lights
     mCameraManager.terminate(*this);        // free-up all cameras
 
-    driver.destroyRenderPrimitive(mFullScreenTriangleRph);
+    mPerViewDescriptorSetLayoutDepthVariant.terminate(mHwDescriptorSetLayoutFactory, driver);
+    mPerViewDescriptorSetLayoutSsrVariant.terminate(mHwDescriptorSetLayoutFactory, driver);
+    mPerRenderableDescriptorSetLayout.terminate(mHwDescriptorSetLayoutFactory, driver);
+
+    driver.destroyRenderPrimitive(std::move(mFullScreenTriangleRph));
+
     destroy(mFullScreenTriangleIb);
+    mFullScreenTriangleIb = nullptr;
+
     destroy(mFullScreenTriangleVb);
+    mFullScreenTriangleVb = nullptr;
+
     destroy(mDummyMorphTargetBuffer);
+    mDummyMorphTargetBuffer = nullptr;
+
     destroy(mDefaultIblTexture);
+    mDefaultIblTexture = nullptr;
+
     destroy(mDefaultIbl);
+    mDefaultIbl = nullptr;
 
     destroy(mDefaultColorGrading);
+    mDefaultColorGrading = nullptr;
 
     destroy(mDefaultMaterial);
+    mDefaultMaterial = nullptr;
+
+    destroy(mUnprotectedDummySwapchain);
+    mUnprotectedDummySwapchain = nullptr;
 
     /*
      * clean-up after the user -- we call terminate on each "leaked" object and clear each list.
@@ -487,6 +607,7 @@ void FEngine::shutdown() {
 
     // this must be done after Skyboxes and before materials
     destroy(mSkyboxMaterial);
+    mSkyboxMaterial = nullptr;
 
     cleanupResourceList(std::move(mBufferObjects));
     cleanupResourceList(std::move(mIndexBuffers));
@@ -503,12 +624,15 @@ void FEngine::shutdown() {
 
     cleanupResourceListLocked(mFenceListLock, std::move(mFences));
 
-    driver.destroyTexture(mDummyOneTexture);
-    driver.destroyTexture(mDummyOneTextureArray);
-    driver.destroyTexture(mDummyZeroTexture);
-    driver.destroyTexture(mDummyZeroTextureArray);
+    driver.destroyTexture(std::move(mDummyOneTexture));
+    driver.destroyTexture(std::move(mDummyOneTextureArray));
+    driver.destroyTexture(std::move(mDummyZeroTexture));
+    driver.destroyTexture(std::move(mDummyZeroTextureArray));
+    driver.destroyTexture(std::move(mDummyOneTextureArrayDepth));
 
-    driver.destroyRenderTarget(mDefaultRenderTarget);
+    driver.destroyBufferObject(std::move(mDummyUniformBuffer));
+
+    driver.destroyRenderTarget(std::move(mDefaultRenderTarget));
 
     /*
      * Shutdown the backend...
@@ -521,7 +645,7 @@ void FEngine::shutdown() {
 
     // now wait for all pending commands to be executed and the thread to exit
     mCommandBufferQueue.requestExit();
-    if (!UTILS_HAS_THREADING) {
+    if constexpr (!UTILS_HAS_THREADING) {
         execute();
         getDriverApi().terminate();
     } else {
@@ -545,24 +669,27 @@ void FEngine::shutdown() {
 }
 
 void FEngine::prepare() {
-    SYSTRACE_CALL();
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
     // prepare() is called once per Renderer frame. Ideally we would upload the content of
     // UBOs that are visible only. It's not such a big issue because the actual upload() is
     // skipped if the UBO hasn't changed. Still we could have a lot of these.
-    FEngine::DriverApi& driver = getDriverApi();
+    DriverApi& driver = getDriverApi();
 
     for (auto& materialInstanceList: mMaterialInstances) {
         materialInstanceList.second.forEach([&driver](FMaterialInstance* item) {
-            item->commit(driver);
+            // post-process materials instances must be commited explicitly because their
+            // parameters are typically not set at this point in time.
+            if (item->getMaterial()->getMaterialDomain() == MaterialDomain::SURFACE) {
+                item->commitStreamUniformAssociations(driver);
+                item->commit(driver);
+            }
         });
     }
 
-    // Commit default material instances.
-    mMaterials.forEach([&driver](FMaterial* material) {
-#if FILAMENT_ENABLE_MATDBG
+    mMaterials.forEach([](FMaterial* material) {
+#if FILAMENT_ENABLE_MATDBG // NOLINT(*-include-cleaner)
         material->checkProgramEdits();
 #endif
-        material->getDefaultInstance()->commit(driver);
     });
 }
 
@@ -581,48 +708,28 @@ void FEngine::flush() {
 }
 
 void FEngine::flushAndWait() {
+    flushAndWait(FENCE_WAIT_FOR_EVER);
+}
 
-#if defined(__ANDROID__)
+bool FEngine::flushAndWait(uint64_t const timeout) {
+    FILAMENT_CHECK_PRECONDITION(!mCommandBufferQueue.isPaused())
+            << "Cannot call Engine::flushAndWait() when rendering thread is paused!";
 
     // first make sure we've not terminated filament
-    ASSERT_PRECONDITION(!mCommandBufferQueue.isExitRequested(),
-            "calling Engine::flushAndWait() after Engine::shutdown()!");
-
-#endif
+    FILAMENT_CHECK_PRECONDITION(!mCommandBufferQueue.isExitRequested())
+            << "Calling Engine::flushAndWait() after Engine::shutdown()!";
 
     // enqueue finish command -- this will stall in the driver until the GPU is done
     getDriverApi().finish();
 
-#if defined(__ANDROID__) && !defined(NDEBUG)
-
-    // then create a fence that will trigger when we're past the finish() above
-    size_t tryCount = 8;
-    FFence* fence = FEngine::createFence();
-    UTILS_NOUNROLL
-    do {
-        FenceStatus status = fence->wait(FFence::Mode::FLUSH,250000000u);
-        // if the fence didn't trigger after 250ms, check that the command queue thread is still
-        // running (otherwise indicating a precondition violation).
-        if (UTILS_UNLIKELY(status == FenceStatus::TIMEOUT_EXPIRED)) {
-            ASSERT_PRECONDITION(!mCommandBufferQueue.isExitRequested(),
-                    "called Engine::shutdown() WHILE in Engine::flushAndWait()!");
-            tryCount--;
-            ASSERT_POSTCONDITION(tryCount, "flushAndWait() failed inexplicably after 2s");
-            // if the thread is still running, maybe we just need to give it more time
-            continue;
-        }
-        break;
-    } while (true);
+    FFence* fence = createFence();
+    FenceStatus const status = fence->wait(FFence::Mode::FLUSH, timeout);
     destroy(fence);
-
-#else
-
-    FFence::waitAndDestroy(FEngine::createFence(), FFence::Mode::FLUSH);
-
-#endif
 
     // finally, execute callbacks that might have been scheduled
     getDriver().purge();
+
+    return status == FenceStatus::CONDITION_SATISFIED;
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -633,13 +740,35 @@ int FEngine::loop() {
     if (mPlatform == nullptr) {
         mPlatform = PlatformFactory::create(&mBackend);
         mOwnPlatform = true;
-        const char* const backend = backendToString(mBackend);
-        slog.i << "FEngine resolved backend: " << backend << io::endl;
+        LOG(INFO) << "FEngine resolved backend: " << to_string(mBackend);
         if (mPlatform == nullptr) {
-            slog.e << "Selected backend not supported in this build." << io::endl;
+            LOG(ERROR) << "Selected backend not supported in this build.";
             mDriverBarrier.latch();
             return 0;
         }
+    }
+
+    JobSystem::setThreadName("FEngine::loop");
+    JobSystem::setThreadPriority(JobSystem::Priority::DISPLAY);
+
+    DriverConfig const driverConfig {
+            .handleArenaSize = getRequestedDriverHandleArenaSize(),
+            .metalUploadBufferSizeBytes = mConfig.metalUploadBufferSizeBytes,
+            .disableParallelShaderCompile = features.backend.disable_parallel_shader_compile,
+            .disableHandleUseAfterFreeCheck = features.backend.disable_handle_use_after_free_check,
+            .disableHeapHandleTags = features.backend.disable_heap_handle_tags,
+            .forceGLES2Context = mConfig.forceGLES2Context,
+            .stereoscopicType =  mConfig.stereoscopicType,
+            .assertNativeWindowIsValid = features.backend.opengl.assert_native_window_is_valid,
+            .metalDisablePanicOnDrawableFailure = mConfig.metalDisablePanicOnDrawableFailure,
+    };
+    mDriver = mPlatform->createDriver(mSharedGLContext, driverConfig);
+
+    mDriverBarrier.latch();
+    if (UTILS_UNLIKELY(!mDriver)) {
+        // if we get here, it's because the driver couldn't be initialized and the problem has
+        // been logged.
+        return 0;
     }
 
 #if FILAMENT_ENABLE_MATDBG
@@ -650,7 +779,8 @@ int FEngine::loop() {
     #endif
     if (portString != nullptr) {
         const int port = atoi(portString);
-        debug.server = new matdbg::DebugServer(mBackend, port);
+        debug.server = new matdbg::DebugServer(mBackend, mDriver->getShaderLanguage(),
+                matdbg::DbgShaderModel((uint8_t) mDriver->getShaderModel()), port);
 
         // Sometimes the server can fail to spin up (e.g. if the above port is already in use).
         // When this occurs, carry onward, developers can look at civetweb.txt for details.
@@ -664,49 +794,50 @@ int FEngine::loop() {
     }
 #endif
 
-    JobSystem::setThreadName("FEngine::loop");
-    JobSystem::setThreadPriority(JobSystem::Priority::DISPLAY);
+#if FILAMENT_ENABLE_FGVIEWER // NOLINT(*-include-cleaner)
+#ifdef __ANDROID__
+    const char* fgviewerPortString = "8085";
+#else
+    const char* fgviewerPortString = getenv("FILAMENT_FGVIEWER_PORT");
+#endif
+    if (fgviewerPortString != nullptr) {
+        const int fgviewerPort = atoi(fgviewerPortString);
+        debug.fgviewerServer = new fgviewer::DebugServer(fgviewerPort);
 
-    DriverConfig const driverConfig {
-            .handleArenaSize = getRequestedDriverHandleArenaSize(),
-            .textureUseAfterFreePoolSize = mConfig.textureUseAfterFreePoolSize,
-            .disableParallelShaderCompile = mConfig.disableParallelShaderCompile,
-            .disableHandleUseAfterFreeCheck = mConfig.disableHandleUseAfterFreeCheck
-    };
-    mDriver = mPlatform->createDriver(mSharedGLContext, driverConfig);
-
-    mDriverBarrier.latch();
-    if (UTILS_UNLIKELY(!mDriver)) {
-        // if we get here, it's because the driver couldn't be initialized and the problem has
-        // been logged.
-        return 0;
-    }
-
-    // Set thread affinity for the backend thread.
-    //  see https://developer.android.com/agi/sys-trace/threads-scheduling#cpu_core_affinity
-    // Certain backends already have some threads pinned, and we can't easily know on which core.
-    const bool disableThreadAffinity
-            = mDriver->isWorkaroundNeeded(Workaround::DISABLE_THREAD_AFFINITY);
-
-    uint32_t const id = std::thread::hardware_concurrency() - 1;
-    while (true) {
-        // looks like thread affinity needs to be reset regularly (on Android)
-        if (!disableThreadAffinity) {
-            JobSystem::setThreadAffinityById(id);
+        // Sometimes the server can fail to spin up (e.g. if the above port is already in use).
+        // When this occurs, carry onward, developers can look at civetweb.txt for details.
+        if (!debug.fgviewerServer->isReady()) {
+            delete debug.fgviewerServer;
+            debug.fgviewerServer = nullptr;
         }
+    }
+#endif
+
+    while (true) {
         if (!execute()) {
             break;
         }
     }
+
+#if FILAMENT_ENABLE_MATDBG
+    if(debug.server) {
+        delete debug.server;
+    } 
+#endif
+#if FILAMENT_ENABLE_FGVIEWER 
+    if(debug.fgviewerServer) {
+        delete debug.fgviewerServer;
+    }
+#endif
 
     // terminate() is a synchronous API
     getDriverApi().terminate();
     return 0;
 }
 
-void FEngine::flushCommandBuffer(CommandBufferQueue& commandQueue) {
+void FEngine::flushCommandBuffer(CommandBufferQueue& commandBufferQueue) const {
     getDriver().purge();
-    commandQueue.flush();
+    commandBufferQueue.flush();
 }
 
 const FMaterial* FEngine::getSkyboxMaterial() const noexcept {
@@ -727,10 +858,10 @@ const FMaterial* FEngine::getSkyboxMaterial() const noexcept {
  */
 
 template<typename T, typename ... ARGS>
-inline T* FEngine::create(ResourceList<T>& list,
+T* FEngine::create(ResourceList<T>& list,
         typename T::Builder const& builder, ARGS&& ... args) noexcept {
     T* p = mHeapAllocator.make<T>(*this, builder, std::forward<ARGS>(args)...);
-    if (UTILS_UNLIKELY(p)) { // this should never happen
+    if (UTILS_LIKELY(p)) {
         list.insert(p);
     }
     return p;
@@ -795,7 +926,7 @@ FRenderTarget* FEngine::createRenderTarget(const RenderTarget::Builder& builder)
 
 FRenderer* FEngine::createRenderer() noexcept {
     FRenderer* p = mHeapAllocator.make<FRenderer>(*this);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
         mRenderers.insert(p);
     }
     return p;
@@ -804,7 +935,17 @@ FRenderer* FEngine::createRenderer() noexcept {
 FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
         const FMaterialInstance* other, const char* name) noexcept {
     FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, other, name);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
+        auto const pos = mMaterialInstances.emplace(material, "MaterialInstance");
+        pos.first->second.insert(p);
+    }
+    return p;
+}
+
+FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
+                                                   const char* name) noexcept {
+    FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, material, name);
+    if (UTILS_LIKELY(p)) {
         auto pos = mMaterialInstances.emplace(material, "MaterialInstance");
         pos.first->second.insert(p);
     }
@@ -817,7 +958,7 @@ FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
 
 FScene* FEngine::createScene() noexcept {
     FScene* p = mHeapAllocator.make<FScene>(*this);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
         mScenes.insert(p);
     }
     return p;
@@ -825,7 +966,7 @@ FScene* FEngine::createScene() noexcept {
 
 FView* FEngine::createView() noexcept {
     FView* p = mHeapAllocator.make<FView>(*this);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
         mViews.insert(p);
     }
     return p;
@@ -833,7 +974,7 @@ FView* FEngine::createView() noexcept {
 
 FFence* FEngine::createFence() noexcept {
     FFence* p = mHeapAllocator.make<FFence>(*this);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
         std::lock_guard const guard(mFenceListLock);
         mFences.insert(p);
     }
@@ -849,7 +990,7 @@ FSwapChain* FEngine::createSwapChain(void* nativeWindow, uint64_t flags) noexcep
         getDriverApi().setupExternalImage(nativeWindow);
     }
     FSwapChain* p = mHeapAllocator.make<FSwapChain>(*this, nativeWindow, flags);
-    if (UTILS_UNLIKELY(p)) { // should never happen
+    if (UTILS_LIKELY(p)) {
         mSwapChains.insert(p);
     }
     return p;
@@ -857,7 +998,7 @@ FSwapChain* FEngine::createSwapChain(void* nativeWindow, uint64_t flags) noexcep
 
 FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept {
     FSwapChain* p = mHeapAllocator.make<FSwapChain>(*this, width, height, flags);
-    if (p) {
+    if (UTILS_LIKELY(p)) {
         mSwapChains.insert(p);
     }
     return p;
@@ -868,21 +1009,21 @@ FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t f
  */
 
 
-FCamera* FEngine::createCamera(Entity entity) noexcept {
+FCamera* FEngine::createCamera(Entity const entity) noexcept {
     return mCameraManager.create(*this, entity);
 }
 
-FCamera* FEngine::getCameraComponent(Entity entity) noexcept {
-    auto ci = mCameraManager.getInstance(entity);
+FCamera* FEngine::getCameraComponent(Entity const entity) noexcept {
+    auto const ci = mCameraManager.getInstance(entity);
     return ci ? mCameraManager.getCamera(ci) : nullptr;
 }
 
-void FEngine::destroyCameraComponent(utils::Entity entity) noexcept {
+void FEngine::destroyCameraComponent(Entity const entity) noexcept {
     mCameraManager.destroy(*this, entity);
 }
 
 
-void FEngine::createRenderable(const RenderableManager::Builder& builder, Entity entity) {
+void FEngine::createRenderable(const RenderableManager::Builder& builder, Entity const entity) {
     mRenderableManager.create(builder, entity);
     auto& tcm = mTransformManager;
     // if this entity doesn't have a transform component, add one.
@@ -891,7 +1032,7 @@ void FEngine::createRenderable(const RenderableManager::Builder& builder, Entity
     }
 }
 
-void FEngine::createLight(const LightManager::Builder& builder, Entity entity) {
+void FEngine::createLight(const LightManager::Builder& builder, Entity const entity) {
     mLightManager.create(builder, entity);
 }
 
@@ -902,8 +1043,8 @@ UTILS_NOINLINE
 void FEngine::cleanupResourceList(ResourceList<T>&& list) {
     if (UTILS_UNLIKELY(!list.empty())) {
 #ifndef NDEBUG
-        slog.d << "cleaning up " << list.size()
-               << " leaked " << CallStack::typeName<T>().c_str() << io::endl;
+        DLOG(INFO) << "cleaning up " << list.size() << " leaked "
+                   << CallStack::typeName<T>().c_str();
 #endif
         list.forEach([this, &allocator = mHeapAllocator](T* item) {
             item->terminate(*this);
@@ -926,15 +1067,16 @@ void FEngine::cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list) {
 
 template<typename T>
 UTILS_ALWAYS_INLINE
-inline bool FEngine::isValid(const T* ptr, ResourceList<T>& list) {
-    return list.find(ptr) != list.end();
+bool FEngine::isValid(const T* ptr, ResourceList<T> const& list) const {
+    auto& l = const_cast<ResourceList<T>&>(list);
+    return l.find(ptr) != l.end();
 }
 
 template<typename T>
 UTILS_ALWAYS_INLINE
-inline bool FEngine::terminateAndDestroy(const T* ptr, ResourceList<T>& list) {
-    if (ptr == nullptr) return true;
-    bool const success = list.remove(ptr);
+bool FEngine::terminateAndDestroy(const T* p, ResourceList<T>& list) {
+    if (p == nullptr) return true;
+    bool const success = list.remove(p);
 
 #if UTILS_HAS_RTTI
     auto typeName = CallStack::typeName<T>();
@@ -944,19 +1086,19 @@ inline bool FEngine::terminateAndDestroy(const T* ptr, ResourceList<T>& list) {
 #endif
 
     if (ASSERT_PRECONDITION_NON_FATAL(success,
-            "Object %s at %p doesn't exist (double free?)", typeNameCStr, ptr)) {
-        const_cast<T*>(ptr)->terminate(*this);
-        mHeapAllocator.destroy(const_cast<T*>(ptr));
+            "Object %s at %p doesn't exist (double free?)", typeNameCStr, p)) {
+        const_cast<T*>(p)->terminate(*this);
+        mHeapAllocator.destroy(const_cast<T*>(p));
     }
     return success;
 }
 
 template<typename T, typename Lock>
 UTILS_ALWAYS_INLINE
-inline bool FEngine::terminateAndDestroyLocked(Lock& lock, const T* ptr, ResourceList<T>& list) {
-    if (ptr == nullptr) return true;
+bool FEngine::terminateAndDestroyLocked(Lock& lock, const T* p, ResourceList<T>& list) {
+    if (p == nullptr) return true;
     lock.lock();
-    bool const success = list.remove(ptr);
+    bool const success = list.remove(p);
     lock.unlock();
 
 #if UTILS_HAS_RTTI
@@ -967,9 +1109,9 @@ inline bool FEngine::terminateAndDestroyLocked(Lock& lock, const T* ptr, Resourc
 #endif
 
     if (ASSERT_PRECONDITION_NON_FATAL(success,
-            "Object %s at %p doesn't exist (double free?)", typeNameCStr, ptr)) {
-        const_cast<T*>(ptr)->terminate(*this);
-        mHeapAllocator.destroy(const_cast<T*>(ptr));
+            "Object %s at %p doesn't exist (double free?)", typeNameCStr, p)) {
+        const_cast<T*>(p)->terminate(*this);
+        mHeapAllocator.destroy(const_cast<T*>(p));
     }
     return success;
 }
@@ -1062,115 +1204,190 @@ bool FEngine::destroy(const FInstanceBuffer* p){
 }
 
 UTILS_NOINLINE
-bool FEngine::destroy(const FMaterial* ptr) {
-    if (ptr == nullptr) return true;
-    auto pos = mMaterialInstances.find(ptr);
-    if (pos != mMaterialInstances.cend()) {
-        // ensure we've destroyed all instances before destroying the material
-        if (!ASSERT_PRECONDITION_NON_FATAL(pos->second.empty(),
-                "destroying material \"%s\" but %u instances still alive",
-                ptr->getName().c_str(), (*pos).second.size())) {
-            return false;
+bool FEngine::destroy(const FMaterial* p) {
+    if (p == nullptr) return true;
+    bool const success = terminateAndDestroy(p, mMaterials);
+    if (UTILS_LIKELY(success)) {
+        auto const pos = mMaterialInstances.find(p);
+        if (UTILS_LIKELY(pos != mMaterialInstances.cend())) {
+            mMaterialInstances.erase(pos);
         }
     }
-    return terminateAndDestroy(ptr, mMaterials);
+    return success;
 }
 
 UTILS_NOINLINE
-bool FEngine::destroy(const FMaterialInstance* ptr) {
-    if (ptr == nullptr) return true;
-    auto pos = mMaterialInstances.find(ptr->getMaterial());
+bool FEngine::destroy(const FMaterialInstance* p) {
+    if (p == nullptr) return true;
+
+    // Check that the material instance we're destroying is not in use in the RenderableManager
+    // To do this, we currently need to inspect all render primitives in the RenderableManager
+    EntityManager const& em = mEntityManager;
+    FRenderableManager const& rcm = mRenderableManager;
+    Entity const* entities = rcm.getEntities();
+    size_t const count = rcm.getComponentCount();
+    for (size_t i = 0; i < count; i++) {
+        Entity const entity = entities[i];
+        if (em.isAlive(entity)) {
+            RenderableManager::Instance const ri = rcm.getInstance(entity);
+            size_t const primitiveCount = rcm.getPrimitiveCount(ri, 0);
+            for (size_t j = 0; j < primitiveCount; j++) {
+                auto const* const mi = rcm.getMaterialInstanceAt(ri, 0, j);
+                if (features.engine.debug.assert_material_instance_in_use) {
+                    FILAMENT_CHECK_PRECONDITION(mi != p)
+                            << "destroying MaterialInstance \""
+                            << mi->getName() << "\" which is still in use by Renderable (entity="
+                            << entity.getId() << ", instance="
+                            << ri.asValue() << ", index=" << j << ")";
+                } else {
+                    if (UTILS_UNLIKELY(mi == p)) {
+                        LOG(ERROR) << "destroying MaterialInstance \"" << mi->getName()
+                                   << "\" which is still in use by Renderable (entity="
+                                   << entity.getId() << ", instance=" << ri.asValue()
+                                   << ", index=" << j << ")";
+                    }
+                }
+            }
+        }
+    }
+
+    if (p->isDefaultInstance()) return false;
+    auto const pos = mMaterialInstances.find(p->getMaterial());
     assert_invariant(pos != mMaterialInstances.cend());
     if (pos != mMaterialInstances.cend()) {
-        return terminateAndDestroy(ptr, pos->second);
+        return terminateAndDestroy(p, pos->second);
     }
-    // if we don't find this instance's material it might be because it's the default instance
-    // in which case it fine to ignore.
-    return true;
+    // this shouldn't happen, this would be double-free
+    return false;
 }
 
 UTILS_NOINLINE
-void FEngine::destroy(Entity e) {
+void FEngine::destroy(Entity const e) {
     mRenderableManager.destroy(e);
     mLightManager.destroy(e);
     mTransformManager.destroy(e);
     mCameraManager.destroy(*this, e);
 }
 
-bool FEngine::isValid(const FBufferObject* p) {
+bool FEngine::isValid(const FBufferObject* p) const {
     return isValid(p, mBufferObjects);
 }
 
-bool FEngine::isValid(const FVertexBuffer* p) {
+bool FEngine::isValid(const FVertexBuffer* p) const {
     return isValid(p, mVertexBuffers);
 }
 
-bool FEngine::isValid(const FFence* p) {
+bool FEngine::isValid(const FFence* p) const {
     return isValid(p, mFences);
 }
 
-bool FEngine::isValid(const FIndexBuffer* p) {
+bool FEngine::isValid(const FIndexBuffer* p) const {
     return isValid(p, mIndexBuffers);
 }
 
-bool FEngine::isValid(const FSkinningBuffer* p) {
+bool FEngine::isValid(const FSkinningBuffer* p) const {
     return isValid(p, mSkinningBuffers);
 }
 
-bool FEngine::isValid(const FMorphTargetBuffer* p) {
+bool FEngine::isValid(const FMorphTargetBuffer* p) const {
     return isValid(p, mMorphTargetBuffers);
 }
 
-bool FEngine::isValid(const FIndirectLight* p) {
+bool FEngine::isValid(const FIndirectLight* p) const {
     return isValid(p, mIndirectLights);
 }
 
-bool FEngine::isValid(const FMaterial* p) {
+bool FEngine::isValid(const FMaterial* p) const {
     return isValid(p, mMaterials);
 }
 
-bool FEngine::isValid(const FRenderer* p) {
+bool FEngine::isValid(const FMaterial* m, const FMaterialInstance* p) const {
+    // first make sure the material we're given is valid.
+    if (!isValid(m)) {
+        return false;
+    }
+
+    // then find the material instance list for that material
+    auto const it = mMaterialInstances.find(m);
+    if (it == mMaterialInstances.end()) {
+        // this could happen if this material has no material instances at all
+        return false;
+    }
+
+    // finally validate the material instance
+    return isValid(p, it->second);
+}
+
+bool FEngine::isValidExpensive(const FMaterialInstance* p) const {
+    return std::any_of(mMaterialInstances.cbegin(), mMaterialInstances.cend(),
+            [this, p](auto&& entry) {
+        return isValid(p, entry.second);
+    });
+}
+
+bool FEngine::isValid(const FRenderer* p) const {
     return isValid(p, mRenderers);
 }
 
-bool FEngine::isValid(const FScene* p) {
+bool FEngine::isValid(const FScene* p) const {
     return isValid(p, mScenes);
 }
 
-bool FEngine::isValid(const FSkybox* p) {
+bool FEngine::isValid(const FSkybox* p) const {
     return isValid(p, mSkyboxes);
 }
 
-bool FEngine::isValid(const FColorGrading* p) {
+bool FEngine::isValid(const FColorGrading* p) const {
     return isValid(p, mColorGradings);
 }
 
-bool FEngine::isValid(const FSwapChain* p) {
+bool FEngine::isValid(const FSwapChain* p) const {
     return isValid(p, mSwapChains);
 }
 
-bool FEngine::isValid(const FStream* p) {
+bool FEngine::isValid(const FStream* p) const {
     return isValid(p, mStreams);
 }
 
-bool FEngine::isValid(const FTexture* p) {
+bool FEngine::isValid(const FTexture* p) const {
     return isValid(p, mTextures);
 }
 
-bool FEngine::isValid(const FRenderTarget* p) {
+bool FEngine::isValid(const FRenderTarget* p) const {
     return isValid(p, mRenderTargets);
 }
 
-bool FEngine::isValid(const FView* p) {
+bool FEngine::isValid(const FView* p) const {
     return isValid(p, mViews);
 }
 
-bool FEngine::isValid(const FInstanceBuffer* p) {
+bool FEngine::isValid(const FInstanceBuffer* p) const {
     return isValid(p, mInstanceBuffers);
 }
 
+size_t FEngine::getBufferObjectCount() const noexcept { return mBufferObjects.size(); }
+size_t FEngine::getViewCount() const noexcept { return mViews.size(); }
+size_t FEngine::getSceneCount() const noexcept { return mScenes.size(); }
+size_t FEngine::getSwapChainCount() const noexcept { return mSwapChains.size(); }
+size_t FEngine::getStreamCount() const noexcept { return mStreams.size(); }
+size_t FEngine::getIndexBufferCount() const noexcept { return mIndexBuffers.size(); }
+size_t FEngine::getSkinningBufferCount() const noexcept { return mSkinningBuffers.size(); }
+size_t FEngine::getMorphTargetBufferCount() const noexcept { return mMorphTargetBuffers.size(); }
+size_t FEngine::getInstanceBufferCount() const noexcept { return mInstanceBuffers.size(); }
+size_t FEngine::getVertexBufferCount() const noexcept { return mVertexBuffers.size(); }
+size_t FEngine::getIndirectLightCount() const noexcept { return mIndirectLights.size(); }
+size_t FEngine::getMaterialCount() const noexcept { return mMaterials.size(); }
+size_t FEngine::getTextureCount() const noexcept { return mTextures.size(); }
+size_t FEngine::getSkyboxeCount() const noexcept { return mSkyboxes.size(); }
+size_t FEngine::getColorGradingCount() const noexcept { return mColorGradings.size(); }
+size_t FEngine::getRenderTargetCount() const noexcept { return mRenderTargets.size(); }
 
-void* FEngine::streamAlloc(size_t size, size_t alignment) noexcept {
+size_t FEngine::getMaxShadowMapCount() const noexcept {
+    return features.engine.shadows.use_shadow_atlas ?
+        CONFIG_MAX_SHADOWMAPS : CONFIG_MAX_SHADOW_LAYERS;
+}
+
+void* FEngine::streamAlloc(size_t const size, size_t const alignment) noexcept {
     // we allow this only for small allocations
     if (size > 65536) {
         return nullptr;
@@ -1180,7 +1397,7 @@ void* FEngine::streamAlloc(size_t size, size_t alignment) noexcept {
 
 bool FEngine::execute() {
     // wait until we get command buffers to be executed (or thread exit requested)
-    auto buffers = mCommandBufferQueue.waitForCommands();
+    auto const buffers = mCommandBufferQueue.waitForCommands();
     if (UTILS_UNLIKELY(buffers.empty())) {
         return false;
     }
@@ -1204,20 +1421,24 @@ void FEngine::destroy(FEngine* engine) {
     }
 }
 
-void FEngine::setPaused(bool paused) {
+bool FEngine::isPaused() const noexcept {
+    return mCommandBufferQueue.isPaused();
+}
+
+void FEngine::setPaused(bool const paused) {
     mCommandBufferQueue.setPaused(paused);
 }
 
 Engine::FeatureLevel FEngine::getSupportedFeatureLevel() const noexcept {
-    FEngine::DriverApi& driver = const_cast<FEngine*>(this)->getDriverApi();
+    DriverApi& driver = const_cast<FEngine*>(this)->getDriverApi();
     return driver.getFeatureLevel();
 }
 
 Engine::FeatureLevel FEngine::setActiveFeatureLevel(FeatureLevel featureLevel) {
-    ASSERT_PRECONDITION(featureLevel <= getSupportedFeatureLevel(),
-            "Feature level %u not supported", (unsigned)featureLevel);
-    ASSERT_PRECONDITION(mActiveFeatureLevel >= FeatureLevel::FEATURE_LEVEL_1,
-            "Cannot adjust feature level beyond 0 at runtime");
+    FILAMENT_CHECK_PRECONDITION(featureLevel <= getSupportedFeatureLevel())
+            << "Feature level " << unsigned(featureLevel) << " not supported";
+    FILAMENT_CHECK_PRECONDITION(mActiveFeatureLevel >= FeatureLevel::FEATURE_LEVEL_1)
+            << "Cannot adjust feature level beyond 0 at runtime";
     return (mActiveFeatureLevel = std::max(mActiveFeatureLevel, featureLevel));
 }
 
@@ -1227,16 +1448,49 @@ void FEngine::resetBackendState() noexcept {
 }
 #endif
 
+void FEngine::unprotected() noexcept {
+    if (UTILS_UNLIKELY(!mUnprotectedDummySwapchain)) {
+        mUnprotectedDummySwapchain = createSwapChain(1, 1, 0);
+    }
+    mUnprotectedDummySwapchain->makeCurrent(getDriverApi());
+}
+
+bool FEngine::setFeatureFlag(char const* name, bool const value) const noexcept {
+    auto* const p = getFeatureFlagPtr(name);
+    if (p) {
+        *p = value;
+    }
+    return p != nullptr;
+}
+
+std::optional<bool> FEngine::getFeatureFlag(char const* name) const noexcept {
+    auto* const p = getFeatureFlagPtr(name, true);
+    if (p) {
+        return *p;
+    }
+    return std::nullopt;
+}
+
+bool* FEngine::getFeatureFlagPtr(std::string_view name, bool const allowConstant) const noexcept {
+    auto pos = std::find_if(mFeatures.begin(), mFeatures.end(),
+            [name](FeatureFlag const& entry) {
+                return name == entry.name;
+            });
+
+    return (pos != mFeatures.end() && (!pos->constant || allowConstant)) ?
+           const_cast<bool*>(pos->value) : nullptr;
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Engine::Builder::Builder() noexcept = default;
 Engine::Builder::~Builder() noexcept = default;
-Engine::Builder::Builder(Engine::Builder const& rhs) noexcept = default;
-Engine::Builder::Builder(Engine::Builder&& rhs) noexcept = default;
-Engine::Builder& Engine::Builder::operator=(Engine::Builder const& rhs) noexcept = default;
-Engine::Builder& Engine::Builder::operator=(Engine::Builder&& rhs) noexcept = default;
+Engine::Builder::Builder(Builder const& rhs) noexcept = default;
+Engine::Builder::Builder(Builder&& rhs) noexcept = default;
+Engine::Builder& Engine::Builder::operator=(Builder const& rhs) noexcept = default;
+Engine::Builder& Engine::Builder::operator=(Builder&& rhs) noexcept = default;
 
-Engine::Builder& Engine::Builder::backend(Backend backend) noexcept {
+Engine::Builder& Engine::Builder::backend(Backend const backend) noexcept {
     mImpl->mBackend = backend;
     return *this;
 }
@@ -1246,12 +1500,12 @@ Engine::Builder& Engine::Builder::platform(Platform* platform) noexcept {
     return *this;
 }
 
-Engine::Builder& Engine::Builder::config(Engine::Config const* config) noexcept {
-    mImpl->mConfig = BuilderDetails::validateConfig(config);
+Engine::Builder& Engine::Builder::config(Config const* config) noexcept {
+    mImpl->mConfig = config ? *config : Config{};
     return *this;
 }
 
-Engine::Builder& Engine::Builder::featureLevel(FeatureLevel featureLevel) noexcept {
+Engine::Builder& Engine::Builder::featureLevel(FeatureLevel const featureLevel) noexcept {
     mImpl->mFeatureLevel = featureLevel;
     return *this;
 }
@@ -1261,8 +1515,22 @@ Engine::Builder& Engine::Builder::sharedContext(void* sharedContext) noexcept {
     return *this;
 }
 
-Engine::Builder& Engine::Builder::paused(bool paused) noexcept {
+Engine::Builder& Engine::Builder::paused(bool const paused) noexcept {
     mImpl->mPaused = paused;
+    return *this;
+}
+
+Engine::Builder& Engine::Builder::feature(char const* name, bool const value) noexcept {
+    mImpl->mFeatureFlags[name] = value;
+    return *this;
+}
+
+Engine::Builder& Engine::Builder::features(std::initializer_list<char const *> const list) noexcept {
+    for (auto const name : list) {
+        if (name) {
+            feature(name, true);
+        }
+    }
     return *this;
 }
 
@@ -1275,34 +1543,27 @@ void Engine::Builder::build(Invocable<void(void*)>&& callback) const {
 #endif
 
 Engine* Engine::Builder::build() const {
+    mImpl->mConfig = BuilderDetails::validateConfig(mImpl->mConfig);
     return FEngine::create(*this);
 }
 
-Engine::Config Engine::BuilderDetails::validateConfig(const Config* const pConfig) noexcept {
+Engine::Config Engine::BuilderDetails::validateConfig(Config config) noexcept {
     // Rule of thumb: perRenderPassArenaMB must be roughly 1 MB larger than perFrameCommandsMB
     constexpr uint32_t COMMAND_ARENA_OVERHEAD = 1;
     constexpr uint32_t CONCURRENT_FRAME_COUNT = 3;
 
-    Config config;
-    if (!pConfig) {
-        return config;
-    }
-
-    // make sure to copy all the fields
-    config = *pConfig;
-
     // Use at least the defaults set by the build system
     config.minCommandBufferSizeMB = std::max(
             config.minCommandBufferSizeMB,
-            (uint32_t)FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB);
+            uint32_t(FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB)); // NOLINT(*-include-cleaner)
 
     config.perFrameCommandsSizeMB = std::max(
             config.perFrameCommandsSizeMB,
-            (uint32_t)FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB);
+            uint32_t(FILAMENT_PER_FRAME_COMMANDS_SIZE_IN_MB)); // NOLINT(*-include-cleaner)
 
     config.perRenderPassArenaSizeMB = std::max(
             config.perRenderPassArenaSizeMB,
-            (uint32_t)FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB);
+            uint32_t(FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB)); // NOLINT(*-include-cleaner)
 
     config.commandBufferSizeMB = std::max(
             config.commandBufferSizeMB,

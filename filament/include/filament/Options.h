@@ -86,10 +86,10 @@ struct DynamicResolutionOptions {
     /**
      * Upscaling quality
      * LOW:    bilinear filtered blit. Fastest, poor quality
-     * MEDIUM: AMD FidelityFX FSR1 w/ mobile optimizations
+     * MEDIUM: Qualcomm Snapdragon Game Super Resolution (SGSR) 1.0
      * HIGH:   AMD FidelityFX FSR1 w/ mobile optimizations
      * ULTRA:  AMD FidelityFX FSR1
-     *      FSR1 require a well anti-aliased (MSAA or TAA), noise free scene.
+     *      FSR1 and SGSR require a well anti-aliased (MSAA or TAA), noise free scene. Avoid FXAA and dithering.
      *
      * The default upscaling quality is set to LOW.
      */
@@ -373,18 +373,30 @@ struct RenderQuality {
  * @see setAmbientOcclusionOptions()
  */
 struct AmbientOcclusionOptions {
+    enum class AmbientOcclusionType : uint8_t {
+        SAO,        //!< use Scalable Ambient Occlusion
+        GTAO,       //!< use Ground Truth-Based Ambient Occlusion
+    };
+
+    AmbientOcclusionType aoType = AmbientOcclusionType::SAO;//!< Type of ambient occlusion algorithm.
     float radius = 0.3f;    //!< Ambient Occlusion radius in meters, between 0 and ~10.
     float power = 1.0f;     //!< Controls ambient occlusion's contrast. Must be positive.
-    float bias = 0.0005f;   //!< Self-occlusion bias in meters. Use to avoid self-occlusion. Between 0 and a few mm.
+
+    /**
+     * Self-occlusion bias in meters. Use to avoid self-occlusion.
+     * Between 0 and a few mm. No effect when aoType set to GTAO
+     */
+    float bias = 0.0005f;
+
     float resolution = 0.5f;//!< How each dimension of the AO buffer is scaled. Must be either 0.5 or 1.0.
     float intensity = 1.0f; //!< Strength of the Ambient Occlusion effect.
     float bilateralThreshold = 0.05f; //!< depth distance that constitute an edge for filtering
-    QualityLevel quality = QualityLevel::LOW; //!< affects # of samples used for AO.
-    QualityLevel lowPassFilter = QualityLevel::MEDIUM; //!< affects AO smoothness
+    QualityLevel quality = QualityLevel::LOW; //!< affects # of samples used for AO and params for filtering
+    QualityLevel lowPassFilter = QualityLevel::MEDIUM; //!< affects AO smoothness. Recommend setting to HIGH when aoType set to GTAO.
     QualityLevel upsampling = QualityLevel::LOW; //!< affects AO buffer upsampling quality
     bool enabled = false;    //!< enables or disables screen-space ambient occlusion
     bool bentNormals = false; //!< enables bent normals computation from AO, and specular AO
-    float minHorizonAngleRad = 0.0f;  //!< min angle in radian to consider
+    float minHorizonAngleRad = 0.0f;  //!< min angle in radian to consider. No effect when aoType set to GTAO.
     /**
      * Screen Space Cone Tracing (SSCT) options
      * Ambient shadows from dominant light
@@ -402,6 +414,16 @@ struct AmbientOcclusionOptions {
         bool enabled = false;            //!< enables or disables SSCT
     };
     Ssct ssct;                           // %codegen_skip_javascript% %codegen_java_flatten%
+
+    /**
+     * Ground Truth-base Ambient Occlusion (GTAO) options
+     */
+    struct Gtao {
+        uint8_t sampleSliceCount = 4;     //!< # of slices. Higher value makes less noise.
+        uint8_t sampleStepsPerSlice = 3;  //!< # of steps the radius is divided into for integration. Higher value makes less bias.
+        float thicknessHeuristic = 0.004f; //!< thickness heuristic, should be closed to 0
+    };
+    Gtao gtao;                           // %codegen_skip_javascript% %codegen_java_flatten%
 };
 
 /**
@@ -438,7 +460,7 @@ struct MultiSampleAntiAliasingOptions {
  * @see setTemporalAntiAliasingOptions()
  */
 struct TemporalAntiAliasingOptions {
-    float filterWidth = 1.0f;   //!< reconstruction filter width typically between 0.2 (sharper, aliased) and 1.5 (smoother)
+    float filterWidth = 1.0f;   //!< reconstruction filter width typically between 1 (sharper) and 2 (smoother)
     float feedback = 0.12f;     //!< history feedback, between 0 (maximum temporal AA) and 1 (no temporal AA).
     float lodBias = -1.0f;      //!< texturing lod bias (typically -1 or -2)
     float sharpness = 0.0f;     //!< post-TAA sharpen, especially useful when upscaling is true.

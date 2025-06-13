@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "common/arguments.h"
+
 #include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -27,17 +29,22 @@
 #include <filament/View.h>
 
 #include <utils/EntityManager.h>
+#include <utils/Path.h>
 
 #include <filamentapp/Config.h>
 #include <filamentapp/FilamentApp.h>
 
 #include <cmath>
+#include <iostream>
+
+#include <getopt/getopt.h>
 
 #include "generated/resources/resources.h"
 
 using namespace filament;
 using utils::Entity;
 using utils::EntityManager;
+using utils::Path;
 using namespace filament::math;
 
 struct App {
@@ -58,6 +65,54 @@ struct VertexWithBones {
     filament::math::float4 weighs;
 };
 
+static void printUsage(char* name) {
+    std::string exec_name(Path(name).getName());
+    std::string usage(
+            "SAMPLE is a command-line tool for testing Filament skinning.\n"
+            "Usage:\n"
+            "    SAMPLE [options]\n"
+            "Options:\n"
+            "   --help, -h\n"
+            "       Prints this message\n\n"
+            "API_USAGE"
+    );
+    const std::string from("SAMPLE");
+    for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
+        usage.replace(pos, from.length(), exec_name);
+    }
+    const std::string apiUsage("API_USAGE");
+    for (size_t pos = usage.find(apiUsage); pos != std::string::npos; pos = usage.find(apiUsage, pos)) {
+        usage.replace(pos, apiUsage.length(), samples::getBackendAPIArgumentsUsage());
+    }
+    std::cout << usage;
+}
+
+static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
+    static constexpr const char* OPTSTR = "ha:";
+    static const struct option OPTIONS[] = {
+            { "help",         no_argument,       nullptr, 'h' },
+            { "api",          required_argument, nullptr, 'a' },
+            { nullptr, 0, nullptr, 0 }  // termination of the option list
+    };
+    int opt;
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, OPTSTR, OPTIONS, &option_index)) >= 0) {
+        std::string arg(optarg != nullptr ? optarg : "");
+        switch (opt) {
+            default:
+            case 'h':
+                printUsage(argv[0]);
+                exit(0);
+            case 'a':
+                config->backend = samples::parseArgumentsForBackend(arg);
+                break;
+        }
+    }
+
+    return optind;
+}
+
+
 static const VertexWithBones TRIANGLE_VERTICES_WITHBONES[6] = {
     {{1, 0}, 0xffff0000u, {0,1,0,0}, {1.0f,0.f,0.f,0.f}},
     {{cos(M_PI * 2 / 3), sin(M_PI * 2 / 3)}, 0xff00ff00u, {0,1,0,0}, {0.f,1.f,0.f,0.f}},
@@ -77,6 +132,8 @@ mat4f transforms[] = {mat4f(1),
 int main(int argc, char** argv) {
     Config config;
     config.title = "hello skinning";
+
+    handleCommandLineArgments(argc, argv, &config);
 
     App app;
     auto setup = [&app](Engine* engine, View* view, Scene* scene) {

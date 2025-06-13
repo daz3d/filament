@@ -52,7 +52,10 @@ set(SRCS
         src/Wireframe.cpp
         src/Wireframe.h
         src/downcast.h
+        src/extended/AssetLoaderExtended.cpp
         src/extended/AssetLoaderExtended.h
+        src/extended/ResourceLoaderExtended.cpp
+        src/extended/ResourceLoaderExtended.h
         src/extended/TangentsJobExtended.cpp
         src/extended/TangentsJobExtended.h
         src/extended/TangentSpaceMeshWrapper.cpp
@@ -144,6 +147,9 @@ build_ubershader(volume_opaque             volume          lit opaque)
 build_ubershader(volume_fade               volume          lit fade)
 build_ubershader(volume_masked             volume          lit masked)
 build_ubershader(sheen                     sheen           _ _)
+build_ubershader(specular_opaque           specular        lit opaque)
+build_ubershader(specular_fade             specular        lit fade)
+build_ubershader(specular_masked           specular        lit masked)
 
 add_custom_target(uberz_file DEPENDS ${UBERZ_OUTPUT_PATH})
 set_target_properties(uberz_file PROPERTIES FOLDER Libs)
@@ -176,7 +182,7 @@ set_target_properties(uberarchive PROPERTIES FOLDER Libs)
 # ==================================================================================================
 
 include_directories(${PUBLIC_HDR_DIR} ${RESOURCE_DIR})
-link_libraries(math utils filament cgltf stb ktxreader geometry tsl trie uberzlib)
+link_libraries(math utils filament cgltf stb ktxreader geometry tsl uberzlib)
 
 add_library(gltfio_core STATIC ${PUBLIC_HDRS} ${SRCS})
 
@@ -191,6 +197,11 @@ if (WEBGL_PTHREADS)
 endif()
 
 set(GLTFIO_WARNINGS -Wall -Werror)
+if (CMAKE_CXX_STANDARD EQUAL 20)
+    # The following things used by AssetLoader.cpp are deprecated in c++20:
+    # wstring_convert and std::codecvt_utf8<char32_t>.
+    list(APPEND GLTFIO_WARNINGS -Wno-deprecated-declarations)
+endif()
 if (NOT MSVC)
     target_compile_options(gltfio_core PRIVATE ${GLTFIO_WARNINGS})
 endif()

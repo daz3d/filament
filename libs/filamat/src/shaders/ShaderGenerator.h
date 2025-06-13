@@ -20,16 +20,24 @@
 
 #include "MaterialInfo.h"
 
+#include "UibGenerator.h"
+
 #include <filament/MaterialEnums.h>
 
 #include <filamat/MaterialBuilder.h>
 
+#include <private/filament/EngineEnums.h>
 #include <private/filament/Variant.h>
+
+#include <backend/DriverEnums.h>
 
 #include <utils/CString.h>
 #include <utils/sstream.h>
 
-#include <algorithm>
+#include <string>
+
+#include <stdint.h>
+#include <stddef.h>
 
 namespace filamat {
 
@@ -43,26 +51,29 @@ public:
             MaterialBuilder::OutputList const& outputs,
             MaterialBuilder::PreprocessorDefineList const& defines,
             MaterialBuilder::ConstantList const& constants,
+            MaterialBuilder::ConstantList const& mutableConstants,
+            MaterialBuilder::PushConstantList const& pushConstants,
             utils::CString const& materialCode,
             size_t lineOffset,
             utils::CString const& materialVertexCode,
             size_t vertexLineOffset,
             MaterialBuilder::MaterialDomain materialDomain) noexcept;
 
-    std::string createVertexProgram(filament::backend::ShaderModel shaderModel,
+    std::string createSurfaceVertexProgram(filament::backend::ShaderModel shaderModel,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
             MaterialBuilder::FeatureLevel featureLevel,
             MaterialInfo const& material, filament::Variant variant,
             filament::Interpolation interpolation,
             filament::VertexDomain vertexDomain) const noexcept;
 
-    std::string createFragmentProgram(filament::backend::ShaderModel shaderModel,
+    std::string createSurfaceFragmentProgram(filament::backend::ShaderModel shaderModel,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
             MaterialBuilder::FeatureLevel featureLevel,
             MaterialInfo const& material, filament::Variant variant,
-            filament::Interpolation interpolation) const noexcept;
+            filament::Interpolation interpolation,
+            filament::UserVariantFilterMask variantFilter) const noexcept;
 
-    std::string createComputeProgram(filament::backend::ShaderModel shaderModel,
+    std::string createSurfaceComputeProgram(filament::backend::ShaderModel shaderModel,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
             MaterialBuilder::FeatureLevel featureLevel,
             MaterialInfo const& material) const noexcept;
@@ -94,9 +105,14 @@ private:
     static void generatePostProcessMaterialVariantDefines(utils::io::sstream& out,
             filament::PostProcessVariant variant) noexcept;
 
+    static void generateAllUserSpecConstants(const CodeGenerator& cg, utils::io::sstream& fs,
+            MaterialBuilder::ConstantList const& constants,
+            MaterialBuilder::ConstantList const& mutableConstants);
+
     static void generateUserSpecConstants(
             const CodeGenerator& cg, utils::io::sstream& fs,
-            MaterialBuilder::ConstantList const& constants);
+            MaterialBuilder::ConstantList const& constants,
+            size_t offset);
 
     std::string createPostProcessVertexProgram(filament::backend::ShaderModel sm,
             MaterialBuilder::TargetApi targetApi, MaterialBuilder::TargetLanguage targetLanguage,
@@ -125,6 +141,8 @@ private:
     MaterialBuilder::MaterialDomain mMaterialDomain;
     MaterialBuilder::PreprocessorDefineList mDefines;
     MaterialBuilder::ConstantList mConstants;
+    MaterialBuilder::ConstantList mMutableConstants;
+    MaterialBuilder::PushConstantList mPushConstants;
     utils::CString mMaterialFragmentCode;   // fragment or compute code
     utils::CString mMaterialVertexCode;
     size_t mMaterialLineOffset;

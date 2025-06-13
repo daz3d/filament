@@ -14,21 +14,20 @@
  * limitations under the License.
  */
 
-#ifndef TNT_FILAMENT_TYPEDUNIFORMBUFFER_H
-#define TNT_FILAMENT_TYPEDUNIFORMBUFFER_H
+#ifndef TNT_FILAMENT_TYPEDBUFFER_H
+#define TNT_FILAMENT_TYPEDBUFFER_H
 
-#include "private/backend/DriverApi.h"
-
-#include <utils/compiler.h>
+#include <private/backend/DriverApi.h>
 
 #include <backend/BufferDescriptor.h>
 
 #include <stddef.h>
+#include <string.h>
 
 namespace filament {
 
 template<typename T, size_t N = 1>
-class TypedUniformBuffer { // NOLINT(cppcoreguidelines-pro-type-member-init)
+class TypedBuffer { // NOLINT(cppcoreguidelines-pro-type-member-init)
 public:
 
     T& itemAt(size_t i) noexcept {
@@ -73,4 +72,4 @@ private:
 
 } // namespace filament
 
-#endif // TNT_FILAMENT_TYPEDUNIFORMBUFFER_H
+#endif // TNT_FILAMENT_TYPEDBUFFER_H

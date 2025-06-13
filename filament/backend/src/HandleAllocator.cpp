@@ -19,7 +19,8 @@
 #include <backend/Handle.h>
 
 #include <utils/Allocator.h>
-#include <utils/Log.h>
+#include <utils/CString.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
 #include <utils/compiler.h>
 #include <utils/debug.h>
@@ -29,7 +30,9 @@
 #include <exception>
 #include <limits>
 #include <mutex>
+#include <utility>
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -54,8 +57,8 @@ HandleAllocator<P0, P1, P2>::Allocator::Allocator(AreaPolicy::HeapArea const& ar
     size_t const maxHeapSize = std::min(area.size(), HANDLE_INDEX_MASK * getAlignment());
 
     if (UTILS_UNLIKELY(maxHeapSize != area.size())) {
-        slog.w << "HandleAllocator heap size reduced to "
-               << maxHeapSize << " from " << area.size() << io::endl;
+        LOG(WARNING) << "HandleAllocator heap size reduced to " << maxHeapSize << " from "
+                     << area.size();
     }
 
     // make sure we start with a clean arena. This is needed to ensure that all blocks start
@@ -77,9 +80,16 @@ HandleAllocator<P0, P1, P2>::Allocator::Allocator(AreaPolicy::HeapArea const& ar
 
 template <size_t P0, size_t P1, size_t P2>
 HandleAllocator<P0, P1, P2>::HandleAllocator(const char* name, size_t size,
-        bool disableUseAfterFreeCheck) noexcept
+        bool disableUseAfterFreeCheck,
+        bool disableHeapHandleTags) noexcept
     : mHandleArena(name, size, disableUseAfterFreeCheck),
-      mUseAfterFreeCheckDisabled(disableUseAfterFreeCheck) {
+      mUseAfterFreeCheckDisabled(disableUseAfterFreeCheck),
+      mHeapHandleTagsDisabled(disableHeapHandleTags) {
+}
+
+template <size_t P0, size_t P1, size_t P2>
+HandleAllocator<P0, P1, P2>::HandleAllocator(const char* name, size_t size) noexcept
+    : HandleAllocator(name, size, false, false) {
 }
 
 template <size_t P0, size_t P1, size_t P2>
@@ -113,9 +123,9 @@ HandleBase::HandleId HandleAllocator<P0, P1, P2>::allocateHandleSlow(size_t size
 
     HandleBase::HandleId id = (++mId) | HANDLE_HEAP_FLAG;
 
-    ASSERT_POSTCONDITION(mId < HANDLE_HEAP_FLAG,
+    FILAMENT_CHECK_POSTCONDITION(mId < HANDLE_HEAP_FLAG) <<
             "No more Handle ids available! This can happen if HandleAllocator arena has been full"
-            " for a while. Please increase FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB");
+            " for a while. Please increase FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB";
 
     mOverflowMap.emplace(id, p);
     lock.unlock();
@@ -144,6 +154,50 @@ void HandleAllocator<P0, P1, P2>::deallocateHandleSlow(HandleBase::HandleId id, 
     ::free(p);
 }
 
+template<size_t P0, size_t P1, size_t P2>
+UTILS_NOINLINE
+CString HandleAllocator<P0, P1, P2>::getHandleTag(HandleBase::HandleId id) const noexcept {
+    uint32_t key = id;
+    if (UTILS_LIKELY(isPoolHandle(id))) {
+        // Truncate the age to get the debug tag
+        key &= ~(HANDLE_DEBUG_TAG_MASK ^ HANDLE_AGE_MASK);
+    }
+    return findHandleTag(key);
+}
+
+DebugTag::DebugTag() {
+    // Reserve initial space for debug tags. This prevents excessive calls to malloc when the first
+    // few tags are set.
+    mDebugTags.reserve(512);
+}
+
+UTILS_NOINLINE
+CString DebugTag::findHandleTag(HandleBase::HandleId key) const noexcept {
+    std::unique_lock const lock(mDebugTagLock);
+    if (auto pos = mDebugTags.find(key); pos != mDebugTags.end()) {
+        return pos->second;
+    }
+    return "(no tag)";
+}
+
+UTILS_NOINLINE
+void DebugTag::writePoolHandleTag(HandleBase::HandleId key, CString&& tag) noexcept {
+    // This line is the costly part. In the future, we could potentially use a custom
+    // allocator.
+    std::unique_lock const lock(mDebugTagLock);
+    // Pool based tags will be recycled after a certain age.
+    mDebugTags[key] = std::move(tag);
+}
+
+UTILS_NOINLINE
+void DebugTag::writeHeapHandleTag(HandleBase::HandleId key, CString&& tag) noexcept {
+    // This line is the costly part. In the future, we could potentially use a custom
+    // allocator.
+    std::unique_lock const lock(mDebugTagLock);
+    // FIXME: Heap-based tag will never be recycled, therefore, this can grow indefinitely, once we're in the slow mode.
+    mDebugTags[key] = std::move(tag);
+}
+
 // Explicit template instantiations.
 #if defined (FILAMENT_SUPPORTS_OPENGL)
 template class HandleAllocatorGL;
@@ -155,6 +209,10 @@ template class HandleAllocatorVK;
 
 #if defined (FILAMENT_SUPPORTS_METAL)
 template class HandleAllocatorMTL;
+#endif
+
+#if defined (FILAMENT_SUPPORTS_WEBGPU)
+template class HandleAllocatorWGPU;
 #endif
 
 } // namespace filament::backend

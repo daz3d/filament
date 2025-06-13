@@ -19,9 +19,13 @@
 
 #include "DriverBase.h"
 
-#include "VulkanBuffer.h"
-#include "VulkanResources.h"
-#include "VulkanImageUtility.h"
+#include "VulkanCommands.h"
+#include "VulkanConstants.h"
+#include "VulkanMemory.h"
+#include "VulkanStagePool.h"
+#include "vulkan/memory/Resource.h"
+#include "vulkan/memory/ResourcePointer.h"
+#include "vulkan/utils/Image.h"
 
 #include <utils/Hash.h>
 #include <utils/RangeMap.h>
@@ -30,84 +34,15 @@
 
 namespace filament::backend {
 
-struct VulkanTexture : public HwTexture, VulkanResource {
-    // Standard constructor for user-facing textures.
-    VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice, VulkanContext const& context,
-            VmaAllocator allocator, VulkanCommands* commands, SamplerType target, uint8_t levels,
-            TextureFormat tformat, uint8_t samples, uint32_t w, uint32_t h, uint32_t depth,
-            TextureUsage tusage, VulkanStagePool& stagePool, bool heapAllocated = false,
-            VkComponentMapping swizzle = {});
+struct VulkanTexture;
 
-    // Specialized constructor for internally created textures (e.g. from a swap chain)
-    // The texture will never destroy the given VkImage, but it does manages its subresources.
-    VulkanTexture(VkDevice device, VmaAllocator allocator, VulkanCommands* commands, VkImage image,
-            VkFormat format, uint8_t samples, uint32_t width, uint32_t height, TextureUsage tusage,
-            VulkanStagePool& stagePool, bool heapAllocated = false);
+struct VulkanTextureState : public fvkmemory::Resource {
+    VulkanTextureState(VulkanStagePool& stagePool, VulkanCommands* commands, VmaAllocator allocator,
+            VkDevice device, VkImage image, VkDeviceMemory deviceMemory, VkFormat format,
+            VkImageViewType viewType, uint8_t levels, uint8_t layerCount,
+            VkSamplerYcbcrConversion ycbcrConversion, VkImageUsageFlags usage, bool isProtected);
 
-    ~VulkanTexture();
-
-    // Uploads data into a subregion of a 2D or 3D texture.
-    void updateImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
-            uint32_t depth, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset, uint32_t miplevel);
-
-    // Returns the primary image view, which is used for shader sampling.
-    VkImageView getPrimaryImageView() {
-        return getImageView(mPrimaryViewRange, mViewType, mSwizzle);
-    }
-
-    VkImageViewType getViewType() const { return mViewType; }
-
-    // Sets the min/max range of miplevels in the primary image view.
-    void setPrimaryRange(uint32_t minMiplevel, uint32_t maxMiplevel);
-
-    VkImageSubresourceRange getPrimaryViewRange() const { return mPrimaryViewRange; }
-
-    VkImageSubresourceRange getFullViewRange() const { return mFullViewRange; }
-
-    VulkanLayout getPrimaryImageLayout() const {
-        return getLayout(mPrimaryViewRange.baseArrayLayer, mPrimaryViewRange.baseMipLevel);
-    }
-
-    // Gets or creates a cached VkImageView for a single subresource that can be used as a render
-    // target attachment.  Unlike the primary image view, this always has type VK_IMAGE_VIEW_TYPE_2D
-    // and the identity swizzle.
-    VkImageView getAttachmentView(VkImageSubresourceRange range);
-
-    // This is a workaround for the first few frames where we're waiting for the texture to actually
-    // be uploaded.  In that case, we bind the sampler to an empty texture, but the corresponding
-    // imageView needs to be of the right type. Hence, we provide an option to indicate the
-    // view type. Swizzle option does not matter in this case.
-    VkImageView getViewForType(VkImageSubresourceRange const& range, VkImageViewType type);
-
-    VkFormat getVkFormat() const { return mVkFormat; }
-    VkImage getVkImage() const { return mTextureImage; }
-
-    VulkanLayout getLayout(uint32_t layer, uint32_t level) const;
-
-    void setSidecar(VulkanTexture* sidecar) {
-        mSidecarMSAA.reset(sidecar);
-    }
-
-    VulkanTexture* getSidecar() const {
-        return mSidecarMSAA.get();
-    }
-
-    void transitionLayout(VkCommandBuffer commands, const VkImageSubresourceRange& range,
-            VulkanLayout newLayout);
-
-    // Returns the preferred data plane of interest for all image views.
-    // For now this always returns either DEPTH or COLOR.
-    VkImageAspectFlags getImageAspect() const;
-
-    // For implicit transition like the end of a render pass, we need to be able to set the layout
-    // manually (outside of calls to transitionLayout).
-    void setLayout(const VkImageSubresourceRange& range, VulkanLayout newLayout);
-
-#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
-    void print() const;
-#endif
-
-private:
+    ~VulkanTextureState();
 
     struct ImageViewKey {
         VkImageSubresourceRange range;  // 4 * 5 bytes
@@ -128,8 +63,167 @@ private:
     // No implicit padding allowed due to it being a hash key.
     static_assert(sizeof(ImageViewKey) == 40);
 
-    using ImageViewHash = utils::hash::MurmurHashFn<ImageViewKey>;
+    VkImageView getImageView(VkImageSubresourceRange range, VkImageViewType viewType,
+            VkComponentMapping swizzle);
+private:
+    void clearCachedImageViews() noexcept;
+    VulkanStagePool& mStagePool;
+    VulkanCommands* const mCommands;
+    VmaAllocator const mAllocator;
+    VkDevice const mDevice;
 
+    // The texture with the sidecar owns the sidecar.
+    fvkmemory::resource_ptr<VulkanTexture> mSidecarMSAA;
+
+    VkImage const mTextureImage;
+    VkDeviceMemory const mTextureImageMemory;
+    VkFormat const mVkFormat;
+    VkImageViewType const mViewType;
+    VkImageSubresourceRange const mFullViewRange;
+
+    // Note that this parameter is not constant due to the fact that AHB can force a change in the
+    // conversion matrix per-frame.
+    struct Ycbcr {
+        VkSamplerYcbcrConversion conversion;
+
+        bool operator==(Ycbcr const& other) const {
+            return conversion == other.conversion;
+        }
+
+        bool operator!=(Ycbcr const& other) const {
+            return !((*this) == other);
+        }
+
+    } mYcbcr;
+
+    VulkanLayout const mDefaultLayout;
+    VkImageUsageFlags const mUsage;
+    bool const mIsProtected;
+
+    // Track the image layout of each subresource using a sparse range map.
+    utils::RangeMap<uint32_t, VulkanLayout> mSubresourceLayouts;
+    using ImageViewHash = utils::hash::MurmurHashFn<ImageViewKey>;
+    std::unordered_map<ImageViewKey, VkImageView, ImageViewHash> mCachedImageViews;
+
+    friend struct VulkanTexture;
+};
+
+struct VulkanTexture : public HwTexture, fvkmemory::Resource {
+    // Standard constructor for user-facing textures.
+    VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice, VulkanContext const& context,
+            VmaAllocator allocator, fvkmemory::ResourceManager* resourceManager,
+            VulkanCommands* commands, SamplerType target, uint8_t levels, TextureFormat tformat,
+            uint8_t samples, uint32_t w, uint32_t h, uint32_t depth, TextureUsage tusage,
+            VulkanStagePool& stagePool);
+
+    // Specialized constructor for internally created textures (e.g. from a swap chain)
+    VulkanTexture(VulkanContext const& context, VkDevice device, VmaAllocator allocator,
+            fvkmemory::ResourceManager* resourceManager, VulkanCommands* commands, VkImage image,
+            VkDeviceMemory memory, VkFormat format, VkSamplerYcbcrConversion conversion,
+            uint8_t samples, uint32_t width, uint32_t height, uint32_t depth,
+            TextureUsage tusage, VulkanStagePool& stagePool);
+
+    // Constructor for creating a texture view for wrt specific mip range
+    VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice, VulkanContext const& context,
+            VmaAllocator allocator, VulkanCommands* commands,
+            fvkmemory::resource_ptr<VulkanTexture> src, uint8_t baseLevel, uint8_t levelCount);
+
+    // Constructor for creating a texture view for swizzle.
+    VulkanTexture(VkDevice device, VkPhysicalDevice physicalDevice, VulkanContext const& context,
+            VmaAllocator allocator, VulkanCommands* commands,
+            fvkmemory::resource_ptr<VulkanTexture> src, VkComponentMapping swizzle);
+
+    ~VulkanTexture() = default;
+
+    // Uploads data into a subregion of a 2D or 3D texture.
+    void updateImage(const PixelBufferDescriptor& data, uint32_t width, uint32_t height,
+            uint32_t depth, uint32_t xoffset, uint32_t yoffset, uint32_t zoffset, uint32_t miplevel);
+
+    VkImageViewType getViewType() const {
+        return mState->mViewType;
+    }
+
+    VkImageSubresourceRange const& getPrimaryViewRange() const { return mPrimaryViewRange; }
+
+    VulkanLayout getSamplerLayout() const {
+        if (!isSampleable()) {
+            return VulkanLayout::UNDEFINED;
+        }
+        if (mState->mUsage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            return VulkanLayout::DEPTH_SAMPLER;
+        }
+        return VulkanLayout::FRAG_READ;
+    }
+
+    // Returns the layout for the intended use of this texture (and not the expected layout at the
+    // time of the call.
+    VulkanLayout getDefaultLayout() const;
+
+    // Gets or creates a cached VkImageView for a subresource that can be used as a render
+    // target attachment.  Unlike the primary image view, this always the identity swizzle.
+    VkImageView getAttachmentView(VkImageSubresourceRange const& range, VkImageViewType type);
+
+    VkImageView getView(VkImageSubresourceRange const& range);
+
+    VkFormat getVkFormat() const {
+        return mState->mVkFormat;
+    }
+    VkImage getVkImage() const {
+        return mState->mTextureImage;
+    }
+
+    VulkanLayout getLayout(uint32_t layer, uint32_t level) const;
+
+    void setSidecar(fvkmemory::resource_ptr<VulkanTexture> sidecar) {
+        mState->mSidecarMSAA = sidecar;
+    }
+
+    fvkmemory::resource_ptr<VulkanTexture> getSidecar() const {
+        return mState->mSidecarMSAA;
+    }
+
+    bool isTransientAttachment() const {
+        return mState->mUsage & VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+    }
+
+    bool isSampleable() const {
+        return mState->mUsage & VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
+
+    bool getIsProtected() const {
+        return mState->mIsProtected;
+    }
+
+    bool transitionLayout(VulkanCommandBuffer* commands, VkImageSubresourceRange const& range,
+            VulkanLayout newLayout);
+
+    bool transitionLayout(VkCommandBuffer cmdbuf, VkImageSubresourceRange const& range,
+            VulkanLayout newLayout);
+
+    void attachmentToSamplerBarrier(VulkanCommandBuffer* commands,
+            VkImageSubresourceRange const& range);
+
+    void samplerToAttachmentBarrier(VulkanCommandBuffer* commands,
+            VkImageSubresourceRange const& range);
+
+    // Returns the preferred data plane of interest for all image views.
+    // For now this always returns either DEPTH or COLOR.
+    VkImageAspectFlags getImageAspect() const;
+
+    // For implicit transition like the end of a render pass, we need to be able to set the layout
+    // manually (outside of calls to transitionLayout).
+    void setLayout(VkImageSubresourceRange const& range, VulkanLayout newLayout);
+
+    // This is used in the case of external images and external samplers. AHB might update the
+    // conversion per-frame. This implies that we need to invalidate the view cache when that
+    // happens.
+    void setYcbcrConversion(VkSamplerYcbcrConversion conversion);
+
+#if FVK_ENABLED(FVK_DEBUG_TEXTURE)
+    void print() const;
+#endif
+
+private:
     // Gets or creates a cached VkImageView for a range of miplevels, array layers, viewType, and
     // swizzle (or not).
     VkImageView getImageView(VkImageSubresourceRange range, VkImageViewType viewType,
@@ -138,28 +232,13 @@ private:
     void updateImageWithBlit(const PixelBufferDescriptor& hostData, uint32_t width, uint32_t height,
             uint32_t depth, uint32_t miplevel);
 
-    // The texture with the sidecar owns the sidecar.
-    std::unique_ptr<VulkanTexture> mSidecarMSAA;
-    const VkFormat mVkFormat;
-    const VkImageViewType mViewType;
-    const VkComponentMapping mSwizzle;
-    VkImage mTextureImage = VK_NULL_HANDLE;
-    VkDeviceMemory mTextureImageMemory = VK_NULL_HANDLE;
-
-    // Track the image layout of each subresource using a sparse range map.
-    utils::RangeMap<uint32_t, VulkanLayout> mSubresourceLayouts;
-
-    VkImageSubresourceRange mFullViewRange;
+    fvkmemory::resource_ptr<VulkanTextureState> mState;
 
     // Track the range of subresources that define the "primary" image view, which is the special
     // image view that gets bound to an actual texture sampler.
     VkImageSubresourceRange mPrimaryViewRange;
 
-    std::unordered_map<ImageViewKey, VkImageView, ImageViewHash> mCachedImageViews;
-    VulkanStagePool& mStagePool;
-    VkDevice mDevice;
-    VmaAllocator mAllocator;
-    VulkanCommands* mCommands;
+    VkComponentMapping mSwizzle {};
 };
 
 } // namespace filament::backend

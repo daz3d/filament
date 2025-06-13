@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "common/arguments.h"
+
 #include <filament/Engine.h>
 #include <filament/LightManager.h>
 #include <filament/Material.h>
@@ -29,6 +31,11 @@
 #include <filamentapp/Config.h>
 #include <filamentapp/FilamentApp.h>
 
+#include <getopt/getopt.h>
+
+#include <iostream>
+#include <string>// for printing usage/help
+
 #include "generated/resources/resources.h"
 #include "generated/resources/monkey.h"
 
@@ -39,6 +46,7 @@ using namespace filament::math;
 using Backend = Engine::Backend;
 
 struct App {
+    Config config;
     utils::Entity light;
     Material* material;
     MaterialInstance* materialInstance;
@@ -48,13 +56,59 @@ struct App {
 
 static const char* IBL_FOLDER = "assets/ibl/lightroom_14b";
 
-int main(int argc, char** argv) {
-    Config config;
-    config.title = "hellopbr";
-    config.iblDirectory = FilamentApp::getRootAssetsPath() + IBL_FOLDER;
+static void printUsage(char* name) {
+    std::string exec_name(utils::Path(name).getName());
+    std::string usage(
+            "EXEC renders a simple PBR example\n"
+            "Usage:\n"
+            "    EXEC [options]\n"
+            "Options:\n"
+            "   --help, -h\n"
+            "       Prints this message\n\n"
+            "API_USAGE"
+    );
+    const std::string from("EXEC");
+    for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
+        usage.replace(pos, from.length(), exec_name);
+    }
+    const std::string apiUsage("API_USAGE");
+    for (size_t pos = usage.find(apiUsage); pos != std::string::npos; pos = usage.find(apiUsage, pos)) {
+        usage.replace(pos, apiUsage.length(), samples::getBackendAPIArgumentsUsage());
+    }
+    std::cout << usage;
+}
 
+static int handleCommandLineArguments(int argc, char* argv[], App* app) {
+    static constexpr const char* OPTSTR = "ha:";
+    static const struct option OPTIONS[] = {
+            { "help", no_argument,       nullptr, 'h' },
+            { "api",  required_argument, nullptr, 'a' },
+            { nullptr, 0,                nullptr, 0 }
+    };
+    int opt;
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, OPTSTR, OPTIONS, &option_index)) >= 0) {
+        std::string arg(optarg ? optarg : "");
+        switch (opt) {
+            default:
+            case 'h':
+                printUsage(argv[0]);
+                exit(0);
+            case 'a':
+                app->config.backend = samples::parseArgumentsForBackend(arg);
+                break;
+        }
+    }
+    return optind;
+}
+
+int main(int argc, char** argv) {
     App app;
-    auto setup = [config, &app](Engine* engine, View* view, Scene* scene) {
+    app.config.title = "hellopbr";
+    app.config.iblDirectory = FilamentApp::getRootAssetsPath() + IBL_FOLDER;
+    handleCommandLineArguments(argc, argv, &app);
+
+    auto setup = [config=app.config, &app](Engine* engine, View* view, Scene* scene) {
         auto& tcm = engine->getTransformManager();
         auto& rcm = engine->getRenderableManager();
         auto& em = utils::EntityManager::get();
@@ -89,8 +143,8 @@ int main(int argc, char** argv) {
 
     auto cleanup = [&app](Engine* engine, View*, Scene*) {
         engine->destroy(app.light);
-        engine->destroy(app.materialInstance);
         engine->destroy(app.mesh.renderable);
+        engine->destroy(app.materialInstance);
         engine->destroy(app.material);
     };
 
@@ -100,7 +154,7 @@ int main(int argc, char** argv) {
         tcm.setTransform(ti, app.transform * mat4f::rotation(now, float3{ 0, 1, 0 }));
     });
 
-    FilamentApp::get().run(config, setup, cleanup);
+    FilamentApp::get().run(app.config, setup, cleanup);
 
     return 0;
 }

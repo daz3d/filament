@@ -43,19 +43,6 @@ namespace {
 auto const& kSuccessHeader = DebugServer::kSuccessHeader;
 auto const& kErrorHeader = DebugServer::kErrorHeader;
 
-void spirvToAsm(struct mg_connection* conn, uint32_t const* spirv, size_t size) {
-    auto spirvDisassembly = ShaderExtractor::spirvToText(spirv, size / 4);
-    mg_printf(conn, kSuccessHeader.data(), "application/txt");
-    mg_write(conn, spirvDisassembly.c_str(), spirvDisassembly.size());
-}
-
-void spirvToGlsl(ShaderModel shaderModel, struct mg_connection* conn, uint32_t const* spirv,
-        size_t size) {
-    auto glsl = ShaderExtractor::spirvToGLSL(shaderModel, spirv, size / 4);
-    mg_printf(conn, kSuccessHeader.data(), "application/txt");
-    mg_printf(conn, glsl.c_str(), glsl.size());
-}
-
 } // anonymous
 
 using filaflat::ChunkContainer;
@@ -63,7 +50,7 @@ using filamat::ChunkType;
 using utils::FixedCapacityVector;
 
 static auto const error = [](int line, std::string const& uri) {
-    utils::slog.e << "DebugServer: 404 at line " << line << ": " << uri << utils::io::endl;
+    utils::slog.e << "[matdbg] DebugServer: 404 at line " << line << ": " << uri << utils::io::endl;
     return false;
 };
 
@@ -80,7 +67,7 @@ MaterialRecord const* ApiHandler::getMaterialRecord(struct mg_request_info const
 bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
         struct mg_request_info const* request) {
     auto const softError = [conn, request](char const* msg) {
-        utils::slog.e << "DebugServer: " << msg << ": " << request->query_string << utils::io::endl;
+        utils::slog.e << "[matdbg] DebugServer: " << msg << ": " << request->query_string << utils::io::endl;
         mg_printf(conn, kErrorHeader.data(), "application/txt");
         mg_write(conn, msg, strlen(msg));
         return true;
@@ -99,8 +86,11 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
     }
 
     std::string_view const glsl("glsl");
+    std::string_view const essl3("essl3");
+    std::string_view const essl1("essl1");
     std::string_view const msl("msl");
     std::string_view const spirv("spirv");
+    std::string_view const wgsl("wgsl");
     size_t const qlength = strlen(request->query_string);
 
     char type[6] = {};
@@ -113,21 +103,31 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
     char glindex[4] = {};
     char vkindex[4] = {};
     char metalindex[4] = {};
+    char wgpuindex[4] = {};
     mg_get_var(request->query_string, qlength, "glindex", glindex, sizeof(glindex));
     mg_get_var(request->query_string, qlength, "vkindex", vkindex, sizeof(vkindex));
     mg_get_var(request->query_string, qlength, "metalindex", metalindex, sizeof(metalindex));
+    mg_get_var(request->query_string, qlength, "wgpuindex", wgpuindex, sizeof(wgpuindex));
 
-    if (!glindex[0] && !vkindex[0] && !metalindex[0]) {
+    if (!glindex[0] && !vkindex[0] && !metalindex[0] && !wgpuindex[0]) {
         return error(__LINE__, uri);
     }
 
     if (glindex[0]) {
-        if (language != glsl) {
-            return softError("Only GLSL is supported.");
+        ChunkType chunkType;
+        ShaderLanguage shaderLanguage;
+        if (language == essl3) {
+            chunkType = ChunkType::MaterialGlsl;
+            shaderLanguage = ShaderLanguage::ESSL3;
+        } else if (language == essl1) {
+            chunkType = ChunkType::MaterialEssl1;
+            shaderLanguage = ShaderLanguage::ESSL1;
+        } else {
+            return softError("Only essl3 and essl1 are supported.");
         }
 
-        FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialGlsl));
-        if (!getShaderInfo(package, info.data(), ChunkType::MaterialGlsl)) {
+        FixedCapacityVector<ShaderInfo> info(getShaderCount(package, chunkType));
+        if (!getShaderInfo(package, info.data(), chunkType)) {
             return error(__LINE__, uri);
         }
 
@@ -136,7 +136,7 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
             return error(__LINE__, uri);
         }
 
-        ShaderExtractor extractor(ShaderLanguage::ESSL3, result->package, result->packageSize);
+        ShaderExtractor extractor(shaderLanguage, result->package, result->packageSize);
         if (!extractor.parse()) {
             return error(__LINE__, uri);
         }
@@ -145,8 +145,10 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
         filaflat::ShaderContent content;
         extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
+        std::string const shader = mFormatter.format((char const*) content.data());
         mg_printf(conn, kSuccessHeader.data(), "application/txt");
-        mg_write(conn, content.data(), content.size() - 1);
+        mg_write(conn, shader.c_str(), shader.size());
+
         return true;
     }
 
@@ -171,12 +173,19 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
         extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
         if (language == spirv) {
-            spirvToAsm(conn, (uint32_t const*) content.data(), content.size());
+            auto spirvDisassembly = ShaderExtractor::spirvToText((uint32_t const*) content.data(),
+                    content.size() / 4);
+            mg_printf(conn, kSuccessHeader.data(), "application/txt");
+            mg_write(conn, spirvDisassembly.c_str(), spirvDisassembly.size());
             return true;
         }
 
         if (language == glsl) {
-            spirvToGlsl(item.shaderModel, conn, (uint32_t const*) content.data(), content.size());
+            auto glsl = ShaderExtractor::spirvToGLSL(item.shaderModel,
+                    (uint32_t const*) content.data(), content.size() / 4);
+            std::string const shader = mFormatter.format((char const*) glsl.c_str());
+            mg_printf(conn, kSuccessHeader.data(), "application/txt");
+            mg_printf(conn, shader.c_str(), shader.size());
             return true;
         }
 
@@ -204,19 +213,56 @@ bool ApiHandler::handleGetApiShader(struct mg_connection* conn,
         extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
 
         if (language == msl) {
+            std::string const shader = mFormatter.format((char const*) content.data());
             mg_printf(conn, kSuccessHeader.data(), "application/txt");
-            mg_write(conn, content.data(), content.size() - 1);
+            mg_write(conn, shader.c_str(), shader.size());
             return true;
         }
 
         return softError("Only MSL is supported.");
     }
+
+    if (wgpuindex[0]) {
+        ShaderExtractor extractor(ShaderLanguage::WGSL, result->package, result->packageSize);
+        if (!extractor.parse()) {
+            return error(__LINE__, uri);
+        }
+
+        FixedCapacityVector<ShaderInfo> info(getShaderCount(package, ChunkType::MaterialWgsl));
+        if (!getShaderInfo(package, info.data(), ChunkType::MaterialWgsl)) {
+            return error(__LINE__, uri);
+        }
+
+        int const shaderIndex = std::stoi(wgpuindex);
+        if (shaderIndex >= info.size()) {
+            return error(__LINE__, uri);
+        }
+
+        auto const& item = info[shaderIndex];
+        filaflat::ShaderContent content;
+        extractor.getShader(item.shaderModel, item.variant, item.pipelineStage, content);
+
+        if (language == wgsl) {
+            std::string const shader = mFormatter.format((char const*) content.data());
+            mg_printf(conn, kSuccessHeader.data(), "application/txt");
+            mg_write(conn, shader.c_str(), shader.size());
+            return true;
+        }
+
+        return softError("Only WGSL is supported.");
+    }
+
     return error(__LINE__, uri);
 }
 
 void ApiHandler::addMaterial(MaterialRecord const* material) {
+    updateMaterial(material->key);
+}
+
+void ApiHandler::updateMaterial(uint32_t key) {
     std::unique_lock const lock(mStatusMutex);
-    snprintf(statusMaterialId, sizeof(statusMaterialId), "%8.8x", material->key);
+    mCurrentStatus++;
+    snprintf(statusMaterialId, sizeof(statusMaterialId), "%8.8x", key);
     mStatusCondition.notify_all();
 }
 
@@ -266,7 +312,7 @@ bool ApiHandler::handlePost(CivetServer* server, struct mg_connection* conn) {
         while (readLen < msgLen) {
             int const res = mg_read(conn, buf, sizeof(buf));
             if (res < 0) {
-                utils::slog.e << "civet error parsing /api/edit body: " << res << utils::io::endl;
+                utils::slog.e << "[matdbg] civet error parsing /api/edit body: " << res << utils::io::endl;
                 break;
             }
             if (res == 0) {
@@ -281,8 +327,11 @@ bool ApiHandler::handlePost(CivetServer* server, struct mg_connection* conn) {
         sstream >> std::hex >> matid >> std::dec >> api >> shaderIndex;
         std::string const shader = sstream.str().substr(sstream.tellg());
 
-        mServer->handleEditCommand(matid, backend::Backend(api), shaderIndex, shader.c_str(),
-                shader.size());
+        if (!mServer->handleEditCommand(matid, backend::Backend(api), shaderIndex, shader.c_str(),
+                shader.size())) {
+            return error(__LINE__, uri);
+        }
+        updateMaterial(matid);
 
         mg_printf(conn, "HTTP/1.1 200 OK\r\nConnection: close");
         return true;
@@ -317,11 +366,12 @@ bool ApiHandler::handleGet(CivetServer* server, struct mg_connection* conn) {
                 return error(__LINE__, uri);
             }
             JsonWriter writer;
-            if (!writer.writeActiveInfo(package, mServer->mBackend, record.activeVariants)) {
+            if (!writer.writeActiveInfo(package, mServer->mShaderLanguage,
+                        mServer->mPreferredShaderModel, record.activeVariants)) {
                 return error(__LINE__, uri);
             }
             bool const last = (++index) == mServer->mMaterialRecords.size();
-            mg_printf(conn, "\"%8.8x\": %s %s", pair.first, writer.getJsonString(),
+            mg_printf(conn, "\"%8.8x\": %s%s", pair.first, writer.getJsonString(),
                     last ? "" : ",");
         }
         mg_printf(conn, "}");
@@ -341,6 +391,18 @@ bool ApiHandler::handleGet(CivetServer* server, struct mg_connection* conn) {
         return true;
     }
 
+    auto writeMaterialRecord = [&](JsonWriter* writer, MaterialRecord const* record) {
+        ChunkContainer package(record->package, record->packageSize);
+        if (!package.parse()) {
+            return error(__LINE__, uri);
+        }
+
+        if (!writer->writeMaterialInfo(package)) {
+            return error(__LINE__, uri);
+        }
+        return true;
+    };
+
     if (uri == "/api/materials") {
         std::unique_lock const lock(mServer->mMaterialRecordsMutex);
         mg_printf(conn, kSuccessHeader.data(), "application/json");
@@ -348,17 +410,11 @@ bool ApiHandler::handleGet(CivetServer* server, struct mg_connection* conn) {
         int index = 0;
         for (auto const& record: mServer->mMaterialRecords) {
             bool const last = (++index) == mServer->mMaterialRecords.size();
-
-            ChunkContainer package(record.second.package, record.second.packageSize);
-            if (!package.parse()) {
-                return error(__LINE__, uri);
-            }
-
+            auto const& mat = record.second;
             JsonWriter writer;
-            if (!writer.writeMaterialInfo(package)) {
-                return error(__LINE__, uri);
+            if (!writeMaterialRecord(&writer, &mat)) {
+                return false;
             }
-
             mg_printf(conn, "{ \"matid\": \"%8.8x\", %s } %s", record.first, writer.getJsonString(),
                     last ? "" : ",");
         }
@@ -371,15 +427,9 @@ bool ApiHandler::handleGet(CivetServer* server, struct mg_connection* conn) {
         if (!result) {
             return error(__LINE__, uri);
         }
-
-        ChunkContainer package(result->package, result->packageSize);
-        if (!package.parse()) {
-            return error(__LINE__, uri);
-        }
-
         JsonWriter writer;
-        if (!writer.writeMaterialInfo(package)) {
-            return error(__LINE__, uri);
+        if (!writeMaterialRecord(&writer, result)) {
+            return false;
         }
         mg_printf(conn, kSuccessHeader.data(), "application/json");
         mg_printf(conn, "{ %s }", writer.getJsonString());

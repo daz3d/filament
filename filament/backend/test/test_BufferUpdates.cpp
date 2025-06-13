@@ -16,70 +16,42 @@
 
 #include "BackendTest.h"
 
-#include "ShaderGenerator.h"
+#include "ImageExpectations.h"
+#include "Lifetimes.h"
+#include "Shader.h"
+#include "SharedShaders.h"
+#include "Skip.h"
 #include "TrianglePrimitive.h"
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Shaders
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-std::string vertex (R"(#version 450 core
-
-layout(location = 0) in vec4 mesh_position;
-
-layout(location = 0) out uvec4 indices;
-
-uniform Params {
-    highp vec4 padding[4];  // offset of 64 bytes
-
-    highp vec4 color;
-    highp vec4 offset;
-} params;
-
-void main() {
-    gl_Position = vec4(mesh_position.xy + params.offset.xy, 0.0, 1.0);
-#if defined(TARGET_VULKAN_ENVIRONMENT)
-    // In Vulkan, clip space is Y-down. In OpenGL and Metal, clip space is Y-up.
-    gl_Position.y = -gl_Position.y;
-#endif
-}
-)");
-
-std::string fragment (R"(#version 450 core
-
-layout(location = 0) out vec4 fragColor;
-
-uniform Params {
-    highp vec4 padding[4];  // offset of 64 bytes
-
-    highp vec4 color;
-    highp vec4 offset;
-} params;
-
-void main() {
-    fragColor = vec4(params.color.rgb, 1.0f);
-}
-
-)");
-
-}
 
 namespace test {
 
 using namespace filament;
 using namespace filament::backend;
 
-// In the shader, these MaterialParams are offset by 64 bytes into the uniform buffer to test buffer
-// updates with offset.
-struct MaterialParams {
-    math::float4 color;
-    math::float4 offset;
+// Uniform config for writing MaterialParams to the shader uniform with 64 bytes of padding.
+const UniformBindingConfig kBindingConfig = {
+        .dataSize = sizeof(SimpleMaterialParams),
+        .bufferSize = sizeof(SimpleMaterialParams) + 64,
+        .byteOffset = 64
 };
-static_assert(sizeof(MaterialParams) == 8 * sizeof(float));
 
-TEST_F(BackendTest, VertexBufferUpdate) {
+class BufferUpdatesTest : public BackendTest {
+public:
+    BufferUpdatesTest() : mCleanup(getDriverApi()) {}
+
+protected:
+    Shader createShader() {
+        return SharedShaders::makeShader(getDriverApi(), mCleanup, ShaderRequest{
+                .mVertexType = VertexShaderType::Simple,
+                .mFragmentType = FragmentShaderType::SolidColored,
+                .mUniformType = ShaderUniformType::SimpleWithPadding
+        });
+    }
+
+    Cleanup mCleanup;
+};
+
+TEST_F(BufferUpdatesTest, VertexBufferUpdate) {
     const bool largeBuffers = false;
 
     // If updateIndices is true, then even-numbered triangles will have their indices set to
@@ -89,79 +61,67 @@ TEST_F(BackendTest, VertexBufferUpdate) {
     // The test is executed within this block scope to force destructors to run before
     // executeCommands().
     {
+        auto& api = getDriverApi();
+        Cleanup cleanup(api);
+
         // Create a platform-specific SwapChain and make it current.
-        auto swapChain = createSwapChain();
-        getDriverApi().makeCurrent(swapChain, swapChain);
+        auto swapChain = cleanup.add(createSwapChain());
+        api.makeCurrent(swapChain, swapChain);
 
-        // Create a program.
-        ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform);
-        Program p = shaderGen.getProgram(getDriverApi());
-        auto program = getDriverApi().createProgram(std::move(p));
+        Shader shader = createShader();
 
-        auto defaultRenderTarget = getDriverApi().createDefaultRenderTarget(0);
+        auto defaultRenderTarget = cleanup.add(api.createDefaultRenderTarget(0));
 
         // To test large buffers (which exercise a different code path) create an extra large
         // buffer. Only the first 3 vertices will be used.
-        TrianglePrimitive triangle(getDriverApi(), largeBuffers);
+        TrianglePrimitive triangle(api, largeBuffers);
 
-        RenderPassParams params = {};
-        fullViewport(params);
-        params.flags.clear = TargetBufferFlags::COLOR;
-        params.clearColor = {0.f, 1.f, 0.f, 1.f};
-        params.flags.discardStart = TargetBufferFlags::ALL;
-        params.flags.discardEnd = TargetBufferFlags::NONE;
+        PipelineState state = getColorWritePipelineState();
+        shader.addProgramToPipelineState(state);
 
-        PipelineState state;
-        state.program = program;
-        state.rasterState.colorWrite = true;
-        state.rasterState.depthWrite = false;
-        state.rasterState.depthFunc = RasterState::DepthFunc::A;
-        state.rasterState.culling = CullingMode::NONE;
+        RenderPassParams params = getClearColorRenderPass();
+        params.viewport = getFullViewport();
 
         // Create a uniform buffer.
-        // We use STATIC here, even though the buffer is updated, to force the Metal backend to use a
-        // GPU buffer, which is more interesting to test.
-        auto ubuffer = getDriverApi().createBufferObject(sizeof(MaterialParams) + 64,
-                BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
-        getDriverApi().bindUniformBuffer(0, ubuffer);
+        // We use STATIC here, even though the buffer is updated, to force the Metal backend to use
+        // a GPU buffer, which is more interesting to test.
+        auto ubuffer = cleanup.add(api.createBufferObject(sizeof(SimpleMaterialParams) + 64,
+                BufferObjectBinding::UNIFORM, BufferUsage::STATIC));
 
-        getDriverApi().startCapture(0);
+        shader.bindUniform<SimpleMaterialParams>(api, ubuffer, kBindingConfig);
 
-        // Upload uniforms.
-        {
-            MaterialParams params {
-                    .color = { 1.0f, 1.0f, 1.0f, 1.0f },
-                    .offset = { 0.0f, 0.0f, 0.0f, 0.0f }
-            };
-            auto* tmp = new MaterialParams(params);
-            auto cb = [](void* buffer, size_t size, void* user) {
-                auto* sp = (MaterialParams*) buffer;
-                delete sp;
-            };
-            BufferDescriptor bd(tmp, sizeof(MaterialParams), cb);
-            getDriverApi().updateBufferObject(ubuffer, std::move(bd), 64);
-        }
+        api.startCapture(0);
 
-        getDriverApi().makeCurrent(swapChain, swapChain);
-        getDriverApi().beginFrame(0, 0);
+        // Upload the uniform, but with an offset to accommodate the padding in the shader's
+        // uniform definition.
+        shader.uploadUniform(api, ubuffer, kBindingConfig, SimpleMaterialParams{
+                .color = { 1.0f, 1.0f, 1.0f, 1.0f },
+                .scaleMinusOne = { 0.0, 0.0, 0.0, 0.0 },
+                .offset = { 0.0f, 0.0f, 0.0f, 0.0f }
+        });
+
+        api.makeCurrent(swapChain, swapChain);
+        api.beginFrame(0, 0, 0);
 
         // Draw 10 triangles, updating the vertex buffer / index buffer each time.
         size_t triangleIndex = 0;
         for (float i = -1.0f; i < 1.0f; i += 0.2f) {
             const float low = i, high = i + 0.2;
-            const filament::math::float2 v[3] {{low, low}, {high, low}, {low, high}};
+            const filament::math::float2 v[3]{{ low,  low },
+                                              { high, low },
+                                              { low,  high }};
             triangle.updateVertices(v);
 
             if (updateIndices) {
                 if (triangleIndex % 2 == 0) {
                     // Upload each index separately, to test offsets.
-                    const TrianglePrimitive::index_type i[3] {0, 1, 2};
+                    const TrianglePrimitive::index_type i[3]{ 0, 1, 2 };
                     triangle.updateIndices(i + 0, 1, 0);
                     triangle.updateIndices(i + 1, 1, 1);
                     triangle.updateIndices(i + 2, 1, 2);
                 } else {
                     // This effectively hides this triangle.
-                    const TrianglePrimitive::index_type i[3] {0, 0, 0};
+                    const TrianglePrimitive::index_type i[3]{ 0, 0, 0 };
                     triangle.updateIndices(i);
                 }
             }
@@ -171,22 +131,22 @@ TEST_F(BackendTest, VertexBufferUpdate) {
                 params.flags.discardStart = TargetBufferFlags::NONE;
             }
 
-            getDriverApi().beginRenderPass(defaultRenderTarget, params);
-            getDriverApi().draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
-            getDriverApi().endRenderPass();
+            api.beginRenderPass(defaultRenderTarget, params);
+            state.primitiveType = PrimitiveType::TRIANGLES;
+            state.vertexBufferInfo = triangle.getVertexBufferInfo();
+            api.bindPipeline(state);
+            api.bindRenderPrimitive(triangle.getRenderPrimitive());
+            api.draw2(0, 3, 1);
+            api.endRenderPass();
 
             triangleIndex++;
         }
 
-        getDriverApi().flush();
-        getDriverApi().commit(swapChain);
-        getDriverApi().endFrame(0);
+        api.flush();
+        api.commit(swapChain);
+        api.endFrame(0);
 
-        getDriverApi().stopCapture(0);
-
-        getDriverApi().destroyProgram(program);
-        getDriverApi().destroySwapChain(swapChain);
-        getDriverApi().destroyRenderTarget(defaultRenderTarget);
+        api.stopCapture(0);
     }
 
     executeCommands();
@@ -194,90 +154,99 @@ TEST_F(BackendTest, VertexBufferUpdate) {
 
 // This test renders two triangles in two separate draw calls. Between the draw calls, a uniform
 // buffer object is partially updated.
-TEST_F(BackendTest, BufferObjectUpdateWithOffset) {
+TEST_F(BufferUpdatesTest, BufferObjectUpdateWithOffset) {
+    NONFATAL_FAIL_IF(SkipEnvironment(OperatingSystem::APPLE, Backend::VULKAN),
+            "All values including alpha are written as 0, see b/417254943");
+
+    auto& api = getDriverApi();
+    Cleanup cleanup(api);
+
+    const TrianglePrimitive triangle(api);
+
     // Create a platform-specific SwapChain and make it current.
-    auto swapChain = createSwapChain();
-    getDriverApi().makeCurrent(swapChain, swapChain);
+    auto swapChain = cleanup.add(createSwapChain());
+    api.makeCurrent(swapChain, swapChain);
 
     // Create a program.
-    ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform);
-    Program p = shaderGen.getProgram(getDriverApi());
-    p.uniformBlockBindings({{"params", 1}});
-    auto program = getDriverApi().createProgram(std::move(p));
+    Shader shader = createShader();
 
     // Create a uniform buffer.
     // We use STATIC here, even though the buffer is updated, to force the Metal backend to use a
     // GPU buffer, which is more interesting to test.
-    auto ubuffer = getDriverApi().createBufferObject(sizeof(MaterialParams) + 64,
-            BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
-    getDriverApi().bindUniformBuffer(0, ubuffer);
+    auto ubuffer = cleanup.add(api.createBufferObject(sizeof(SimpleMaterialParams) + 64,
+            BufferObjectBinding::UNIFORM, BufferUsage::STATIC));
+
+    shader.bindUniform<SimpleMaterialParams>(api, ubuffer, kBindingConfig);
 
     // Create a render target.
-    auto colorTexture = getDriverApi().createTexture(SamplerType::SAMPLER_2D, 1,
-            TextureFormat::RGBA8, 1, 512, 512, 1, TextureUsage::COLOR_ATTACHMENT);
-    auto renderTarget = getDriverApi().createRenderTarget(
-            TargetBufferFlags::COLOR0, 512, 512, 1, 0, {{colorTexture}}, {}, {});
+    auto colorTexture =
+            cleanup.add(api.createTexture(SamplerType::SAMPLER_2D, 1, TextureFormat::RGBA8, 1,
+                    screenWidth(), screenHeight(), 1, TextureUsage::COLOR_ATTACHMENT));
+    auto renderTarget = cleanup.add(api.createRenderTarget(TargetBufferFlags::COLOR0, screenWidth(),
+            screenHeight(), 1, 0, { { colorTexture } }, {}, {}));
 
     // Upload uniforms for the first triangle.
-    {
-        MaterialParams params {
+    // Upload the uniform, but with an offset to accommodate the padding in the shader's
+    // uniform definition.
+    shader.uploadUniform(api, ubuffer, kBindingConfig, SimpleMaterialParams{
             .color = { 1.0f, 0.0f, 0.5f, 1.0f },
+            .scaleMinusOne = { 0.0f, 0.0f, 0.0f, 0.0f },
             .offset = { 0.0f, 0.0f, 0.0f, 0.0f }
-        };
-        auto* tmp = new MaterialParams(params);
-        auto cb = [](void* buffer, size_t size, void* user) {
-            auto* sp = (MaterialParams*) buffer;
-            delete sp;
-        };
-        BufferDescriptor bd(tmp, sizeof(MaterialParams), cb);
-        getDriverApi().updateBufferObject(ubuffer, std::move(bd), 64);
-    }
+    });
 
-    RenderPassParams params = {};
-    params.flags.clear = TargetBufferFlags::COLOR;
-    params.clearColor = {0.f, 0.f, 1.f, 1.f};
-    params.flags.discardStart = TargetBufferFlags::ALL;
-    params.flags.discardEnd = TargetBufferFlags::NONE;
-    params.viewport.height = 512;
-    params.viewport.width = 512;
-    renderTriangle(renderTarget, swapChain, program, params);
+    PipelineState state = getColorWritePipelineState();
+    shader.addProgramToPipelineState(state);
+    state.primitiveType = PrimitiveType::TRIANGLES;
+    state.vertexBufferInfo = triangle.getVertexBufferInfo();
 
-    // Upload uniforms for the second triangle. To test partial buffer updates, we'll only update
-    // color.b, color.a, offset.x, and offset.y.
     {
-        MaterialParams params {
-                .color = { 1.0f, 0.0f, 1.0f, 1.0f },
-                .offset = { 0.5f, 0.5f, 0.0f, 0.0f }
-        };
-        auto* tmp = new MaterialParams(params);
-        auto cb = [](void* buffer, size_t size, void* user) {
-            auto* sp = (MaterialParams*) ((char*)buffer - offsetof(MaterialParams, color.b));
-            delete sp;
-        };
-        BufferDescriptor bd((char*)tmp + offsetof(MaterialParams, color.b), sizeof(float) * 4, cb);
-        getDriverApi().updateBufferObject(ubuffer, std::move(bd), 64 + offsetof(MaterialParams, color.b));
+        RenderFrame frame(api);
+
+        RenderPassParams clearParams = getClearColorRenderPass();
+        clearParams.viewport.height = screenWidth();
+        clearParams.viewport.width = screenHeight();
+
+        api.beginRenderPass(renderTarget, clearParams);
+        api.bindPipeline(state);
+        api.bindRenderPrimitive(triangle.getRenderPrimitive());
+        api.draw2(0, 3, 1);
+        api.endRenderPass();
+
+        // Upload uniforms for the second triangle. To test partial buffer updates, we'll only
+        // update color.b, color.a, scaleMinusOne, offset.x, and offset.y.
+        const UniformBindingConfig partialBindingConfig = {
+                .dataSize = sizeof(float) * 8,
+                .bufferSize = sizeof(SimpleMaterialParams) + 64,
+                .byteOffset = 64 + offsetof(SimpleMaterialParams, color.b) };
+        shader.uploadUniform(api, ubuffer, partialBindingConfig,
+                std::array<float, 8>{
+                        1.0f, 1.0f, // color.b, color.a
+                        0.0f, 0.0f, 0.0f, 0.0f, // scale
+                        0.5f, 0.5f // offset.x, offset.y
+                });
+
+        RenderPassParams noClearParams = getNoClearRenderPass();
+        noClearParams.viewport.height = screenWidth();
+        noClearParams.viewport.width = screenHeight();
+
+        api.beginRenderPass(renderTarget, noClearParams);
+        api.bindPipeline(state);
+        api.bindRenderPrimitive(triangle.getRenderPrimitive());
+        api.draw2(0, 3, 1);
+        api.endRenderPass();
     }
 
-    params.flags.clear = TargetBufferFlags::NONE;
-    params.flags.discardStart = TargetBufferFlags::NONE;
-    renderTriangle(renderTarget, swapChain, program, params);
 
-    static const uint32_t expectedHash = 91322442;
-    readPixelsAndAssertHash(
-            "BufferObjectUpdateWithOffset", 512, 512, renderTarget, expectedHash, true);
+    EXPECT_IMAGE(renderTarget, getExpectations(),
+            ScreenshotParams(screenWidth(), screenHeight(), "BufferObjectUpdateWithOffset",
+                    2320747245));
 
-    getDriverApi().flush();
-    getDriverApi().commit(swapChain);
-    getDriverApi().endFrame(0);
-
-    getDriverApi().destroyProgram(program);
-    getDriverApi().destroySwapChain(swapChain);
-    getDriverApi().destroyBufferObject(ubuffer);
-    getDriverApi().destroyRenderTarget(renderTarget);
-    getDriverApi().destroyTexture(colorTexture);
+    api.flush();
+    api.commit(swapChain);
+    api.endFrame(0);
 
     // This ensures all driver commands have finished before exiting the test.
-    getDriverApi().finish();
+    api.finish();
 
     executeCommands();
 

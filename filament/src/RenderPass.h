@@ -19,16 +19,20 @@
 
 #include "Allocators.h"
 
+#include "SharedHandle.h"
+
 #include "details/Camera.h"
 #include "details/Scene.h"
 
 #include "private/filament/Variant.h"
-#include "utils/BitmaskEnum.h"
 
+#include <backend/DriverApiForward.h>
 #include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 
 #include <utils/Allocator.h>
+#include <utils/BitmaskEnum.h>
+#include <utils/FixedCapacityVector.h>
 #include <utils/Range.h>
 #include <utils/Slice.h>
 #include <utils/architecture.h>
@@ -55,6 +59,7 @@ class CommandBufferQueue;
 class FMaterialInstance;
 class FRenderPrimitive;
 class RenderPassBuilder;
+class ColorPassDescriptorSet;
 
 class RenderPass {
 public:
@@ -214,14 +219,14 @@ public:
      *
      * The variant is inserted while building the commands, because we don't know it before that
      */
-    static CommandKey makeMaterialSortingKey(uint32_t materialId, uint32_t instanceId) noexcept {
+    static CommandKey makeMaterialSortingKey(uint32_t const materialId, uint32_t const instanceId) noexcept {
         CommandKey const key = ((materialId << MATERIAL_ID_SHIFT) & MATERIAL_ID_MASK) |
                          ((instanceId << MATERIAL_INSTANCE_ID_SHIFT) & MATERIAL_INSTANCE_ID_MASK);
         return (key << MATERIAL_SHIFT) & MATERIAL_MASK;
     }
 
     template<typename T>
-    static CommandKey makeField(T value, uint64_t mask, unsigned shift) noexcept {
+    static CommandKey makeField(T value, uint64_t const mask, unsigned const shift) noexcept {
         assert_invariant(!((uint64_t(value) << shift) & ~mask));
         return uint64_t(value) << shift;
     }
@@ -238,34 +243,37 @@ public:
 
     struct PrimitiveInfo { // 56 bytes
         union {
-            FRenderPrimitive const* primitive;                          // 8 bytes;
-            uint64_t padding = {}; // ensures primitive is 8 bytes on all archs
-        };                                                              // 8 bytes
-        uint64_t rfu0;                                                  // 8 bytes
-        backend::RasterState rasterState;                               // 4 bytes
-        backend::Handle<backend::HwBufferObject> skinningHandle;        // 4 bytes
-        backend::Handle<backend::HwSamplerGroup> skinningTexture;       // 4 bytes
-        backend::Handle<backend::HwBufferObject> morphWeightBuffer;     // 4 bytes
-        backend::Handle<backend::HwSamplerGroup> morphTargetBuffer;     // 4 bytes
-        backend::Handle<backend::HwBufferObject> instanceBufferHandle;  // 4 bytes
-        uint32_t index = 0;                                             // 4 bytes
-        uint32_t skinningOffset = 0;                                    // 4 bytes
-        uint16_t instanceCount;                                         // 2 bytes [MSb: user]
-        Variant materialVariant;                                        // 1 byte
-        uint8_t rfu1;                                                   // 1 byte
-        uint32_t rfu2;                                                  // 4 byte
+            FMaterialInstance const* mi;
+            uint64_t padding; // make this field 64 bits on all platforms
+        };
+        backend::RenderPrimitiveHandle rph;                 // 4 bytes
+        backend::VertexBufferInfoHandle vbih;               // 4 bytes
+        backend::DescriptorSetHandle dsh;                   // 4 bytes
+        uint32_t indexOffset;                               // 4 bytes
+        uint32_t indexCount;                                // 4 bytes
+        uint32_t index = 0;                                 // 4 bytes
+        uint32_t skinningOffset = 0;                        // 4 bytes
+        uint32_t morphingOffset = 0;                        // 4 bytes
 
-        static const uint16_t USER_INSTANCE_MASK = 0x8000u;
-        static const uint16_t INSTANCE_COUNT_MASK = 0x7fffu;
+        backend::RasterState rasterState;                   // 4 bytes
+
+        uint16_t instanceCount;                             // 2 bytes [MSb: user]
+        Variant materialVariant;                            // 1 byte
+        backend::PrimitiveType type : 3;                    // 1 byte       3 bits
+        bool hasSkinning : 1;                               //              1 bit
+        bool hasMorphing : 1;                               //              1 bit
+        bool hasHybridInstancing : 1;                       //              1 bit
+
+        uint32_t rfu[2];                                    // 16 bytes
     };
     static_assert(sizeof(PrimitiveInfo) == 56);
 
     struct alignas(8) Command {     // 64 bytes
         CommandKey key = 0;         //  8 bytes
-        PrimitiveInfo primitive;    // 56 bytes
+        PrimitiveInfo info;    // 56 bytes
         bool operator < (Command const& rhs) const noexcept { return key < rhs.key; }
         // placement new declared as "throw" to avoid the compiler's null-check
-        inline void* operator new (size_t, void* ptr) {
+        void* operator new (size_t, void* ptr) {
             assert_invariant(ptr);
             return ptr;
         }
@@ -278,6 +286,7 @@ public:
     static constexpr RenderFlags HAS_SHADOWING             = 0x01;
     static constexpr RenderFlags HAS_INVERSE_FRONT_FACES   = 0x02;
     static constexpr RenderFlags IS_INSTANCED_STEREOSCOPIC = 0x04;
+    static constexpr RenderFlags HAS_DEPTH_CLAMP           = 0x08;
 
     // Arena used for commands
     using Arena = utils::Arena<
@@ -288,11 +297,11 @@ public:
 
     // RenderPass can only be moved
     RenderPass(RenderPass&& rhs) = default;
+    RenderPass& operator=(RenderPass&& rhs) = delete;  // could be supported if needed
 
     // RenderPass can't be copied
     RenderPass(RenderPass const& rhs) = delete;
     RenderPass& operator=(RenderPass const& rhs) = delete;
-    RenderPass& operator=(RenderPass&& rhs) = delete;
 
     // allocated commands ARE NOT freed, they're owned by the Arena
     ~RenderPass() noexcept;
@@ -301,11 +310,25 @@ public:
     Command const* end() const noexcept { return mCommandEnd; }
     bool empty() const noexcept { return begin() == end(); }
 
-    // Helper to execute all the commands generated by this RenderPass
-    static void execute(RenderPass const& pass,
-            FEngine& engine, const char* name,
-            backend::Handle<backend::HwRenderTarget> renderTarget,
-            backend::RenderPassParams params) noexcept;
+    class BufferObjectHandleDeleter {
+        std::reference_wrapper<backend::DriverApi> driver;
+    public:
+        explicit BufferObjectHandleDeleter(backend::DriverApi& driver) noexcept : driver(driver) { }
+        void operator()(backend::BufferObjectHandle handle) noexcept;
+    };
+
+    class DescriptorSetHandleDeleter {
+        std::reference_wrapper<backend::DriverApi> driver;
+    public:
+        explicit DescriptorSetHandleDeleter(backend::DriverApi& driver) noexcept : driver(driver) { }
+        void operator()(backend::DescriptorSetHandle handle) noexcept;
+    };
+
+    using BufferObjectSharedHandle = SharedHandle<
+            backend::HwBufferObject, BufferObjectHandleDeleter>;
+
+    using DescriptorSetSharedHandle = SharedHandle<
+            backend::HwDescriptorSet, DescriptorSetHandleDeleter>;
 
     /*
      * Executor holds the range of commands to execute for a given pass
@@ -318,74 +341,98 @@ public:
         // these fields are constant after creation
         utils::Slice<Command> mCommands;
         utils::Slice<CustomCommandFn> mCustomCommands;
-        backend::Handle<backend::HwBufferObject> mUboHandle;
-        backend::Handle<backend::HwBufferObject> mInstancedUboHandle;
-        backend::Viewport mScissorViewport;
+        BufferObjectSharedHandle mInstancedUboHandle;
+        DescriptorSetSharedHandle mInstancedDescriptorSetHandle;
+        ColorPassDescriptorSet const* mColorPassDescriptorSet = nullptr;
+        // this stores either the scissor-viewport or the scissor override
+        backend::Viewport mScissor{ 0, 0, INT32_MAX, INT32_MAX };
 
-        backend::Viewport mScissor{};            // value of scissor override
-        backend::PolygonOffset mPolygonOffset{}; // value of the override
-        bool mPolygonOffsetOverride : 1;         // whether to override the polygon offset setting
-        bool mScissorOverride : 1;               // whether to override the polygon offset setting
+        // value of the polygon offset override
+        backend::PolygonOffset mPolygonOffset{};
+        // whether to override the polygon offset from the MaterialInstance
+        bool mPolygonOffsetOverride : 1;
+        // whether to override the scissor rectangle from the MaterialInstance
+        bool mScissorOverride : 1;
+        // whether the scissor-viewport is set
+        bool mHasScissorViewport : 1;
 
-        Executor(RenderPass const* pass, Command const* b, Command const* e) noexcept;
+        Executor(RenderPass const& pass, Command const* b, Command const* e) noexcept;
 
-        void execute(FEngine& engine, const Command* first, const Command* last) const noexcept;
+        void execute(FEngine const& engine, backend::DriverApi& driver,
+                Command const* first, Command const* last) const noexcept;
 
         static backend::Viewport applyScissorViewport(
                 backend::Viewport const& scissorViewport,
                 backend::Viewport const& scissor) noexcept;
 
     public:
-        Executor() = default;
-        Executor(Executor const& rhs);
-        Executor& operator=(Executor const& rhs) = default;
+        // fixme: needed in ShadowMapManager
+        Executor() noexcept;
+
+        // can't be copied
+        Executor(Executor const& rhs) noexcept = delete;
+        Executor& operator=(Executor const& rhs) noexcept = delete;
+
+        // can be moved
+        Executor(Executor&& rhs) noexcept;
+        Executor& operator=(Executor&& rhs) noexcept;
+
         ~Executor() noexcept;
 
         // if non-null, overrides the material's polygon offset
         void overridePolygonOffset(backend::PolygonOffset const* polygonOffset) noexcept;
 
-        // if non-null, overrides the material's scissor
-        void overrideScissor(backend::Viewport const* scissor) noexcept;
         void overrideScissor(backend::Viewport const& scissor) noexcept;
 
-        void execute(FEngine& engine, const char* name) const noexcept;
+        void execute(FEngine const& engine, backend::DriverApi& driver) const noexcept;
     };
 
     // returns a new executor for this pass
     Executor getExecutor() const {
-        return { this, mCommandBegin, mCommandEnd };
+        return getExecutor(mCommandBegin, mCommandEnd);
     }
 
     Executor getExecutor(Command const* b, Command const* e) const {
-        return { this, b, e };
+        return { *this, b, e };
     }
 
 private:
     friend class FRenderer;
     friend class RenderPassBuilder;
-    RenderPass(FEngine& engine, RenderPassBuilder const& builder) noexcept;
+    RenderPass(FEngine const& engine, backend::DriverApi& driver,
+            RenderPassBuilder const& builder) noexcept;
 
     // This is the main function of this class, this appends commands to the pass using
     // the current camera, geometry and flags set. This can be called multiple times if needed.
-    void appendCommands(FEngine& engine,
-            utils::Slice<Command> commands, CommandTypeFlags commandTypeFlags) noexcept;
+    void appendCommands(FEngine const& engine,
+            utils::Slice<Command> commands,
+            utils::Range<uint32_t> visibleRenderables,
+            CommandTypeFlags commandTypeFlags,
+            RenderFlags renderFlags,
+            FScene::VisibleMaskType visibilityMask,
+            Variant variant,
+            math::float3 cameraPosition,
+            math::float3 cameraForwardVector) const noexcept;
 
     // Appends a custom command.
     void appendCustomCommand(Command* commands,
             uint8_t channel, Pass pass, CustomCommand custom, uint32_t order,
             Executor::CustomCommandFn command);
 
-    void resize(Arena& arena, size_t count) noexcept;
+    static Command* resize(Arena& arena, Command* last) noexcept;
 
     // sorts commands then trims sentinels
-    void sortCommands(Arena& arena) noexcept;
+    static Command* sortCommands(
+            Command* begin, Command* end) noexcept;
 
     // instanceify commands then trims sentinels
-    void instanceify(FEngine& engine, Arena& arena) noexcept;
+    Command* instanceify(backend::DriverApi& driver,
+            backend::DescriptorSetLayoutHandle perRenderableDescriptorSetLayoutHandle,
+            Command* begin, Command* end,
+            int32_t eyeCount) const noexcept;
 
     // We choose the command count per job to minimize JobSystem overhead.
-    // On a Pixel 4, 2048 commands is about half a millisecond of processing.
-    static constexpr size_t JOBS_PARALLEL_FOR_COMMANDS_COUNT = 2048;
+    static constexpr size_t JOBS_PARALLEL_FOR_COMMANDS_COUNT = 128;
     static constexpr size_t JOBS_PARALLEL_FOR_COMMANDS_SIZE  =
             sizeof(Command) * JOBS_PARALLEL_FOR_COMMANDS_COUNT;
 
@@ -399,39 +446,28 @@ private:
             math::float3 cameraPosition, math::float3 cameraForward,
             uint8_t instancedStereoEyeCount) noexcept;
 
-    template<RenderPass::CommandTypeFlags commandTypeFlags>
-    static inline Command* generateCommandsImpl(RenderPass::CommandTypeFlags extraFlags, Command* curr,
-            FScene::RenderableSoa const& soa, utils::Range<uint32_t> range,
+    template<CommandTypeFlags commandTypeFlags>
+    static Command* generateCommandsImpl(CommandTypeFlags extraFlags,
+            Command* curr, FScene::RenderableSoa const& soa, utils::Range<uint32_t> range,
             Variant variant, RenderFlags renderFlags, FScene::VisibleMaskType visibilityMask,
             math::float3 cameraPosition, math::float3 cameraForward,
             uint8_t instancedStereoEyeCount) noexcept;
 
     static void setupColorCommand(Command& cmdDraw, Variant variant,
-            FMaterialInstance const* mi, bool inverseFrontFaces) noexcept;
+            FMaterialInstance const* mi, bool inverseFrontFaces, bool hasDepthClamp) noexcept;
 
     static void updateSummedPrimitiveCounts(
             FScene::RenderableSoa& renderableData, utils::Range<uint32_t> vr) noexcept;
 
-
     FScene::RenderableSoa const& mRenderableSoa;
-    utils::Range<uint32_t> const mVisibleRenderables;
-    backend::Handle<backend::HwBufferObject> const mUboHandle;
-    math::float3 const mCameraPosition;
-    math::float3 const mCameraForwardVector;
-    RenderFlags const mFlags;
-    Variant const mVariant;
-    FScene::VisibleMaskType const mVisibilityMask;
-    backend::Viewport const mScissorViewport;
-
-    // Pointer to the first command
-    Command* mCommandBegin = nullptr;
-    // Pointer to one past the last command
-    Command* mCommandEnd = nullptr;
-    // a UBO for instanced primitives
-    backend::Handle<backend::HwBufferObject> mInstancedUboHandle;
+    ColorPassDescriptorSet const* const mColorPassDescriptorSet;
+    backend::Viewport const mScissorViewport{ 0, 0, INT32_MAX, INT32_MAX };
+    Command const* /* const */ mCommandBegin = nullptr;   // Pointer to the first command
+    Command const* /* const */ mCommandEnd = nullptr;     // Pointer to one past the last command
+    mutable BufferObjectSharedHandle mInstancedUboHandle; // ubo for instanced primitives
+    mutable DescriptorSetSharedHandle mInstancedDescriptorSetHandle; // a descriptor-set to hold the ubo
     // a vector for our custom commands
-    using CustomCommandVector = std::vector<Executor::CustomCommandFn,
-            utils::STLAllocator<Executor::CustomCommandFn, LinearAllocatorArena>>;
+    using CustomCommandVector = utils::FixedCapacityVector<Executor::CustomCommandFn>;
     mutable CustomCommandVector mCustomCommands;
 };
 
@@ -443,11 +479,11 @@ class RenderPassBuilder {
     backend::Viewport mScissorViewport{ 0, 0, INT32_MAX, INT32_MAX };
     FScene::RenderableSoa const* mRenderableSoa = nullptr;
     utils::Range<uint32_t> mVisibleRenderables{};
-    backend::Handle<backend::HwBufferObject> mUboHandle;
     math::float3 mCameraPosition{};
     math::float3 mCameraForwardVector{};
     RenderPass::RenderFlags mFlags{};
     Variant mVariant{};
+    ColorPassDescriptorSet const* mColorPassDescriptorSet = nullptr;
     FScene::VisibleMaskType mVisibilityMask = std::numeric_limits<FScene::VisibleMaskType>::max();
 
     using CustomCommandRecord = std::tuple<
@@ -457,32 +493,32 @@ class RenderPassBuilder {
             uint32_t,
             RenderPass::Executor::CustomCommandFn>;
 
-    using CustomCommandContainer = std::vector<CustomCommandRecord,
-            utils::STLAllocator<CustomCommandRecord, LinearAllocatorArena>>;
+    using CustomCommandContainer = std::vector<CustomCommandRecord>;
 
     // we make this optional because it's not used often, and we don't want to have
-    // to construct it by default.
+    // to construct it by default. For the same reason we use a std::vector<>
     std::optional<CustomCommandContainer> mCustomCommands;
 
 public:
     explicit RenderPassBuilder(RenderPass::Arena& arena) : mArena(arena) { }
 
-    RenderPassBuilder& commandTypeFlags(RenderPass::CommandTypeFlags commandTypeFlags) noexcept {
+    RenderPassBuilder& commandTypeFlags(RenderPass::CommandTypeFlags const commandTypeFlags) noexcept {
         mCommandTypeFlags = commandTypeFlags;
         return *this;
     }
 
-    RenderPassBuilder& scissorViewport(backend::Viewport viewport) noexcept {
+    // Specifies the viewport for the scissor rectangle, that is, the final scissor rect is
+    // offset by the viewport's left-top and clipped to the viewport's width/height.
+    RenderPassBuilder& scissorViewport(backend::Viewport const viewport) noexcept {
         mScissorViewport = viewport;
         return *this;
     }
 
     // specifies the geometry to generate commands for
-    RenderPassBuilder& geometry(FScene::RenderableSoa const& soa, utils::Range<uint32_t> vr,
-            backend::Handle<backend::HwBufferObject> uboHandle) noexcept {
+    RenderPassBuilder& geometry(
+            FScene::RenderableSoa const& soa, utils::Range<uint32_t> const vr) noexcept {
         mRenderableSoa = &soa;
         mVisibleRenderables = vr;
-        mUboHandle = uboHandle;
         return *this;
     }
 
@@ -494,40 +530,48 @@ public:
     }
 
     //  flags controlling how commands are generated
-    RenderPassBuilder& renderFlags(RenderPass::RenderFlags flags) noexcept {
+    RenderPassBuilder& renderFlags(RenderPass::RenderFlags const flags) noexcept {
         mFlags = flags;
         return *this;
     }
 
     // like above but allows to set specific flags
     RenderPassBuilder& renderFlags(
-            RenderPass::RenderFlags mask, RenderPass::RenderFlags value) noexcept {
-        mFlags = (mFlags & mask) | (value & mask);
+            RenderPass::RenderFlags const mask, RenderPass::RenderFlags value) noexcept {
+        value &= mask;
+        mFlags &= ~mask;
+        mFlags |= value;
         return *this;
     }
 
     // variant to use
-    RenderPassBuilder& variant(Variant variant) noexcept {
+    RenderPassBuilder& variant(Variant const variant) noexcept {
         mVariant = variant;
+        return *this;
+    }
+
+    // variant to use
+    RenderPassBuilder& colorPassDescriptorSet(ColorPassDescriptorSet const* colorPassDescriptorSet) noexcept {
+        mColorPassDescriptorSet = colorPassDescriptorSet;
         return *this;
     }
 
     // Sets the visibility mask, which is AND-ed against each Renderable's VISIBLE_MASK to
     // determine if the renderable is visible for this pass.
     // Defaults to all 1's, which means all renderables in this render pass will be rendered.
-    RenderPassBuilder& visibilityMask(FScene::VisibleMaskType mask) noexcept {
+    RenderPassBuilder& visibilityMask(FScene::VisibleMaskType const mask) noexcept {
         mVisibilityMask = mask;
         return *this;
     }
 
-    RenderPassBuilder& customCommand(FEngine& engine,
+    RenderPassBuilder& customCommand(
             uint8_t channel,
             RenderPass::Pass pass,
             RenderPass::CustomCommand custom,
             uint32_t order,
             const RenderPass::Executor::CustomCommandFn& command);
 
-    RenderPass build(FEngine& engine);
+    RenderPass build(FEngine const& engine, backend::DriverApi& driver) const;
 };
 
 

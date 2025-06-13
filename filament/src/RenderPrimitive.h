@@ -41,11 +41,11 @@ public:
     FRenderPrimitive() noexcept = default;
 
     void init(HwRenderPrimitiveFactory& factory, backend::DriverApi& driver,
-            const RenderableManager::Builder::Entry& entry) noexcept;
+            FRenderableManager::Entry const& entry) noexcept;
 
     void set(HwRenderPrimitiveFactory& factory, backend::DriverApi& driver,
             RenderableManager::PrimitiveType type,
-            FVertexBuffer* vertexBuffer, FIndexBuffer* indexBuffer, size_t offset,
+            FVertexBuffer const* vertexBuffer, FIndexBuffer const* indexBuffer, size_t offset,
             size_t count) noexcept;
 
     // frees driver resources, object becomes invalid
@@ -56,6 +56,7 @@ public:
     backend::VertexBufferInfoHandle getVertexBufferInfoHandle() const { return mVertexBufferInfoHandle; }
     uint32_t getIndexOffset() const noexcept { return mIndexOffset; }
     uint32_t getIndexCount() const noexcept { return mIndexCount; }
+    uint32_t getMorphingBufferOffset() const noexcept { return mMorphingBufferOffset; }
 
     backend::PrimitiveType getPrimitiveType() const noexcept { return mPrimitiveType; }
     AttributeBitset getEnabledAttributes() const noexcept { return mEnabledAttributes; }
@@ -64,12 +65,16 @@ public:
 
     void setMaterialInstance(FMaterialInstance const* mi) noexcept { mMaterialInstance = mi; }
 
-    void setBlendOrder(uint16_t order) noexcept {
+    void setBlendOrder(uint16_t const order) noexcept {
         mBlendOrder = static_cast<uint16_t>(order & 0x7FFF);
     }
 
-    void setGlobalBlendOrderEnabled(bool enabled) noexcept {
+    void setGlobalBlendOrderEnabled(bool const enabled) noexcept {
         mGlobalBlendOrderEnabled = enabled;
+    }
+
+    void setMorphingBufferOffset(uint32_t const offset) noexcept {
+        mMorphingBufferOffset = offset;
     }
 
 private:
@@ -80,6 +85,7 @@ private:
         backend::Handle<backend::HwVertexBufferInfo> mVertexBufferInfoHandle = {};
         uint32_t mIndexOffset = 0;
         uint32_t mIndexCount = 0;
+        uint32_t mMorphingBufferOffset = 0;
     };
 
     AttributeBitset mEnabledAttributes = {};

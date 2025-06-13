@@ -19,8 +19,8 @@
 #include "MetalContext.h"
 #include "MetalUtils.h"
 
+#include <utils/Logger.h>
 #include <utils/Panic.h>
-#include <utils/Log.h>
 
 namespace filament::backend {
 
@@ -109,9 +109,8 @@ inline bool MTLSizeEqual(T a, T b) noexcept {
 MetalBlitter::MetalBlitter(MetalContext& context) noexcept : mContext(context) { }
 
 void MetalBlitter::blit(id<MTLCommandBuffer> cmdBuffer, const BlitArgs& args, const char* label) {
-
-    ASSERT_PRECONDITION(args.source.region.size.depth == args.destination.region.size.depth,
-            "Blitting requires the source and destination regions to have the same depth.");
+    FILAMENT_CHECK_PRECONDITION(args.source.region.size.depth == args.destination.region.size.depth)
+            << "Blitting requires the source and destination regions to have the same depth.";
 
     // Determine if the blit for color or depth are eligible to use a MTLBlitCommandEncoder.
     // blitFastPath returns true upon success.
@@ -324,10 +323,11 @@ id<MTLFunction> MetalBlitter::compileFragmentFunction(BlitFunctionKey key) const
     if (!library || !function) {
         if (error) {
             auto description = [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
-            utils::slog.e << description << utils::io::endl;
+            LOG(ERROR) << description;
         }
     }
-    ASSERT_POSTCONDITION(library && function, "Unable to compile fragment shader for MetalBlitter.");
+    FILAMENT_CHECK_POSTCONDITION(library && function)
+            << "Unable to compile fragment shader for MetalBlitter.";
 
     return function;
 }
@@ -349,10 +349,11 @@ id<MTLFunction> MetalBlitter::getBlitVertexFunction() {
     if (!library || !function) {
         if (error) {
             auto description = [error.localizedDescription cStringUsingEncoding:NSUTF8StringEncoding];
-            utils::slog.e << description << utils::io::endl;
+            LOG(ERROR) << description;
         }
     }
-    ASSERT_POSTCONDITION(library && function, "Unable to compile vertex shader for MetalBlitter.");
+    FILAMENT_CHECK_POSTCONDITION(library && function)
+            << "Unable to compile vertex shader for MetalBlitter.";
 
     mVertexFunction = function;
 

@@ -242,6 +242,15 @@ public class View {
     }
 
     /**
+     * Query whether a camera is set.
+     * @return true if a camera is set, false otherwise
+     * @see #setCamera
+     */
+    public boolean hasCamera() {
+        return nHasCamera(getNativeObject());
+    }
+
+    /**
      * Gets this View's associated Camera, or null if none has been assigned.
      *
      * @see #setCamera
@@ -737,6 +746,33 @@ public class View {
     }
 
     /**
+     * Returns true if transparent picking is enabled.
+     *
+     * @see #setTransparentPickingEnabled
+     */
+    public boolean isTransparentPickingEnabled() {
+        return nIsTransparentPickingEnabled(getNativeObject());
+    }
+
+    /**
+     * Enables or disables transparent picking. Disabled by default.
+     *
+     * When transparent picking is enabled, View::pick() will pick from both
+     * transparent and opaque renderables. When disabled, View::pick() will only
+     * pick from opaque renderables.
+     *
+     * <p>
+     * Transparent picking will create an extra pass for rendering depth
+     * from both transparent and opaque renderables. 
+     * </p>
+     *
+     * @param enabled true enables transparent picking, false disables it.
+     */
+    public void setTransparentPickingEnabled(boolean enabled) {
+        nSetTransparentPickingEnabled(getNativeObject(), enabled);
+    }
+
+    /**
      * Sets options relative to dynamic lighting for this view.
      *
      * <p>
@@ -1224,6 +1260,18 @@ public class View {
         return nGetFogEntity(getNativeObject());
     }
 
+    /**
+     * When certain temporal features are used (e.g.: TAA or Screen-space reflections), the view
+     * keeps a history of previous frame renders associated with the Renderer the view was last
+     * used with. When switching Renderer, it may be necessary to clear that history by calling
+     * this method. Similarly, if the whole content of the screen change, like when a cut-scene
+     * starts, clearing the history might be needed to avoid artifacts due to the previous frame
+     * being very different.
+     */
+    public void clearFrameHistory(Engine engine) {
+        nClearFrameHistory(getNativeObject(), engine.getNativeObject());
+    }
+
     public long getNativeObject() {
         if (mNativeObject == 0) {
             throw new IllegalStateException("Calling method on destroyed View");
@@ -1238,6 +1286,7 @@ public class View {
     private static native void nSetName(long nativeView, String name);
     private static native void nSetScene(long nativeView, long nativeScene);
     private static native void nSetCamera(long nativeView, long nativeCamera);
+    private static native boolean nHasCamera(long nativeView);
     private static native void nSetViewport(long nativeView, int left, int bottom, int width, int height);
     private static native void nSetVisibleLayers(long nativeView, int select, int value);
     private static native void nSetShadowingEnabled(long nativeView, boolean enabled);
@@ -1259,6 +1308,8 @@ public class View {
     private static native boolean nIsPostProcessingEnabled(long nativeView);
     private static native void nSetFrontFaceWindingInverted(long nativeView, boolean inverted);
     private static native boolean nIsFrontFaceWindingInverted(long nativeView);
+    private static native void nSetTransparentPickingEnabled(long nativeView, boolean enabled);
+    private static native boolean nIsTransparentPickingEnabled(long nativeView);
     private static native void nSetAmbientOcclusion(long nativeView, int ordinal);
     private static native int nGetAmbientOcclusion(long nativeView);
     private static native void nSetAmbientOcclusionOptions(long nativeView, float radius, float bias, float power, float resolution, float intensity, float bilateralThreshold, int quality, int lowPassFilter, int upsampling, boolean enabled, boolean bentNormals, float minHorizonAngleRad);
@@ -1284,7 +1335,7 @@ public class View {
     private static native void nSetMaterialGlobal(long nativeView, int index, float x, float y, float z, float w);
     private static native void nGetMaterialGlobal(long nativeView, int index, float[] out);
     private static native int nGetFogEntity(long nativeView);
-
+    private static native void nClearFrameHistory(long nativeView, long nativeEngine);
 
     /**
      * List of available ambient occlusion techniques.
@@ -1369,10 +1420,10 @@ public class View {
         /**
          * Upscaling quality
          * LOW:    bilinear filtered blit. Fastest, poor quality
-         * MEDIUM: AMD FidelityFX FSR1 w/ mobile optimizations
+         * MEDIUM: Qualcomm Snapdragon Game Super Resolution (SGSR) 1.0
          * HIGH:   AMD FidelityFX FSR1 w/ mobile optimizations
          * ULTRA:  AMD FidelityFX FSR1
-         *      FSR1 require a well anti-aliased (MSAA or TAA), noise free scene.
+         *      FSR1 and SGSR require a well anti-aliased (MSAA or TAA), noise free scene. Avoid FXAA and dithering.
          *
          * The default upscaling quality is set to LOW.
          */
@@ -1750,6 +1801,22 @@ public class View {
      * @see setAmbientOcclusionOptions()
      */
     public static class AmbientOcclusionOptions {
+        public enum AmbientOcclusionType {
+            /**
+             * use Scalable Ambient Occlusion
+             */
+            SAO,
+            /**
+             * use Ground Truth-Based Ambient Occlusion
+             */
+            GTAO,
+        }
+
+        /**
+         * Type of ambient occlusion algorithm.
+         */
+        @NonNull
+        public AmbientOcclusionOptions.AmbientOcclusionType aoType = AmbientOcclusionOptions.AmbientOcclusionType.SAO;
         /**
          * Ambient Occlusion radius in meters, between 0 and ~10.
          */
@@ -1759,7 +1826,8 @@ public class View {
          */
         public float power = 1.0f;
         /**
-         * Self-occlusion bias in meters. Use to avoid self-occlusion. Between 0 and a few mm.
+         * Self-occlusion bias in meters. Use to avoid self-occlusion.
+         * Between 0 and a few mm. No effect when aoType set to GTAO
          */
         public float bias = 0.0005f;
         /**
@@ -1775,12 +1843,12 @@ public class View {
          */
         public float bilateralThreshold = 0.05f;
         /**
-         * affects # of samples used for AO.
+         * affects # of samples used for AO and params for filtering
          */
         @NonNull
         public QualityLevel quality = QualityLevel.LOW;
         /**
-         * affects AO smoothness
+         * affects AO smoothness. Recommend setting to HIGH when aoType set to GTAO.
          */
         @NonNull
         public QualityLevel lowPassFilter = QualityLevel.MEDIUM;
@@ -1798,7 +1866,7 @@ public class View {
          */
         public boolean bentNormals = false;
         /**
-         * min angle in radian to consider
+         * min angle in radian to consider. No effect when aoType set to GTAO.
          */
         public float minHorizonAngleRad = 0.0f;
         /**
@@ -1852,6 +1920,19 @@ public class View {
          * Ambient shadows from dominant light
          */
         public boolean ssctEnabled = false;
+
+        /**
+         * Ground Truth-base Ambient Occlusion (GTAO) options
+         */
+        public int gtaoSampleSliceCount = 4;
+        /**
+         * Ground Truth-base Ambient Occlusion (GTAO) options
+         */
+        public int gtaoSampleStepsPerSlice = 3;
+        /**
+         * Ground Truth-base Ambient Occlusion (GTAO) options
+         */
+        public float gtaoThicknessHeuristic = 0.004f;
 
     }
 
@@ -1929,7 +2010,7 @@ public class View {
         }
 
         /**
-         * reconstruction filter width typically between 0.2 (sharper, aliased) and 1.5 (smoother)
+         * reconstruction filter width typically between 1 (sharper) and 2 (smoother)
          */
         public float filterWidth = 1.0f;
         /**

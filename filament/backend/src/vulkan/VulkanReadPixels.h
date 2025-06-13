@@ -17,6 +17,7 @@
 #ifndef TNT_FILAMENT_BACKEND_VULKANREADPIXELS_H
 #define TNT_FILAMENT_BACKEND_VULKANREADPIXELS_H
 
+#include "vulkan/memory/ResourcePointer.h"
 #include "private/backend/Driver.h"
 
 #include <bluevk/BlueVK.h>
@@ -26,9 +27,7 @@
 #include <functional>
 #include <mutex>
 #include <queue>
-#include <set>
 #include <thread>
-#include <vector>
 
 namespace filament::backend {
 
@@ -74,13 +73,13 @@ public:
 
     void terminate() noexcept;
 
-    void run(VulkanRenderTarget const* srcTarget, uint32_t x, uint32_t y, uint32_t width,
-            uint32_t height, uint32_t graphicsQueueFamilyIndex, PixelBufferDescriptor&& pbd,
-            SelecteMemoryFunction const& selectMemoryFunc,
+    void run(fvkmemory::resource_ptr<VulkanRenderTarget> srcTarget, uint32_t x, uint32_t y,
+            uint32_t width, uint32_t height, uint32_t graphicsQueueFamilyIndex,
+            PixelBufferDescriptor&& pbd, SelecteMemoryFunction const& selectMemoryFunc,
             OnReadCompleteFunction const& readCompleteFunc);
 
     // This method will block until all of the in-flight requests are complete.
-    void runUntilComplete() noexcept;
+    void runUntilComplete();
 
 private:
     VkDevice mDevice = VK_NULL_HANDLE;

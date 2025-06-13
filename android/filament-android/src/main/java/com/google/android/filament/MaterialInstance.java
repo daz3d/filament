@@ -403,6 +403,16 @@ public class MaterialInstance {
     }
 
     /**
+     * Sets the value of a bool constant.
+     *
+     * @param name the name of the material constant
+     * @param x    the value of the material constant
+     */
+    public void setConstant(@NonNull String name, boolean x) {
+        nSetConstantBool(getNativeObject(), name, x);
+    }
+
+    /**
      * Set-up a custom scissor rectangle; by default it is disabled.
      *
      * <p>
@@ -557,11 +567,33 @@ public class MaterialInstance {
     }
 
     /**
+     * Overrides the default triangle culling state that was set on the material separately for the
+     * color and shadow passes
+     *
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/rasterization:culling">
+     * Rasterization: culling</a>
+     */
+    public void setCullingMode(@NonNull Material.CullingMode colorPassCullingMode,
+                               @NonNull Material.CullingMode shadowPassCullingMode) {
+        nSetCullingModeSeparate(getNativeObject(),
+            colorPassCullingMode.ordinal(), shadowPassCullingMode.ordinal());
+    }
+
+    /**
      * Returns the face culling mode.
      */
     @NonNull
     public Material.CullingMode getCullingMode() {
         return sCullingModeValues[nGetCullingMode(getNativeObject())];
+    }
+
+    /**
+     * Returns the face culling mode for the shadow passes.
+     */
+    @NonNull
+    public Material.CullingMode getShadowCullingMode() {
+        return sCullingModeValues[nGetShadowCullingMode(getNativeObject())];
     }
 
     /**
@@ -899,6 +931,9 @@ public class MaterialInstance {
             @NonNull String name, int element, @NonNull @Size(min = 1) float[] v,
             @IntRange(from = 0) int offset, @IntRange(from = 1) int count);
 
+    private static native void nSetConstantBool(long nativeMaterialInstance,
+            @NonNull String name, boolean x);
+
     private static native void nSetParameterTexture(long nativeMaterialInstance,
             @NonNull String name, long nativeTexture, long sampler);
 
@@ -920,6 +955,8 @@ public class MaterialInstance {
 
     private static native void nSetDoubleSided(long nativeMaterialInstance, boolean doubleSided);
     private static native void nSetCullingMode(long nativeMaterialInstance, long mode);
+    private static native void nSetCullingModeSeparate(long nativeMaterialInstance,
+            long colorPassCullingMode, long shadowPassCullingMode);
     private static native void nSetColorWrite(long nativeMaterialInstance, boolean enable);
     private static native void nSetDepthWrite(long nativeMaterialInstance, boolean enable);
     private static native void nSetStencilWrite(long nativeMaterialInstance, boolean enable);
@@ -952,6 +989,7 @@ public class MaterialInstance {
     private static native float nGetSpecularAntiAliasingThreshold(long nativeMaterialInstance);
     private static native boolean nIsDoubleSided(long nativeMaterialInstance);
     private static native int nGetCullingMode(long nativeMaterialInstance);
+    private static native int nGetShadowCullingMode(long nativeMaterialInstance);
     private static native boolean nIsColorWriteEnabled(long nativeMaterialInstance);
     private static native boolean nIsDepthWriteEnabled(long nativeMaterialInstance);
     private static native boolean nIsStencilWriteEnabled(long nativeMaterialInstance);

@@ -16,6 +16,7 @@
 
 #include <backend/platforms/OpenGLPlatform.h>
 
+#include "OpenGLDriverBase.h"
 #include "OpenGLDriverFactory.h"
 
 #include <backend/AcquiredImage.h>
@@ -23,23 +24,47 @@
 #include <backend/Platform.h>
 
 #include <utils/compiler.h>
-
+#include <utils/Panic.h>
+#include <utils/CString.h>
 #include <utils/Invocable.h>
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "OpenGLDriver.h"
+
 namespace filament::backend {
 
+OpenGLDriverBase::~OpenGLDriverBase() = default;
+
 Driver* OpenGLPlatform::createDefaultDriver(OpenGLPlatform* platform,
-        void* sharedContext, const Platform::DriverConfig& driverConfig) {
+        void* sharedContext, const DriverConfig& driverConfig) {
     return OpenGLDriverFactory::create(platform, sharedContext, driverConfig);
 }
 
 OpenGLPlatform::~OpenGLPlatform() noexcept = default;
 
+utils::CString OpenGLPlatform::getVendorString(Driver const* driver) {
+    auto const p = static_cast<OpenGLDriverBase const*>(driver);
+#if UTILS_HAS_RTTI
+    FILAMENT_CHECK_POSTCONDITION(dynamic_cast<OpenGLDriverBase const*>(driver))
+            << "Driver* has not been allocated with OpenGLPlatform";
+#endif
+    return p->getVendorString();
+}
+
+utils::CString OpenGLPlatform::getRendererString(Driver const* driver) {
+    auto const p = static_cast<OpenGLDriverBase const*>(driver);
+#if UTILS_HAS_RTTI
+    FILAMENT_CHECK_POSTCONDITION(dynamic_cast<OpenGLDriverBase const*>(driver))
+            << "Driver* has not been allocated with OpenGLPlatform";
+#endif
+    return p->getRendererString();
+}
+
 void OpenGLPlatform::makeCurrent(SwapChain* drawSwapChain, SwapChain* readSwapChain,
-        utils::Invocable<void()>, utils::Invocable<void(size_t)>) noexcept {
+        utils::Invocable<void()>, utils::Invocable<void(size_t)>) {
     makeCurrent(getCurrentContextType(), drawSwapChain, readSwapChain);
 }
 
@@ -53,6 +78,16 @@ bool OpenGLPlatform::isSRGBSwapChainSupported() const noexcept {
 
 uint32_t OpenGLPlatform::getDefaultFramebufferObject() noexcept {
     return 0;
+}
+
+void OpenGLPlatform::beginFrame(int64_t monotonic_clock_ns, int64_t refreshIntervalNs,
+        uint32_t frameId) noexcept {
+}
+
+void OpenGLPlatform::endFrame(uint32_t frameId) noexcept {
+}
+
+void OpenGLPlatform::preCommit() noexcept {
 }
 
 OpenGLPlatform::ContextType OpenGLPlatform::getCurrentContextType() const noexcept {
@@ -106,17 +141,31 @@ void OpenGLPlatform::updateTexImage(
         UTILS_UNUSED int64_t* timestamp) noexcept {
 }
 
+math::mat3f OpenGLPlatform::getTransformMatrix(
+    UTILS_UNUSED Stream* stream) noexcept {
+return math::mat3f();
+}
 
 OpenGLPlatform::ExternalTexture* OpenGLPlatform::createExternalImageTexture() noexcept {
     return nullptr;
 }
 
-void OpenGLPlatform::destroyExternalImage(
+void OpenGLPlatform::destroyExternalImageTexture(
         UTILS_UNUSED ExternalTexture* texture) noexcept {
 }
 
 void OpenGLPlatform::retainExternalImage(
+        UTILS_UNUSED ExternalImageHandleRef externalImage) noexcept {
+}
+
+void OpenGLPlatform::retainExternalImage(
         UTILS_UNUSED void* externalImage) noexcept {
+}
+
+bool OpenGLPlatform::setExternalImage(
+        UTILS_UNUSED ExternalImageHandleRef externalImage,
+        UTILS_UNUSED ExternalTexture* texture) noexcept {
+    return false;
 }
 
 bool OpenGLPlatform::setExternalImage(

@@ -47,7 +47,11 @@ if "%RUNNING_LOCALLY%" == "1" (
     set "PATH=%PATH%;C:\Program Files\7-Zip"
 )
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\2019\%VISUAL_STUDIO_VERSION%\VC\Auxiliary\Build\vcvars64.bat"
+:: Outdated windows-2019 pattern
+:: call "C:\Program Files (x86)\Microsoft Visual Studio\2019\%VISUAL_STUDIO_VERSION%\VC\Auxiliary\Build\vcvars64.bat"
+
+call "C:\Program Files\Microsoft Visual Studio\2022\%VISUAL_STUDIO_VERSION%\VC\Auxiliary\Build\vcvars64.bat"
+echo Passed vcvars64.bat
 if errorlevel 1 exit /b %errorlevel%
 
 msbuild /version
@@ -107,7 +111,7 @@ cd out\cmake-%variant%
 if errorlevel 1 exit /b %errorlevel%
 
 cmake ..\.. ^
-    -G "Visual Studio 16 2019" ^
+    -G "Visual Studio 17 2022" ^
     -A x64 ^
     %flag% ^
     -DCMAKE_INSTALL_PREFIX=..\%variant% ^
@@ -115,17 +119,23 @@ cmake ..\.. ^
     -DFILAMENT_SUPPORTS_VULKAN=ON ^
     || exit /b
 
+set build_flags=-j %NUMBER_OF_PROCESSORS%
+
+@echo on
+
+:: we've upgraded the windows machines, so the following are no longer accurate as of 09/19/24, but
+:: keeping around the comment for record.
+
 :: Attempt to fix "error C1060: compiler is out of heap space" seen on CI.
 :: Some resource libraries require significant heap space to compile, so first compile them serially.
-@echo on
-cmake --build . --target filagui --config %config% || exit /b
-cmake --build . --target uberarchive --config %config% || exit /b
-cmake --build . --target gltf-demo-resources --config %config% || exit /b
-cmake --build . --target filamentapp-resources --config %config% || exit /b
-cmake --build . --target sample-resources --config %config% || exit /b
-cmake --build . --target suzanne-resources --config %config% || exit /b
+:: cmake --build . --target filagui --config %config% %build_flags% || exit /b
+:: cmake --build . --target uberarchive --config %config% %build_flags% || exit /b
+:: cmake --build . --target gltf-demo-resources --config %config% %build_flags% || exit /b
+:: cmake --build . --target filamentapp-resources --config %config% %build_flags% || exit /b
+:: cmake --build . --target sample-resources --config %config% %build_flags% || exit /b
+:: cmake --build . --target suzanne-resources --config %config% %build_flags% || exit /b
 
-cmake --build . %INSTALL% --config %config% -- /m || exit /b
+cmake --build . %INSTALL% --config %config% %build_flags% -- /m || exit /b
 @echo off
 
 echo Disk info after building variant: %variant%

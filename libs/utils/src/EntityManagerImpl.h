@@ -68,9 +68,6 @@ public:
         std::lock_guard<Mutex> const lock(mFreeListLock);
         Entity::Type currentIndex = mCurrentIndex;
         for (size_t i = 0; i < n; i++) {
-            // If we have more than a certain number of freed indices, get one from the list.
-            // this is a trade-off between how often we recycle indices and how large the free list
-            // can grow.
             if (UTILS_UNLIKELY(currentIndex >= RAW_INDEX_COUNT || freeList.size() >= MIN_FREE_INDICES)) {
 
                 // this could only happen if we had gone through all the indices at least once
@@ -83,10 +80,6 @@ public:
                 index = freeList.front();
                 freeList.pop_front();
             } else {
-                // In the common case, we just grab the next index.
-                // This works only until all indices have been used once, at which point
-                // we're always in the slower case above. The idea is that we have enough indices
-                // that it doesn't happen in practice.
                 index = currentIndex++;
             }
             entities[i] = Entity{ makeIdentity(gens[index], index) };
@@ -139,12 +132,12 @@ public:
         }
     }
 
-    void registerListener(EntityManager::Listener* l) noexcept {
+    void registerListener(Listener* l) noexcept {
         std::lock_guard<Mutex> const lock(mListenerLock);
         mListeners.insert(l);
     }
 
-    void unregisterListener(EntityManager::Listener* l) noexcept {
+    void unregisterListener(Listener* l) noexcept {
         std::lock_guard<Mutex> const lock(mListenerLock);
         mListeners.erase(l);
     }
@@ -169,10 +162,10 @@ public:
 #endif
 
 private:
-    utils::FixedCapacityVector<EntityManager::Listener*> getListeners() const noexcept {
+    FixedCapacityVector<Listener*> getListeners() const noexcept {
         std::lock_guard<Mutex> const lock(mListenerLock);
         tsl::robin_set<Listener*> const& listeners = mListeners;
-        utils::FixedCapacityVector<EntityManager::Listener*> result(listeners.size());
+        FixedCapacityVector<Listener*> result(listeners.size());
         result.resize(result.capacity()); // unfortunately this memset()
         std::copy(listeners.begin(), listeners.end(), result.begin());
         return result; // the c++ standard guarantees a move

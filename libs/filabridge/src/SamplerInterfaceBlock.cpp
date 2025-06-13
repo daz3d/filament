@@ -16,11 +16,18 @@
 
 #include "private/filament/SamplerInterfaceBlock.h"
 
-#include <utils/Panic.h>
-#include <utils/compiler.h>
+#include <private/filament/DescriptorSets.h>
 
+#include <backend/DriverEnums.h>
+
+#include <utils/Panic.h>
+
+#include <initializer_list>
+#include <iterator>
+#include <string_view>
 #include <utility>
 
+#include <stddef.h>
 #include <stdint.h>
 
 using namespace utils;
@@ -42,12 +49,13 @@ SamplerInterfaceBlock::Builder::stageFlags(backend::ShaderStageFlags stageFlags)
     return *this;
 }
 
-SamplerInterfaceBlock::Builder& SamplerInterfaceBlock::Builder::add(
-        std::string_view samplerName, Type type, Format format,
-        Precision precision, bool multisample) noexcept {
+SamplerInterfaceBlock::Builder& SamplerInterfaceBlock::Builder::add(std::string_view samplerName,
+        Binding binding, Type type, Format format, Precision precision, bool multisample,
+        ShaderStageFlags stages) noexcept {
     mEntries.push_back({
-            { samplerName.data(), samplerName.size() }, { },
-            uint8_t(mEntries.size()), type, format, precision, multisample });
+            { samplerName.data(), samplerName.size() }, // name
+            { }, // uniform name
+            binding, type, format, precision, multisample, stages });
     return *this;
 }
 
@@ -58,7 +66,7 @@ SamplerInterfaceBlock SamplerInterfaceBlock::Builder::build() {
 SamplerInterfaceBlock::Builder& SamplerInterfaceBlock::Builder::add(
         std::initializer_list<ListEntry> list) noexcept {
     for (auto& e : list) {
-        add(e.name, e.type, e.format, e.precision, e.multisample);
+        add(e.name, e.binding, e.type, e.format, e.precision, e.multisample, e.stages);
     }
     return *this;
 }
@@ -79,26 +87,24 @@ SamplerInterfaceBlock::SamplerInterfaceBlock(Builder const& builder) noexcept
 
     auto& samplersInfoList = mSamplersInfoList;
 
-    size_t i = 0;
     for (auto const& e : builder.mEntries) {
-        assert_invariant(i == e.offset);
-        SamplerInfo& info = samplersInfoList[i++];
+        size_t const i = std::distance(builder.mEntries.data(), &e);
+        SamplerInfo& info = samplersInfoList[i];
         info = e;
+        info.stages &= builder.mStageFlags;
         info.uniformName = generateUniformName(mName.c_str(), e.name.c_str());
-        infoMap[{ info.name.data(), info.name.size() }] = info.offset; // info.name.c_str() guaranteed constant
+        infoMap[{ info.name.data(), info.name.size() }] = i; // info.name.c_str() guaranteed constant
     }
-    assert_invariant(i == samplersInfoList.size());
 }
 
 const SamplerInterfaceBlock::SamplerInfo* SamplerInterfaceBlock::getSamplerInfo(
         std::string_view name) const {
     auto pos = mInfoMap.find(name);
-    ASSERT_PRECONDITION(pos != mInfoMap.end(), "sampler named \"%.*s\" not found",
-            name.size(), name.data());
+    FILAMENT_CHECK_PRECONDITION(pos != mInfoMap.end()) << "sampler named \"" << name << "\" not found";
     return &mSamplersInfoList[pos->second];
 }
 
-utils::CString SamplerInterfaceBlock::generateUniformName(const char* group, const char* sampler) noexcept {
+CString SamplerInterfaceBlock::generateUniformName(const char* group, const char* sampler) noexcept {
     char uniformName[256];
 
     // sampler interface block name
@@ -113,9 +119,27 @@ utils::CString SamplerInterfaceBlock::generateUniformName(const char* group, con
             std::min(sizeof(uniformName) / 2 - 2, strlen(sampler)),
             prefix + 1);
     *last++ = 0; // null terminator
-    assert(last <= std::end(uniformName));
+    assert_invariant(last <= std::end(uniformName));
 
     return CString{ uniformName, size_t(last - uniformName) - 1u };
+}
+
+SamplerInterfaceBlock::SamplerInfoList SamplerInterfaceBlock::filterSamplerList(
+        SamplerInfoList list, backend::DescriptorSetLayout const& descriptorSetLayout) {
+    // remove all the samplers that are not included in the descriptor-set layout
+    list.erase(
+            std::remove_if(list.begin(), list.end(),
+                    [&](auto const& entry) {
+                        auto pos = std::find_if(
+                                descriptorSetLayout.bindings.begin(),
+                                descriptorSetLayout.bindings.end(),
+                                [&entry](const auto& item) {
+                                    return item.binding == entry.binding;
+                                });
+                        return pos == descriptorSetLayout.bindings.end();
+                    }), list.end());
+
+    return list;
 }
 
 } // namespace filament

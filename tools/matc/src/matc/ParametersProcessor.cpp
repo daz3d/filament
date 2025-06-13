@@ -66,6 +66,7 @@ static MaterialBuilder::Variable intToVariable(size_t i) noexcept {
         case 1:  return MaterialBuilder::Variable::CUSTOM1;
         case 2:  return MaterialBuilder::Variable::CUSTOM2;
         case 3:  return MaterialBuilder::Variable::CUSTOM3;
+        case 4:  return MaterialBuilder::Variable::CUSTOM4;
         default: return MaterialBuilder::Variable::CUSTOM0;
     }
 }
@@ -154,6 +155,12 @@ static bool processParameter(MaterialBuilder& builder, const JsonishObject& json
         return false;
     }
 
+    const JsonishValue* transformNameValue = jsonObject.getValue("transformName");
+    if (transformNameValue && transformNameValue->getType() != JsonishValue::STRING) {
+        std::cerr << "parameters: transformName value must be STRING." << std::endl;
+        return false;
+    }
+
     const JsonishValue* precisionValue = jsonObject.getValue("precision");
     if (precisionValue) {
         if (precisionValue->getType() != JsonishValue::STRING) {
@@ -189,9 +196,43 @@ static bool processParameter(MaterialBuilder& builder, const JsonishObject& json
     auto typeString = typeValue->toJsonString()->getString();
     auto nameString = nameValue->toJsonString()->getString();
 
+    const JsonishValue* stagesValue = jsonObject.getValue("stages");
+    using filament::backend::ShaderStageFlags;
+    auto stages = ShaderStageFlags::NONE;
+    if (stagesValue) {
+        if (stagesValue->getType() != JsonishValue::ARRAY) {
+            std::cerr << "parameters: stages must be an ARRAY." << std::endl;
+            return false;
+        }
+        for (auto value: stagesValue->toJsonArray()->getElements()) {
+            if (value->getType() == JsonishValue::Type::STRING) {
+                using namespace std::literals;
+                using Qualifier = filament::BufferInterfaceBlock::Qualifier;
+                auto stageString = value->toJsonString()->getString();
+                if (Enums::isValid<ShaderStageType>(stageString)) {
+                    stages |= Enums::toEnum<ShaderStageType>(stageString);
+                } else {
+                    std::cerr << "stages: the stage '" << stageString
+                              << "' for parameter with name '" << nameString
+                              << "' is not a valid shader stage." << std::endl;
+                    return false;
+                }
+                continue;
+            }
+            std::cerr << "parameters: stages must be an array of STRINGs." << std::endl;
+            return false;
+        }
+    }
+
     size_t const arraySize = extractArraySize(typeString);
 
     if (Enums::isValid<UniformType>(typeString)) {
+        if (stages != ShaderStageFlags::NONE) {
+            std::cerr << "parameters: the uniform parameter with name '" << nameString << "'"
+                      << " has shader stages specified. Shader stages are only supported for"
+                      << " samplers." << std::endl;
+            return false;
+        }
         MaterialBuilder::UniformType const type = Enums::toEnum<UniformType>(typeString);
         ParameterPrecision precision = ParameterPrecision::DEFAULT;
         if (precisionValue) {
@@ -221,7 +262,25 @@ static bool processParameter(MaterialBuilder& builder, const JsonishObject& json
 
         auto multisample = multiSampleValue ? multiSampleValue->toJsonBool()->getBool() : false;
 
-        builder.parameter(nameString.c_str(), type, format, precision, multisample);
+        if (stages == ShaderStageFlags::NONE) {
+            // TODO: Infer the default shader stages based on which blocks are present in the
+            // material.
+            stages = ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT;
+        }
+        if (transformNameValue) {
+            if (type != MaterialBuilder::SamplerType::SAMPLER_EXTERNAL) {
+                std::cerr << "parameters: the parameter with name '" << nameString << "'"
+                    << " is a sampler of type " << typeString << " and has a transformName."
+                    << " Transform names are only supported for external samplers."
+                    << std::endl;
+                return false;
+            }
+            auto transformName = transformNameValue->toJsonString()->getString();
+            builder.parameter(nameString.c_str(), type, format, precision, multisample,
+                    transformName.c_str(), stages);
+        } else {
+            builder.parameter(nameString.c_str(), type, format, precision, multisample, "", stages);
+        }
 
     } else {
         std::cerr << "parameters: the type '" << typeString
@@ -269,6 +328,19 @@ static bool processConstant(MaterialBuilder& builder, const JsonishObject& jsonO
         return false;
     }
 
+    const JsonishValue* mutableValue = jsonObject.getValue("mutable");
+    bool isMutable;
+    if (mutableValue) {
+        const JsonishBool* mutableBool = mutableValue->toJsonBool();
+        if (!mutableBool) {
+            std::cerr << "constants: mutable value must be BOOL." << std::endl;
+            return false;
+        }
+        isMutable = mutableBool->getBool();
+    } else {
+        isMutable = false;
+    }
+
     auto typeString = typeValue->toJsonString()->getString();
     auto nameString = nameValue->toJsonString()->getString();
     const JsonishValue* defaultValue = jsonObject.getValue("default");
@@ -287,7 +359,7 @@ static bool processConstant(MaterialBuilder& builder, const JsonishObject& jsonO
                     // FIXME: Jsonish doesn't distinguish between integers and floats.
                     intDefault = (int32_t)defaultValue->toJsonNumber()->getFloat();
                 }
-                builder.constant(nameString.c_str(), type, intDefault);
+                builder.constant(nameString.c_str(), type, isMutable, intDefault);
                 break;
             }
             case ConstantType::FLOAT: {
@@ -300,7 +372,7 @@ static bool processConstant(MaterialBuilder& builder, const JsonishObject& jsonO
                     }
                     floatDefault = defaultValue->toJsonNumber()->getFloat();
                 }
-                builder.constant(nameString.c_str(), type, floatDefault);
+                builder.constant(nameString.c_str(), type, isMutable, floatDefault);
                 break;
             }
             case ConstantType::BOOL:
@@ -313,7 +385,7 @@ static bool processConstant(MaterialBuilder& builder, const JsonishObject& jsonO
                     }
                     boolDefault = defaultValue->toJsonBool()->getBool();
                 }
-                builder.constant(nameString.c_str(), type, boolDefault);
+                builder.constant(nameString.c_str(), type, isMutable, boolDefault);
                 break;
         }
     } else {
@@ -609,20 +681,57 @@ static bool processVariables(MaterialBuilder& builder, const JsonishValue& value
     const JsonishArray* jsonArray = value.toJsonArray();
     const auto& elements = jsonArray->getElements();
 
-    if (elements.size() > 4) {
-        std::cerr << "variables: Max array size is 4." << std::endl;
+    if (elements.size() > MaterialBuilder::MATERIAL_VARIABLES_COUNT) {
+        std::cerr << "variables: Max array size is " << MaterialBuilder::MATERIAL_VARIABLES_COUNT << "." << std::endl;
         return false;
     }
 
     for (size_t i = 0; i < elements.size(); i++) {
-        auto elementValue = elements[i];
+        ParameterPrecision precision = ParameterPrecision::DEFAULT;
         MaterialBuilder::Variable v = intToVariable(i);
-        if (elementValue->getType() != JsonishValue::Type::STRING) {
+        std::string nameString;
+
+        auto elementValue = elements[i];
+        if (elementValue->getType() == JsonishValue::Type::OBJECT) {
+
+            JsonishObject const& jsonObject = *elementValue->toJsonObject();
+
+            const JsonishValue* nameValue = jsonObject.getValue("name");
+            if (!nameValue) {
+                std::cerr << "variables: entry without 'name' key." << std::endl;
+                return false;
+            }
+            if (nameValue->getType() != JsonishValue::STRING) {
+                std::cerr << "variables: name value must be STRING." << std::endl;
+                return false;
+            }
+
+            const JsonishValue* precisionValue = jsonObject.getValue("precision");
+            if (precisionValue) {
+                if (precisionValue->getType() != JsonishValue::STRING) {
+                    std::cerr << "variables: precision must be a STRING." << std::endl;
+                    return false;
+                }
+                auto precisionString = precisionValue->toJsonString();
+                if (!Enums::isValid<ParameterPrecision>(precisionString->getString())){
+                    return logEnumIssue("variables", *precisionString, Enums::map<ParameterPrecision>());
+                }
+            }
+
+            nameString = nameValue->toJsonString()->getString();
+            if (precisionValue) {
+                precision = Enums::toEnum<ParameterPrecision>(
+                        precisionValue->toJsonString()->getString());
+            }
+            builder.variable(v, nameString.c_str(), precision);
+        } else if (elementValue->getType() == JsonishValue::Type::STRING) {
+            nameString = elementValue->toJsonString()->getString();
+            builder.variable(v, nameString.c_str());
+        } else {
             std::cerr << "variables: array index " << i << " is not a STRING. found:" <<
                     JsonishValue::typeToString(elementValue->getType()) << std::endl;
             return false;
         }
-        builder.variable(v, elementValue->toJsonString()->getString().c_str());
     }
 
     return true;

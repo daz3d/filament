@@ -16,7 +16,7 @@
 
 #include "private/backend/CircularBuffer.h"
 
-#include <utils/Log.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
 #include <utils/architecture.h>
 #include <utils/ashmem.h>
@@ -24,7 +24,7 @@
 #include <utils/debug.h>
 #include <utils/ostream.h>
 
-#if !defined(WIN32) && !defined(__EMSCRIPTEN__) && !defined(IOS)
+#if !defined(WIN32) && !defined(__EMSCRIPTEN__)
 #    include <sys/mman.h>
 #    include <unistd.h>
 #    define HAS_MMAP 1
@@ -32,10 +32,11 @@
 #    define HAS_MMAP 0
 #endif
 
-#include <stdint.h>
 #include <stddef.h>
-#include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 using namespace utils;
 
@@ -64,7 +65,7 @@ CircularBuffer::~CircularBuffer() noexcept {
 // to each others and a special case in circularize()
 
 UTILS_NOINLINE
-void* CircularBuffer::alloc(size_t size) noexcept {
+void* CircularBuffer::alloc(size_t size) {
 #if HAS_MMAP
     void* data = nullptr;
     void* vaddr = MAP_FAILED;
@@ -81,6 +82,9 @@ void* CircularBuffer::alloc(size_t size) noexcept {
             // map the circular buffer once...
             vaddr = mmap(reserve_vaddr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
             if (vaddr != MAP_FAILED) {
+                // populate the address space with pages (because this is a circular buffer,
+                // all the pages will be allocated eventually, might as well do it now)
+                memset(vaddr, 0, size);
                 // and map the circular buffer again, behind the previous copy...
                 vaddr_shadow = mmap((char*)vaddr + size, size,
                         PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
@@ -101,7 +105,7 @@ void* CircularBuffer::alloc(size_t size) noexcept {
     if (UTILS_UNLIKELY(mAshmemFd < 0)) {
         // ashmem failed
         if (vaddr_guard != MAP_FAILED) {
-            munmap(vaddr_guard, size);
+            munmap(vaddr_guard, BLOCK_SIZE);
         }
 
         if (vaddr_shadow != MAP_FAILED) {
@@ -119,12 +123,11 @@ void* CircularBuffer::alloc(size_t size) noexcept {
         data = mmap(nullptr, size * 2 + BLOCK_SIZE,
                 PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        ASSERT_POSTCONDITION(data,
-                "couldn't allocate %u KiB of virtual address space for the command buffer",
-                (size * 2 / 1024));
+        FILAMENT_CHECK_POSTCONDITION(data != MAP_FAILED) <<
+                "couldn't allocate " << (size * 2 / 1024) <<
+                " KiB of virtual address space for the command buffer";
 
-        slog.d << "WARNING: Using soft CircularBuffer (" << (size * 2 / 1024) << " KiB)"
-               << io::endl;
+        LOG(WARNING) << "Using 'soft' CircularBuffer (" << (size * 2 / 1024) << " KiB)";
 
         // guard page at the end
         void* guard = (void*)(uintptr_t(data) + size * 2);

@@ -223,12 +223,17 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
 
     for (uint64_t i = 0; i < sibCount; i++) {
         CString fieldName;
+        uint8_t fieldBinding;
         uint8_t fieldType;
         uint8_t fieldFormat;
         uint8_t fieldPrecision;
         bool fieldMultisample;
 
         if (!sib.read(&fieldName)) {
+            return false;
+        }
+
+        if (!sib.read(&fieldBinding)) {
             return false;
         }
 
@@ -249,6 +254,7 @@ static bool printParametersInfo(ostream& text, const ChunkContainer& container) 
 
         text << "    "
                 << setw(alignment) << fieldName.c_str()
+                << setw(shortAlignment) << +fieldBinding
                 << setw(shortAlignment) << toString(SamplerType(fieldType))
                 << setw(shortAlignment) << toString(Precision(fieldPrecision))
                 << toString(SamplerFormat(fieldFormat))
@@ -421,6 +427,12 @@ static bool printShaderInfo(ostream& text, const ChunkContainer& container, Chun
         case ChunkType::MaterialMetal:
             text << "Metal shaders:" << endl;
             break;
+        case ChunkType::MaterialMetalLibrary:
+            text << "Metal precompiled shader libraries:" << endl;
+        break;
+        case ChunkType::MaterialWgsl:
+            text << "WGSL precompiled shader libraries:" << endl;
+        break;
         default:
             assert(false && "Invalid shader ChunkType");
             break;
@@ -453,6 +465,12 @@ bool TextWriter::writeMaterialInfo(const filaflat::ChunkContainer& container) {
         return false;
     }
     if (!printShaderInfo(text, container, ChunkType::MaterialMetal)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialMetalLibrary)) {
+        return false;
+    }
+    if (!printShaderInfo(text, container, ChunkType::MaterialWgsl)) {
         return false;
     }
 

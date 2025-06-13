@@ -80,7 +80,12 @@ public:
         OPENGL      = 0x01u,
         VULKAN      = 0x02u,
         METAL       = 0x04u,
+        WEBGPU        = 0x08u,
+#ifdef FILAMENT_SUPPORTS_WEBGPU
+        ALL         = OPENGL | VULKAN | METAL | WEBGPU
+#else
         ALL         = OPENGL | VULKAN | METAL
+#endif
     };
 
     /*
@@ -134,6 +139,7 @@ protected:
     TargetApi mTargetApi = (TargetApi) 0;
     Optimization mOptimization = Optimization::PERFORMANCE;
     bool mPrintShaders = false;
+    bool mSaveRawVariants = false;
     bool mGenerateDebugInfo = false;
     bool mIncludeEssl1 = true;
     utils::bitset32 mShaderModels;
@@ -162,6 +168,7 @@ inline constexpr MaterialBuilderBase::TargetApi targetApiFromBackend(
         case Backend::OPENGL:  return TargetApi::OPENGL;
         case Backend::VULKAN:  return TargetApi::VULKAN;
         case Backend::METAL:   return TargetApi::METAL;
+        case Backend::WEBGPU:    return TargetApi::WEBGPU;
         case Backend::NOOP:    return TargetApi::OPENGL;
     }
 }
@@ -210,12 +217,13 @@ public:
     MaterialBuilder(MaterialBuilder&& rhs) noexcept = default;
     MaterialBuilder& operator=(MaterialBuilder&& rhs) noexcept = default;
 
-    static constexpr size_t MATERIAL_VARIABLES_COUNT = 4;
+    static constexpr size_t MATERIAL_VARIABLES_COUNT = 5;
     enum class Variable : uint8_t {
         CUSTOM0,
         CUSTOM1,
         CUSTOM2,
-        CUSTOM3
+        CUSTOM3,
+        CUSTOM4, // CUSTOM4 is only available if the vertex attribute `color` is not required.
         // when adding more variables, make sure to update MATERIAL_VARIABLES_COUNT
     };
 
@@ -245,6 +253,8 @@ public:
     using CullingMode = filament::backend::CullingMode;
     using FeatureLevel = filament::backend::FeatureLevel;
     using StereoscopicType = filament::backend::StereoscopicType;
+    using ShaderStage = filament::backend::ShaderStage;
+    using ShaderStageFlags = filament::backend::ShaderStageFlags;
 
     enum class VariableQualifier : uint8_t {
         OUT
@@ -295,16 +305,17 @@ public:
 
     //! Add a parameter array to this material.
     MaterialBuilder& parameter(const char* name, size_t size, UniformType type,
-            ParameterPrecision precision = ParameterPrecision::DEFAULT) noexcept;
+            ParameterPrecision precision = ParameterPrecision::DEFAULT);
 
-    //! Add a constant parameter to this material.
+    //! Add a (mutable) constant parameter to this material.
     template<typename T>
     using is_supported_constant_parameter_t = typename std::enable_if<
             std::is_same<int32_t, T>::value ||
             std::is_same<float, T>::value ||
             std::is_same<bool, T>::value>::type;
     template<typename T, typename = is_supported_constant_parameter_t<T>>
-    MaterialBuilder& constant(const char *name, ConstantType type, T defaultValue = 0);
+    MaterialBuilder& constant(const char* name, ConstantType type, bool isMutable,
+            T defaultValue = 0);
 
     /**
      * Add a sampler parameter to this material.
@@ -313,13 +324,17 @@ public:
      */
     MaterialBuilder& parameter(const char* name, SamplerType samplerType,
             SamplerFormat format = SamplerFormat::FLOAT,
-            ParameterPrecision precision = ParameterPrecision::DEFAULT,
-            bool multisample = false) noexcept;
+            ParameterPrecision precision = ParameterPrecision::DEFAULT, bool multisample = false,
+            const char* transformName = "",
+            ShaderStageFlags stages = ShaderStageFlags::ALL_SHADER_STAGE_FLAGS);
 
-    MaterialBuilder& buffer(filament::BufferInterfaceBlock bib) noexcept;
+    MaterialBuilder& buffer(filament::BufferInterfaceBlock bib);
 
     //! Custom variables (all float4).
     MaterialBuilder& variable(Variable v, const char* name) noexcept;
+
+    MaterialBuilder& variable(Variable v, const char* name,
+            ParameterPrecision precision) noexcept;
 
     /**
      * Require a specified attribute.
@@ -580,10 +595,17 @@ public:
      */
     MaterialBuilder& optimization(Optimization optimization) noexcept;
 
-    // TODO: this is present here for matc's "--print" flag, but ideally does not belong inside
-    // MaterialBuilder.
+    // TODO: this is present here for matc's "--print" flag, but ideally does not belong inside MaterialBuilder.
     //! If true, will output the generated GLSL shader code to stdout.
     MaterialBuilder& printShaders(bool printShaders) noexcept;
+
+    /**
+     * If true, this will write the raw generated GLSL for each variant to a text file in the
+     * current directory. The file will be named after the material name and the variant name. Its
+     * extension will be derived from the shader stage. For example, mymaterial_0x0e.frag,
+     * mymaterial_0x18.vert, etc.
+     */
+    MaterialBuilder& saveRawVariants(bool saveRawVariants) noexcept;
 
     //! If true, will include debugging information in generated SPIRV.
     MaterialBuilder& generateDebugInfo(bool generateDebugInfo) noexcept;
@@ -596,7 +618,7 @@ public:
 
     //! Add a new fragment shader output variable. Only valid for materials in the POST_PROCESS domain.
     MaterialBuilder& output(VariableQualifier qualifier, OutputTarget target, Precision precision,
-            OutputType type, const char* name, int location = -1) noexcept;
+            OutputType type, const char* name, int location = -1);
 
     MaterialBuilder& enableFramebufferFetch() noexcept;
 
@@ -615,7 +637,7 @@ public:
      * Build the material. If you are using the Filament engine with this library, you should use
      * the job system provided by Engine.
      */
-    Package build(utils::JobSystem& jobSystem) noexcept;
+    Package build(utils::JobSystem& jobSystem);
 
 public:
     // The methods and types below are for internal use
@@ -625,19 +647,21 @@ public:
      * Add a subpass parameter to this material.
      */
     MaterialBuilder& subpass(SubpassType subpassType,
-            SamplerFormat format, ParameterPrecision precision, const char* name) noexcept;
+            SamplerFormat format, ParameterPrecision precision, const char* name);
     MaterialBuilder& subpass(SubpassType subpassType,
-            SamplerFormat format, const char* name) noexcept;
+            SamplerFormat format, const char* name);
     MaterialBuilder& subpass(SubpassType subpassType,
-            ParameterPrecision precision, const char* name) noexcept;
-    MaterialBuilder& subpass(SubpassType subpassType, const char* name) noexcept;
+            ParameterPrecision precision, const char* name);
+    MaterialBuilder& subpass(SubpassType subpassType, const char* name);
 
     struct Parameter {
         Parameter() noexcept: parameterType(INVALID) {}
 
         // Sampler
-        Parameter(const char* paramName, SamplerType t, SamplerFormat f, ParameterPrecision p, bool ms)
-                : name(paramName), size(1), precision(p), samplerType(t), format(f), parameterType(SAMPLER), multisample(ms) { }
+        Parameter(const char* paramName, SamplerType t, SamplerFormat f, ParameterPrecision p,
+                bool ms, const char* tn, ShaderStageFlags s)
+            : name(paramName), size(1), precision(p), samplerType(t), format(f),
+              parameterType(SAMPLER), multisample(ms), transformName(tn), stages(s) { }
 
         // Uniform
         Parameter(const char* paramName, UniformType t, size_t typeSize, ParameterPrecision p)
@@ -655,6 +679,8 @@ public:
         SubpassType subpassType;
         SamplerFormat format;
         bool multisample;
+        utils::CString transformName;
+        ShaderStageFlags stages;
         enum {
             INVALID,
             UNIFORM,
@@ -692,18 +718,30 @@ public:
         } defaultValue;
     };
 
+    struct PushConstant {
+        utils::CString name;
+        ConstantType type;
+        ShaderStage stage;
+    };
+
+    struct CustomVariable {
+        utils::CString name;
+        Precision precision = Precision::DEFAULT;
+        bool hasPrecision = false;
+    };
+
     static constexpr size_t MATERIAL_PROPERTIES_COUNT = filament::MATERIAL_PROPERTIES_COUNT;
     using Property = filament::Property;
 
     using PropertyList = bool[MATERIAL_PROPERTIES_COUNT];
-    using VariableList = utils::CString[MATERIAL_VARIABLES_COUNT];
+    using VariableList = CustomVariable[MATERIAL_VARIABLES_COUNT];
     using OutputList = std::vector<Output>;
 
     static constexpr size_t MAX_COLOR_OUTPUT = filament::backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT;
     static constexpr size_t MAX_DEPTH_OUTPUT = 1;
     static_assert(MAX_COLOR_OUTPUT == 8,
             "When updating MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT, manually update post_process_inputs.fs"
-            " and post_process.fs");
+            " and post_process_main.fs");
 
     // Preview the first shader generated by the given CodeGenParams.
     // This is used to run Static Code Analysis before generating a package.
@@ -720,6 +758,7 @@ public:
     using SubpassList = Parameter[MAX_SUBPASS_COUNT];
     using BufferList = std::vector<std::unique_ptr<filament::BufferInterfaceBlock>>;
     using ConstantList = std::vector<Constant>;
+    using PushConstantList = std::vector<PushConstant>;
 
     // returns the number of parameters declared in this material
     uint8_t getParameterCount() const noexcept { return mParameterCount; }
@@ -763,6 +802,10 @@ private:
 
     void prepareToBuild(MaterialInfo& info) noexcept;
 
+    // Initialize internal push constants that will both be written to the shaders and material
+    // chunks (like user-defined spec constants).
+    void initPushConstants() noexcept;
+
     // Return true if the shader is syntactically and semantically valid.
     // This method finds all the properties defined in the fragment and
     // vertex shaders of the material.
@@ -771,7 +814,7 @@ private:
     // Multiple calls to findProperties accumulate the property sets across fragment
     // and vertex shaders in mProperties.
     bool findProperties(filament::backend::ShaderStage type,
-            MaterialBuilder::PropertyList& allProperties,
+            MaterialBuilder::PropertyList const& allProperties,
             CodeGenParams const& semanticCodeGenParams) noexcept;
 
     bool runSemanticAnalysis(MaterialInfo* inOutInfo,
@@ -829,6 +872,8 @@ private:
     PropertyList mProperties;
     ParameterList mParameters;
     ConstantList mConstants;
+    ConstantList mMutableConstants;
+    PushConstantList mPushConstants;
     SubpassList mSubpasses;
     VariableList mVariables;
     OutputList mOutputs;

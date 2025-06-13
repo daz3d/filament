@@ -15,10 +15,13 @@
  */
 
 #include <utils/sstream.h>
+#include <utils/ostream.h>
+
+#include "ostream_.h"
 
 namespace utils::io {
 
-utils::io::ostream& sstream::flush() noexcept {
+ostream& sstream::flush() noexcept {
     // no-op.
     return *this;
 }

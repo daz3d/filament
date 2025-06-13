@@ -26,6 +26,7 @@
 #include <filamat/MaterialBuilder.h>
 
 #include <utils/JobSystem.h>
+#include <utils/Panic.h>
 
 #include <memory>
 
@@ -696,6 +697,25 @@ TEST_F(MaterialCompiler, StaticCodeAnalyzerBentNormal) {
     EXPECT_TRUE(PropertyListsMatch(expected, properties));
 }
 
+TEST_F(MaterialCompiler, StaticCodeAnalyzerShadowStrength) {
+    std::string fragmentCode(R"(
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            material.shadowStrength = 0.1;
+        }
+    )");
+
+    std::string shaderCode = shaderWithAllProperties(*jobSystem, ShaderStage::FRAGMENT,
+            fragmentCode);
+
+    GLSLTools glslTools;
+    MaterialBuilder::PropertyList properties{ false };
+    glslTools.findProperties(ShaderStage::FRAGMENT, shaderCode, properties);
+    MaterialBuilder::PropertyList expected{ false };
+    expected[size_t(filamat::MaterialBuilder::Property::SHADOW_STRENGTH)] = true;
+    EXPECT_TRUE(PropertyListsMatch(expected, properties));
+}
+
 TEST_F(MaterialCompiler, StaticCodeAnalyzerOutputFactor) {
     std::string fragmentCode(R"(
         void material(inout MaterialInputs material) {
@@ -757,6 +777,48 @@ TEST_F(MaterialCompiler, Uv0AndUv1) {
     builder.require(filament::VertexAttribute::UV1);
     filamat::Package result = builder.build(*jobSystem);
     EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, FiveCustomVariables) {
+    filamat::MaterialBuilder builder;
+    builder.variable(MaterialBuilder::Variable::CUSTOM0, "custom0");
+    builder.variable(MaterialBuilder::Variable::CUSTOM1, "custom1");
+    builder.variable(MaterialBuilder::Variable::CUSTOM2, "custom2");
+    builder.variable(MaterialBuilder::Variable::CUSTOM3, "custom3");
+    builder.variable(MaterialBuilder::Variable::CUSTOM4, "custom4");
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, FourCustomVariablesAndColorAttribute) {
+    filamat::MaterialBuilder builder;
+    builder.require(filament::VertexAttribute::COLOR);
+    builder.variable(MaterialBuilder::Variable::CUSTOM0, "custom0");
+    builder.variable(MaterialBuilder::Variable::CUSTOM1, "custom1");
+    builder.variable(MaterialBuilder::Variable::CUSTOM2, "custom2");
+    builder.variable(MaterialBuilder::Variable::CUSTOM3, "custom3");
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, FiveCustomVariablesAndColorAttributeFails) {
+    filamat::MaterialBuilder builder;
+    builder.require(filament::VertexAttribute::COLOR);
+    builder.variable(MaterialBuilder::Variable::CUSTOM0, "custom0");
+    builder.variable(MaterialBuilder::Variable::CUSTOM1, "custom1");
+    builder.variable(MaterialBuilder::Variable::CUSTOM2, "custom2");
+    builder.variable(MaterialBuilder::Variable::CUSTOM3, "custom3");
+    builder.variable(MaterialBuilder::Variable::CUSTOM4, "custom4");
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_FALSE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, CustomVariable4AndColorAttributeFails) {
+    filamat::MaterialBuilder builder;
+    builder.require(filament::VertexAttribute::COLOR);
+    builder.variable(MaterialBuilder::Variable::CUSTOM4, "custom4");
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_FALSE(result.isValid());
 }
 
 TEST_F(MaterialCompiler, Arrays) {
@@ -826,10 +888,10 @@ TEST_F(MaterialCompiler, ConstantParameter) {
         }
     )");
   filamat::MaterialBuilder builder;
-  builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
-  builder.constant("myIntConstant", ConstantType::INT, 123);
-  builder.constant("myBoolConstant", ConstantType::BOOL, true);
-  builder.constant<bool>("myOtherBoolConstant", ConstantType::BOOL);
+  builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
+  builder.constant("myIntConstant", ConstantType::INT, /*isMutable=*/false, 123);
+  builder.constant("myBoolConstant", ConstantType::BOOL, /*isMutable=*/false, true);
+  builder.constant<bool>("myOtherBoolConstant", ConstantType::BOOL, /*isMutable=*/false);
 
   builder.shading(filament::Shading::LIT);
   builder.material(shaderCode.c_str());
@@ -842,8 +904,8 @@ TEST_F(MaterialCompiler, ConstantParameterSameName) {
 #ifdef __EXCEPTIONS
     EXPECT_THROW({
         filamat::MaterialBuilder builder;
-        builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
-        builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
     }, utils::PostconditionPanic);
 #endif
 }
@@ -852,7 +914,7 @@ TEST_F(MaterialCompiler, ConstantParameterWrongType) {
 #ifdef __EXCEPTIONS
     EXPECT_THROW({
         filamat::MaterialBuilder builder;
-        builder.constant("myFloatConstant", ConstantType::FLOAT, 10);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 10);
     }, utils::PostconditionPanic);
 #endif
 }
@@ -891,7 +953,78 @@ TEST_F(MaterialCompiler, FeatureLevel0Ess3CallFails) {
   EXPECT_FALSE(result.isValid());
 }
 
+#if FILAMENT_SUPPORTS_WEBGPU
+TEST_F(MaterialCompiler, WgslConversionBakedColor) {
+    std::string bakedColorCodeFrag(R"(
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            material.baseColor = getColor();
+        }
+    )");
+    filamat::MaterialBuilder builder;
+    builder.targetApi(filamat::MaterialBuilderBase::TargetApi::WEBGPU);
+    builder.material(bakedColorCodeFrag.c_str());
+    builder.shading(filamat::MaterialBuilder::Shading::UNLIT);
+    builder.name("BakedColor");
+    builder.culling(CullingMode::NONE);
+    builder.featureLevel(FeatureLevel::FEATURE_LEVEL_0);
+    builder.require(filament::VertexAttribute::COLOR);
+    builder.variantFilter(static_cast<filament::UserVariantFilterMask>(
+            filament::UserVariantFilterBit::SKINNING | filament::UserVariantFilterBit::STE));
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, WgslConversionSandboxLitTransparent) {
+    std::string litTransparentCodeFrag(R"(
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor.rgb = materialParams.baseColor * materialParams.alpha;
+        material.baseColor.a = materialParams.alpha;
+        material.roughness = materialParams.roughness;
+        material.metallic = materialParams.metallic;
+        material.reflectance = materialParams.reflectance;
+        material.sheenColor = materialParams.sheenColor;
+        material.sheenRoughness = materialParams.sheenRoughness;
+        material.clearCoat = materialParams.clearCoat;
+        material.clearCoatRoughness = materialParams.clearCoatRoughness;
+        material.anisotropy = materialParams.anisotropy;
+        material.emissive = materialParams.emissive;
+    }
+    )");
+    filamat::MaterialBuilder builder;
+    builder.targetApi(filamat::MaterialBuilderBase::TargetApi::WEBGPU);
+    builder.material(litTransparentCodeFrag.c_str());
+    builder.shading(filamat::MaterialBuilder::Shading::LIT);
+    builder.name("LitTransparent");
+    builder.blending(filament::BlendingMode::TRANSPARENT);
+    builder.specularAntiAliasing(true);
+
+    builder.parameter("alpha", 1, UniformType::FLOAT);
+    builder.parameter("baseColor", 1, UniformType::FLOAT3);
+    builder.parameter("roughness", 1, UniformType::FLOAT);
+    builder.parameter("metallic", 1, UniformType::FLOAT);
+    builder.parameter("reflectance", 1, UniformType::FLOAT);
+    builder.parameter("sheenColor", 1, UniformType::FLOAT3);
+    builder.parameter("sheenRoughness", 1, UniformType::FLOAT);
+    builder.parameter("clearCoat", 1, UniformType::FLOAT);
+    builder.parameter("clearCoatRoughness", 1, UniformType::FLOAT);
+    builder.parameter("anisotropy", 1, UniformType::FLOAT);
+    builder.parameter("emissive", 1, UniformType::FLOAT4);
+
+    builder.variantFilter(static_cast<filament::UserVariantFilterMask>(
+            filament::UserVariantFilterBit::SKINNING | filament::UserVariantFilterBit::STE));
+    filamat::Package result = builder.build(*jobSystem);
+    EXPECT_TRUE(result.isValid());
+}
+#endif
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    const int rv = RUN_ALL_TESTS();
+    if (testing::UnitTest::GetInstance()->test_to_run_count() == 0) {
+        //If you run a test filter that contains 0 tests that was likely not intentional. Fail in that scenario.
+        return 1;
+    }
+    return rv;
 }

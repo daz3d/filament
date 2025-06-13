@@ -171,7 +171,7 @@ public:
     bool isEdgeValid(Edge const* edge) const noexcept;
 
     //! export a graphviz view of the graph
-    void export_graphviz(utils::io::ostream& out, const char* name = nullptr);
+    void export_graphviz(utils::io::ostream& out, const char* name = nullptr) const noexcept;
 
     bool isAcyclic() const noexcept;
 
@@ -186,7 +186,7 @@ private:
 };
 
 inline DependencyGraph::Edge::Edge(DependencyGraph& graph,
-        DependencyGraph::Node* from, DependencyGraph::Node* to)
+        Node* from, Node* to)
         : from(from->getId()), to(to->getId()) {
     assert_invariant(graph.mNodes[this->from] == from);
     assert_invariant(graph.mNodes[this->to] == to);

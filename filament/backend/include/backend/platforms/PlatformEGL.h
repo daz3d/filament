@@ -47,6 +47,11 @@ public:
     // Return true if we're on an OpenGL platform (as opposed to OpenGL ES). false by default.
     virtual bool isOpenGL() const noexcept;
 
+    /**
+     * Creates an ExternalImage from a EGLImageKHR
+     */
+    ExternalImageHandle UTILS_PUBLIC createExternalImage(EGLImageKHR eglImage) noexcept;
+
 protected:
     // --------------------------------------------------------------------------------------------
     // Helper for EGL configs and attributes parameters
@@ -75,8 +80,7 @@ protected:
      * Initializes EGL, creates the OpenGL context and returns a concrete Driver implementation
      * that supports OpenGL/OpenGL ES.
      */
-    Driver* createDriver(void* sharedContext,
-            const Platform::DriverConfig& driverConfig) noexcept override;
+    Driver* createDriver(void* sharedContext, const DriverConfig& driverConfig) noexcept override;
 
     /**
      * This returns zero. This method can be overridden to return something more useful.
@@ -105,11 +109,11 @@ protected:
 
     bool makeCurrent(ContextType type,
             SwapChain* drawSwapChain,
-            SwapChain* readSwapChain) noexcept override;
+            SwapChain* readSwapChain) override;
 
     void makeCurrent(SwapChain* drawSwapChain, SwapChain* readSwapChain,
             utils::Invocable<void()> preContextChange,
-            utils::Invocable<void(size_t index)> postContextChange) noexcept override;
+            utils::Invocable<void(size_t index)> postContextChange) override;
 
     void commit(SwapChain* swapChain) noexcept override;
 
@@ -118,12 +122,13 @@ protected:
     void destroyFence(Fence* fence) noexcept override;
     FenceStatus waitFence(Fence* fence, uint64_t timeout) noexcept override;
 
-    OpenGLPlatform::ExternalTexture* createExternalImageTexture() noexcept override;
-    void destroyExternalImage(ExternalTexture* texture) noexcept override;
+    ExternalTexture* createExternalImageTexture() noexcept override;
+    void destroyExternalImageTexture(ExternalTexture* texture) noexcept override;
     bool setExternalImage(void* externalImage, ExternalTexture* texture) noexcept override;
+    bool setExternalImage(ExternalImageHandleRef externalImage, ExternalTexture* texture) noexcept override;
 
     /**
-     * Logs glGetError() to slog.e
+     * Logs glGetError() to LOG(ERROR)
      * @param name a string giving some context on the error. Typically __func__.
      */
     static void logEglError(const char* name) noexcept;
@@ -143,12 +148,12 @@ protected:
     EGLContext getContextForType(ContextType type) const noexcept;
 
     // makes the draw and read surface current without changing the current context
-    EGLBoolean makeCurrent(EGLSurface drawSurface, EGLSurface readSurface) noexcept {
+    EGLBoolean makeCurrent(EGLSurface drawSurface, EGLSurface readSurface) {
         return egl.makeCurrent(drawSurface, readSurface);
     }
 
     // makes context current and set draw and read surfaces to EGL_NO_SURFACE
-    EGLBoolean makeCurrent(EGLContext context) noexcept {
+    EGLBoolean makeCurrent(EGLContext context) {
         return egl.makeCurrent(context, mEGLDummySurface, mEGLDummySurface);
     }
 
@@ -188,6 +193,12 @@ protected:
 
     void initializeGlExtensions() noexcept;
 
+    struct ExternalImageEGL : public ExternalImage {
+        EGLImageKHR eglImage = EGL_NO_IMAGE;
+    protected:
+        ~ExternalImageEGL() override;
+    };
+
 protected:
     EGLConfig findSwapChainConfig(uint64_t flags, bool window, bool pbuffer) const;
 
@@ -200,9 +211,9 @@ private:
     public:
         explicit EGL(EGLDisplay& dpy) : mEGLDisplay(dpy) {}
         EGLBoolean makeCurrent(EGLContext context,
-                EGLSurface drawSurface, EGLSurface readSurface) noexcept;
+                EGLSurface drawSurface, EGLSurface readSurface);
 
-        EGLBoolean makeCurrent(EGLSurface drawSurface, EGLSurface readSurface) noexcept {
+        EGLBoolean makeCurrent(EGLSurface drawSurface, EGLSurface readSurface) {
             return makeCurrent(mCurrentContext, drawSurface, readSurface);
         }
     } egl{ mEGLDisplay };

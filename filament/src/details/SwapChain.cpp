@@ -31,12 +31,12 @@
 
 namespace filament {
 
-FSwapChain::FSwapChain(FEngine& engine, void* nativeWindow, uint64_t flags)
+FSwapChain::FSwapChain(FEngine& engine, void* nativeWindow, uint64_t const flags)
         : mEngine(engine), mNativeWindow(nativeWindow), mConfigFlags(initFlags(engine, flags)) {
     mHwSwapChain = engine.getDriverApi().createSwapChain(nativeWindow, flags);
 }
 
-FSwapChain::FSwapChain(FEngine& engine, uint32_t width, uint32_t height, uint64_t flags)
+FSwapChain::FSwapChain(FEngine& engine, uint32_t const width, uint32_t const height, uint64_t const flags)
         : mEngine(engine), mWidth(width), mHeight(height), mConfigFlags(initFlags(engine, flags)) {
     mHwSwapChain = engine.getDriverApi().createSwapChainHeadless(width, height, flags);
 }
@@ -69,33 +69,22 @@ void FSwapChain::terminate(FEngine& engine) noexcept {
     engine.getDriverApi().destroySwapChain(mHwSwapChain);
 }
 
-void FSwapChain::setFrameScheduledCallback(FrameScheduledCallback callback, void* user) {
-    mFrameScheduledCallback = callback;
-    mEngine.getDriverApi().setFrameScheduledCallback(mHwSwapChain, callback, user);
+void FSwapChain::setFrameScheduledCallback(
+        backend::CallbackHandler* handler, FrameScheduledCallback&& callback, uint64_t const flags) {
+    mFrameScheduledCallbackIsSet = bool(callback);
+    mEngine.getDriverApi().setFrameScheduledCallback(
+            mHwSwapChain, handler, std::move(callback), flags);
 }
 
-SwapChain::FrameScheduledCallback FSwapChain::getFrameScheduledCallback() const noexcept {
-    return mFrameScheduledCallback;
+bool FSwapChain::isFrameScheduledCallbackSet() const noexcept {
+    return mFrameScheduledCallbackIsSet;
 }
 
-void FSwapChain::setFrameCompletedCallback(backend::CallbackHandler* handler,
-                utils::Invocable<void(SwapChain*)>&& callback) noexcept {
-    struct Callback {
-        utils::Invocable<void(SwapChain*)> f;
-        SwapChain* s;
-        static void func(void* user) {
-            auto* const c = reinterpret_cast<Callback*>(user);
-            c->f(c->s);
-            delete c;
-        }
-    };
-    if (callback) {
-        auto* const user = new(std::nothrow) Callback{ std::move(callback), this };
-        mEngine.getDriverApi().setFrameCompletedCallback(
-                mHwSwapChain, handler, &Callback::func, static_cast<void*>(user));
-    } else {
-        mEngine.getDriverApi().setFrameCompletedCallback(mHwSwapChain, nullptr, nullptr, nullptr);
-    }
+void FSwapChain::setFrameCompletedCallback(
+        backend::CallbackHandler* handler, FrameCompletedCallback&& callback) noexcept {
+    using namespace std::placeholders;
+    auto boundCallback = std::bind(std::move(callback), this);
+    mEngine.getDriverApi().setFrameCompletedCallback(mHwSwapChain, handler, std::move(boundCallback));
 }
 
 bool FSwapChain::isSRGBSwapChainSupported(FEngine& engine) noexcept {

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "common/arguments.h"
+
 #include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -27,17 +29,22 @@
 #include <filament/View.h>
 
 #include <utils/EntityManager.h>
+#include <utils/Path.h>
+
+#include <getopt/getopt.h>
 
 #include <filamentapp/Config.h>
 #include <filamentapp/FilamentApp.h>
 
 #include <cmath>
+#include <iostream>
 
 #include "generated/resources/resources.h"
 
 using namespace filament;
 using utils::Entity;
 using utils::EntityManager;
+using utils::Path;
 using namespace filament::math;
 
 struct App {
@@ -49,7 +56,6 @@ struct App {
     Skybox* skybox;
     Entity renderable;
     MorphTargetBuffer *mt1;
-    MorphTargetBuffer *mt2;
 };
 
 struct Vertex {
@@ -83,9 +89,58 @@ static const short4 targets_tan[9] = {
 
 static constexpr uint16_t TRIANGLE_INDICES[3] = { 0, 1, 2 };
 
+static void printUsage(char* name) {
+    std::string exec_name(Path(name).getName());
+    std::string usage(
+            "SAMPLE is a command-line tool for testing Filament skinning buffers.\n"
+            "Usage:\n"
+            "    SAMPLE [options]\n"
+            "Options:\n"
+            "   --help, -h\n"
+            "       Prints this message\n\n"
+            "API_USAGE"
+    );
+    const std::string from("SAMPLE");
+    for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
+        usage.replace(pos, from.length(), exec_name);
+    }
+    const std::string apiUsage("API_USAGE");
+    for (size_t pos = usage.find(apiUsage); pos != std::string::npos; pos = usage.find(apiUsage, pos)) {
+        usage.replace(pos, apiUsage.length(), samples::getBackendAPIArgumentsUsage());
+    }
+    std::cout << usage;
+}
+
+static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
+    static constexpr const char* OPTSTR = "ha:";
+    static const struct option OPTIONS[] = {
+            { "help",         no_argument,       nullptr, 'h' },
+            { "api",          required_argument, nullptr, 'a' },
+            { nullptr, 0, nullptr, 0 }  // termination of the option list
+    };
+    int opt;
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, OPTSTR, OPTIONS, &option_index)) >= 0) {
+        std::string arg(optarg != nullptr ? optarg : "");
+        switch (opt) {
+            default:
+            case 'h':
+                printUsage(argv[0]);
+                exit(0);
+            case 'a':
+                config->backend = samples::parseArgumentsForBackend(arg);
+                break;
+        }
+    }
+
+    return optind;
+}
+
 int main(int argc, char** argv) {
     Config config;
     config.title = "helloMorphing";
+
+    handleCommandLineArgments(argc, argv, &config);
 
     App app;
     auto setup = [&app](Engine* engine, View* view, Scene* scene) {
@@ -114,12 +169,7 @@ int main(int argc, char** argv) {
                 .build(*engine);
 
         app.mt1 = MorphTargetBuffer::Builder()
-            .vertexCount(9)
-            .count(3)
-            .build(*engine);
-
-        app.mt2 = MorphTargetBuffer::Builder()
-            .vertexCount(9)
+            .vertexCount(9 * 2)
             .count(3)
             .build(*engine);
 
@@ -130,12 +180,12 @@ int main(int argc, char** argv) {
         app.mt1->setTangentsAt(*engine,1, targets_tan+3, 3, 0);
         app.mt1->setTangentsAt(*engine,2, targets_tan+6, 3, 0);
 
-        app.mt2->setPositionsAt(*engine,0, targets_pos2, 3, 0);
-        app.mt2->setPositionsAt(*engine,1, targets_pos2+3, 3, 0);
-        app.mt2->setPositionsAt(*engine,2, targets_pos2+6, 3, 0);
-        app.mt2->setTangentsAt(*engine,0, targets_tan, 3, 0);
-        app.mt2->setTangentsAt(*engine,1, targets_tan+3, 3, 0);
-        app.mt2->setTangentsAt(*engine,2, targets_tan+6, 3, 0);
+        app.mt1->setPositionsAt(*engine,0, targets_pos2, 3, 9);
+        app.mt1->setPositionsAt(*engine,1, targets_pos2+3, 3, 9);
+        app.mt1->setPositionsAt(*engine,2, targets_pos2+6, 3, 9);
+        app.mt1->setTangentsAt(*engine,0, targets_tan, 3, 9);
+        app.mt1->setTangentsAt(*engine,1, targets_tan+3, 3, 9);
+        app.mt1->setTangentsAt(*engine,2, targets_tan+6, 3, 9);
 
         app.renderable = EntityManager::get().create();
 
@@ -148,9 +198,9 @@ int main(int argc, char** argv) {
                 .culling(false)
                 .receiveShadows(false)
                 .castShadows(false)
-                .morphing(3)
-                .morphing(0,0,app.mt1)
-                .morphing(0,1,app.mt2)
+                .morphing(app.mt1)
+                .morphing(0, 0, 0)
+                .morphing(0, 1, 9)
                 .build(*engine, app.renderable);
 
         scene->addEntity(app.renderable);
@@ -166,7 +216,6 @@ int main(int argc, char** argv) {
         engine->destroy(app.vb);
         engine->destroy(app.ib);
         engine->destroy(app.mt1);
-        engine->destroy(app.mt2);
         engine->destroyCameraComponent(app.camera);
         utils::EntityManager::get().destroy(app.camera);
     };

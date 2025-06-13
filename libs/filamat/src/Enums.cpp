@@ -21,33 +21,36 @@
 namespace filamat {
 
 std::unordered_map<std::string, Property> Enums::mStringToProperty = {
-        { "baseColor",              Property::BASE_COLOR },
-        { "roughness",              Property::ROUGHNESS },
-        { "metallic",               Property::METALLIC },
-        { "reflectance",            Property::REFLECTANCE },
-        { "ambientOcclusion",       Property::AMBIENT_OCCLUSION },
-        { "clearCoat",              Property::CLEAR_COAT },
-        { "clearCoatRoughness",     Property::CLEAR_COAT_ROUGHNESS },
-        { "clearCoatNormal",        Property::CLEAR_COAT_NORMAL },
-        { "anisotropy",             Property::ANISOTROPY },
-        { "anisotropyDirection",    Property::ANISOTROPY_DIRECTION },
-        { "thickness",              Property::THICKNESS },
-        { "subsurfacePower",        Property::SUBSURFACE_POWER },
-        { "subsurfaceColor",        Property::SUBSURFACE_COLOR },
-        { "sheenColor",             Property::SHEEN_COLOR },
-        { "sheenRoughness",         Property::SHEEN_ROUGHNESS },
-        { "glossiness",             Property::GLOSSINESS },
-        { "specularColor",          Property::SPECULAR_COLOR },
-        { "emissive",               Property::EMISSIVE },
-        { "normal",                 Property::NORMAL },
-        { "postLightingColor",      Property::POST_LIGHTING_COLOR },
+        { "baseColor",           Property::BASE_COLOR },
+        { "roughness",           Property::ROUGHNESS },
+        { "metallic",            Property::METALLIC },
+        { "reflectance",         Property::REFLECTANCE },
+        { "ambientOcclusion",    Property::AMBIENT_OCCLUSION },
+        { "clearCoat",           Property::CLEAR_COAT },
+        { "clearCoatRoughness",  Property::CLEAR_COAT_ROUGHNESS },
+        { "clearCoatNormal",     Property::CLEAR_COAT_NORMAL },
+        { "anisotropy",          Property::ANISOTROPY },
+        { "anisotropyDirection", Property::ANISOTROPY_DIRECTION },
+        { "thickness",           Property::THICKNESS },
+        { "subsurfacePower",     Property::SUBSURFACE_POWER },
+        { "subsurfaceColor",     Property::SUBSURFACE_COLOR },
+        { "sheenColor",          Property::SHEEN_COLOR },
+        { "sheenRoughness",      Property::SHEEN_ROUGHNESS },
+        { "glossiness",          Property::GLOSSINESS },
+        { "specularColor",       Property::SPECULAR_COLOR },
+        { "emissive",            Property::EMISSIVE },
+        { "normal",              Property::NORMAL },
+        { "postLightingColor",   Property::POST_LIGHTING_COLOR },
         { "postLightingMixFactor",  Property::POST_LIGHTING_MIX_FACTOR },
-        { "clipSpaceTransform",     Property::CLIP_SPACE_TRANSFORM },
-        { "absorption",             Property::ABSORPTION },
-        { "transmission",           Property::TRANSMISSION },
-        { "ior",                    Property::IOR },
-        { "microThickness",         Property::MICRO_THICKNESS },
-        { "bentNormal",             Property::BENT_NORMAL },
+        { "clipSpaceTransform",  Property::CLIP_SPACE_TRANSFORM },
+        { "absorption",          Property::ABSORPTION },
+        { "transmission",        Property::TRANSMISSION },
+        { "ior",                 Property::IOR },
+        { "microThickness",      Property::MICRO_THICKNESS },
+        { "bentNormal",          Property::BENT_NORMAL },
+        { "specularFactor",      Property::SPECULAR_FACTOR },
+        { "specularColorFactor", Property::SPECULAR_COLOR_FACTOR },
+        { "shadowStrength",       Property::SHADOW_STRENGTH }
 };
 
 template <>
@@ -170,6 +173,17 @@ std::unordered_map<std::string, ConstantType > Enums::mStringToConstantType = {
 template <>
 std::unordered_map<std::string, ConstantType>& Enums::getMap<ConstantType>() noexcept {
     return mStringToConstantType;
+};
+
+std::unordered_map<std::string, ShaderStageType> Enums::mStringToShaderStageType = {
+        { "fragment", ShaderStageType::FRAGMENT },
+        { "vertex",   ShaderStageType::VERTEX },
+        { "compute",  ShaderStageType::COMPUTE },
+};
+
+template <>
+std::unordered_map<std::string, ShaderStageType>& Enums::getMap<ShaderStageType>() noexcept {
+    return mStringToShaderStageType;
 };
 
 } // namespace filamat

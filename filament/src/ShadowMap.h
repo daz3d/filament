@@ -20,7 +20,7 @@
 #include <filament/Box.h>
 
 #include "Culler.h"
-#include "PerShadowMapUniforms.h"
+#include "ds/ShadowMapDescriptorSet.h"
 
 #include "details/Camera.h"
 #include "details/Scene.h"
@@ -109,19 +109,12 @@ public:
     struct SceneInfo {
 
         SceneInfo() noexcept = default;
-        SceneInfo(FScene const& scene, uint8_t visibleLayers, math::mat4f const& viewMatrix) noexcept;
-
-        // scratch data: The near and far planes, in clip space, to use for this shadow map
-        math::float2 csNearFar = { -1.0f, 1.0f };
+        SceneInfo(FScene const& scene, uint8_t visibleLayers) noexcept;
 
         // scratch data: light's near/far expressed in light-space, calculated from the scene's
         // content assuming the light is at the origin.
         math::float2 lsCastersNearFar;
         math::float2 lsReceiversNearFar;
-
-        // Viewing camera's near/far expressed in view-space, calculated from the
-        // scene's content.
-        math::float2 vsNearFar;
 
         // World-space shadow-casters volume
         Aabb wsShadowCastersVolume;
@@ -152,18 +145,19 @@ public:
     // This computes the light's camera.
     ShaderParameters updateDirectional(FEngine& engine,
             const FScene::LightSoa& lightData, size_t index,
-            filament::CameraInfo const& camera,
+            CameraInfo const& camera,
             ShadowMapInfo const& shadowMapInfo,
-            SceneInfo const& sceneInfo) noexcept;
+            SceneInfo const& sceneInfo,
+            bool useDepthClamp) noexcept;
 
     ShaderParameters updateSpot(FEngine& engine,
             const FScene::LightSoa& lightData, size_t index,
-            filament::CameraInfo const& camera,
+            CameraInfo const& camera,
             const ShadowMapInfo& shadowMapInfo, FScene const& scene,
             SceneInfo sceneInfo) noexcept;
 
-    ShadowMap::ShaderParameters updatePoint(FEngine& engine,
-            const FScene::LightSoa& lightData, size_t index, filament::CameraInfo const& camera,
+    ShaderParameters updatePoint(FEngine& engine,
+            const FScene::LightSoa& lightData, size_t index, CameraInfo const& camera,
             const ShadowMapInfo& shadowMapInfo, FScene const& scene, uint8_t face) noexcept;
 
     // Do we have visible shadows. Valid after calling update().
@@ -185,7 +179,8 @@ public:
     LightManager::ShadowOptions const* getShadowOptions() const noexcept { return mOptions; }
     size_t getLightIndex() const { return mLightIndex; }
     uint16_t getShadowIndex() const { return mShadowIndex; }
-    void setLayer(uint8_t layer) noexcept { mLayer = layer; }
+    void setAllocation(uint8_t layer, backend::Viewport viewport) noexcept;
+
     uint8_t getLayer() const noexcept { return mLayer; }
     backend::Viewport getViewport() const noexcept;
     backend::Viewport getScissor() const noexcept;
@@ -196,19 +191,18 @@ public:
     ShadowType getShadowType() const noexcept { return mShadowType; }
     uint8_t getFace() const noexcept { return mFace; }
 
-    using Transaction = PerShadowMapUniforms::Transaction;
+    using Transaction = ShadowMapDescriptorSet::Transaction;
 
     static void prepareCamera(Transaction const& transaction,
-            FEngine& engine, const CameraInfo& cameraInfo) noexcept;
+            backend::DriverApi& driver, const CameraInfo& cameraInfo) noexcept;
     static void prepareViewport(Transaction const& transaction,
             backend::Viewport const& viewport) noexcept;
     static void prepareTime(Transaction const& transaction,
-            FEngine& engine, math::float4 const& userTime) noexcept;
+            FEngine const& engine, math::float4 const& userTime) noexcept;
     static void prepareShadowMapping(Transaction const& transaction,
             bool highPrecision) noexcept;
-    static PerShadowMapUniforms::Transaction open(backend::DriverApi& driver) noexcept;
-    void commit(Transaction& transaction,
-            backend::DriverApi& driver) const noexcept;
+    static ShadowMapDescriptorSet::Transaction open(backend::DriverApi& driver) noexcept;
+    void commit(Transaction& transaction, FEngine& engine, backend::DriverApi& driver) const noexcept;
     void bind(backend::DriverApi& driver) const noexcept;
 
 private:
@@ -243,11 +237,12 @@ private:
             FEngine& engine,
             math::float3 direction,
             FLightManager::ShadowParams params,
-            filament::CameraInfo const& camera,
-            SceneInfo const& sceneInfo) noexcept;
+            CameraInfo const& camera,
+            SceneInfo const& sceneInfo,
+            bool useDepthClamp) noexcept;
 
     static math::mat4f applyLISPSM(math::mat4f& Wp,
-            filament::CameraInfo const& camera, FLightManager::ShadowParams const& params,
+            CameraInfo const& camera, FLightManager::ShadowParams const& params,
             const math::mat4f& LMp,
             const math::mat4f& Mv,
             const math::mat4f& LMpMv,
@@ -260,7 +255,7 @@ private:
             math::mat4f const& LMpMv,
             math::mat4f const& WLMp,
             FrustumBoxIntersection const& lsShadowVolume, size_t vertexCount,
-            filament::CameraInfo const& camera, math::float2 const& csNearFar,
+            CameraInfo const& camera,
             float shadowFar, bool stable) noexcept;
 
     static inline void snapLightFrustum(math::float2& s, math::float2& o,
@@ -271,8 +266,7 @@ private:
             SceneInfo const& sceneInfo,
             bool stable, bool focusShadowCasters, bool farUsesShadowCasters) noexcept;
 
-    static Corners computeFrustumCorners(const math::mat4f& projectionInverse,
-            math::float2 csNearFar = { -1.0f, 1.0f }) noexcept;
+    static Corners computeFrustumCorners(const math::mat4f& projectionInverse) noexcept;
 
     static inline math::float2 computeNearFar(math::mat4f const& view,
             math::float3 const* wsVertices, size_t count) noexcept;
@@ -307,7 +301,7 @@ private:
 
     static size_t intersectFrustumWithBox(
             FrustumBoxIntersection& outVertices,
-            math::mat4f const& projection, math::float2 const& csNearFar,
+            math::mat4f const& projection,
             Aabb const& box);
 
     static math::mat4f warpFrustum(float n, float f) noexcept;
@@ -346,7 +340,7 @@ private:
             { 2, 6, 7, 3 },  // top
     };
 
-    mutable PerShadowMapUniforms mPerShadowMapUniforms;                     // 4
+    mutable ShadowMapDescriptorSet mPerShadowMapUniforms;                   // 48
 
     FCamera* mCamera = nullptr;                                             //  8
     FCamera* mDebugCamera = nullptr;                                        //  8
@@ -358,8 +352,10 @@ private:
     uint16_t mShadowIndex = 0;  // our index in the shadowMap vector        // 2
     uint8_t mLayer = 0;         // our layer in the shadowMap texture       // 1
     ShadowType mShadowType  : 2;                                            // :2
-    bool mHasVisibleShadows : 2;                                            // :2
+    bool mHasVisibleShadows : 1;                                            // :1
     uint8_t mFace           : 3;                                            // :3
+    math::ushort2 mOffset{};                                                // 4
+    UTILS_UNUSED uint8_t reserved[4];                                       // 4
 };
 
 } // namespace filament

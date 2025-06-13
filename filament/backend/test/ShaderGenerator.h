@@ -22,6 +22,7 @@
 #include "private/filament/SamplerInterfaceBlock.h"
 #include "private/backend/DriverApi.h"
 #include "backend/Program.h"
+#include "../src/GLSLPostProcessor.h"
 
 #include <string>
 
@@ -40,19 +41,23 @@ public:
      * @param fragment The fragment shader, written in GLSL 450 core.
      */
     ShaderGenerator(std::string vertex, std::string fragment, Backend backend, bool isMobile,
-            const filament::SamplerInterfaceBlock* sib = nullptr) noexcept;
+            filamat::DescriptorSets&& descriptorSets = {}) noexcept;
 
     ShaderGenerator(const ShaderGenerator& rhs) = delete;
     ShaderGenerator& operator=(const ShaderGenerator& rhs) = delete;
 
     filament::backend::Program getProgram(filament::backend::DriverApi&) noexcept;
 
+    using PushConstants = utils::FixedCapacityVector<filament::backend::Program::PushConstant>;
+    filament::backend::Program getProgramWithPushConstants(filament::backend::DriverApi&,
+            std::array<PushConstants, filament::backend::Program::SHADER_TYPE_COUNT> constants);
+
 private:
     using ShaderStage = filament::backend::ShaderStage;
 
     using Blob = std::vector<char>;
     static Blob transpileShader(ShaderStage stage, std::string shader, Backend backend,
-            bool isMobile, const filament::SamplerInterfaceBlock* sib = nullptr) noexcept;
+            bool isMobile, const filamat::DescriptorSets& descriptorSets) noexcept;
 
     Backend mBackend;
 
@@ -60,6 +65,7 @@ private:
     Blob mFragmentBlob;
     std::string mCompiledVertexShader;
     std::string mCompiledFragmentShader;
+    filament::backend::ShaderLanguage mShaderLanguage;
 
 };
 

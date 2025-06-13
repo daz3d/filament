@@ -20,21 +20,49 @@
 
 #include "components/RenderableManager.h"
 
+#include "ds/DescriptorSet.h"
+
 #include "details/Engine.h"
 #include "details/VertexBuffer.h"
 #include "details/IndexBuffer.h"
 #include "details/InstanceBuffer.h"
 #include "details/Material.h"
 
-#include "filament/RenderableManager.h"
+#include <private/filament/EngineEnums.h>
+#include <private/filament/UibStructs.h>
 
+#include <filament/Box.h>
+#include <filament/FilamentAPI.h>
+#include <filament/MaterialEnums.h>
+#include <filament/RenderableManager.h>
 
 #include <backend/DriverEnums.h>
+#include <backend/Handle.h>
 
+#include <utils/EntityManager.h>
+#include <utils/FixedCapacityVector.h>
 #include <utils/Log.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
+#include <utils/Slice.h>
+#include <utils/compiler.h>
 #include <utils/debug.h>
+#include <utils/ostream.h>
+
+#include <math/mat4.h>
+#include <math/scalar.h>
+#include <math/vec2.h>
+#include <math/vec4.h>
+
+#include <algorithm>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
 
 using namespace filament::math;
 using namespace utils;
@@ -44,12 +72,12 @@ namespace filament {
 using namespace backend;
 
 struct RenderableManager::BuilderDetails {
-    using Entry = RenderableManager::Builder::Entry;
+    using Entry = FRenderableManager::Entry;
     std::vector<Entry> mEntries;
     Box mAABB;
     uint8_t mLayerMask = 0x1;
     uint8_t mPriority = 0x4;
-    uint8_t mCommandChannel = RenderableManager::Builder::DEFAULT_CHANNEL;
+    uint8_t mCommandChannel = Builder::DEFAULT_CHANNEL;
     uint8_t mLightChannels = 1;
     uint16_t mInstanceCount = 1;
     bool mCulling : 1;
@@ -58,62 +86,63 @@ struct RenderableManager::BuilderDetails {
     bool mScreenSpaceContactShadows : 1;
     bool mSkinningBufferMode : 1;
     bool mFogEnabled : 1;
-    RenderableManager::Builder::GeometryType mGeometryType : 2;
+    Builder::GeometryType mGeometryType : 2;
     size_t mSkinningBoneCount = 0;
     size_t mMorphTargetCount = 0;
+    FMorphTargetBuffer* mMorphTargetBuffer = nullptr;
     Bone const* mUserBones = nullptr;
     mat4f const* mUserBoneMatrices = nullptr;
     FSkinningBuffer* mSkinningBuffer = nullptr;
     FInstanceBuffer* mInstanceBuffer = nullptr;
     uint32_t mSkinningBufferOffset = 0;
-    utils::FixedCapacityVector<math::float2> mBoneIndicesAndWeights;
+    FixedCapacityVector<float2> mBoneIndicesAndWeights;
     size_t mBoneIndicesAndWeightsCount = 0;
 
     // bone indices and weights defined for primitive index
-    std::unordered_map<size_t, utils::FixedCapacityVector<
-        utils::FixedCapacityVector<math::float2>>> mBonePairs;
+    std::unordered_map<size_t, FixedCapacityVector<
+        FixedCapacityVector<float2>>> mBonePairs;
 
-    explicit BuilderDetails(size_t count)
+    explicit BuilderDetails(size_t const count)
             : mEntries(count), mCulling(true), mCastShadows(false),
               mReceiveShadows(true), mScreenSpaceContactShadows(false),
               mSkinningBufferMode(false), mFogEnabled(true),
-              mGeometryType(RenderableManager::Builder::GeometryType::DYNAMIC),
+              mGeometryType(Builder::GeometryType::DYNAMIC),
               mBonePairs() {
     }
     // this is only needed for the explicit instantiation below
     BuilderDetails() = default;
 
-    void processBoneIndicesAndWights(Engine& engine, utils::Entity entity);
+    void processBoneIndicesAndWights(Engine& engine, Entity entity);
 
 };
 
 using BuilderType = RenderableManager;
 BuilderType::Builder::Builder(size_t count) noexcept
-        : BuilderBase<RenderableManager::BuilderDetails>(count) {
+        : BuilderBase<BuilderDetails>(count) {
     assert_invariant(mImpl->mEntries.size() == count);
 }
 BuilderType::Builder::~Builder() noexcept = default;
-BuilderType::Builder::Builder(BuilderType::Builder&& rhs) noexcept = default;
-BuilderType::Builder& BuilderType::Builder::operator=(BuilderType::Builder&& rhs) noexcept = default;
+BuilderType::Builder::Builder(Builder&& rhs) noexcept = default;
+BuilderType::Builder& BuilderType::Builder::operator=(Builder&& rhs) noexcept = default;
 
 
-RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
-        PrimitiveType type, VertexBuffer* vertices, IndexBuffer* indices) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::geometry(size_t const index,
+        PrimitiveType const type, VertexBuffer* vertices, IndexBuffer* indices) noexcept {
     return geometry(index, type, vertices, indices,
             0, 0, vertices->getVertexCount() - 1, indices->getIndexCount());
 }
 
-RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
-        PrimitiveType type, VertexBuffer* vertices, IndexBuffer* indices,
-        size_t offset, size_t count) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::geometry(size_t const index,
+        PrimitiveType const type, VertexBuffer* vertices, IndexBuffer* indices,
+        size_t const offset, size_t const count) noexcept {
     return geometry(index, type, vertices, indices, offset,
             0, vertices->getVertexCount() - 1, count);
 }
 
-RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
-        PrimitiveType type, VertexBuffer* vertices, IndexBuffer* indices,
-        size_t offset, UTILS_UNUSED size_t minIndex, UTILS_UNUSED size_t maxIndex, size_t count) noexcept {
-    std::vector<Entry>& entries = mImpl->mEntries;
+RenderableManager::Builder& RenderableManager::Builder::geometry(size_t const index,
+        PrimitiveType const type, VertexBuffer* vertices, IndexBuffer* indices,
+        size_t const offset, UTILS_UNUSED size_t minIndex, UTILS_UNUSED size_t maxIndex, size_t const count) noexcept {
+    std::vector<BuilderDetails::Entry>& entries = mImpl->mEntries;
     if (index < entries.size()) {
         entries[index].vertices = vertices;
         entries[index].indices = indices;
@@ -124,12 +153,12 @@ RenderableManager::Builder& RenderableManager::Builder::geometry(size_t index,
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::geometryType(GeometryType type) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::geometryType(GeometryType const type) noexcept {
     mImpl->mGeometryType = type;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::material(size_t index,
+RenderableManager::Builder& RenderableManager::Builder::material(size_t const index,
         MaterialInstance const* materialInstance) noexcept {
     if (index < mImpl->mEntries.size()) {
         mImpl->mEntries[index].materialInstance = materialInstance;
@@ -142,27 +171,27 @@ RenderableManager::Builder& RenderableManager::Builder::boundingBox(const Box& a
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::layerMask(uint8_t select, uint8_t values) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::layerMask(uint8_t const select, uint8_t const values) noexcept {
     mImpl->mLayerMask = (mImpl->mLayerMask & ~select) | (values & select);
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::priority(uint8_t priority) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::priority(uint8_t const priority) noexcept {
     mImpl->mPriority = std::min(priority, uint8_t(0x7));
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::channel(uint8_t channel) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::channel(uint8_t const channel) noexcept {
     mImpl->mCommandChannel = std::min(channel, uint8_t(0x3));
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::culling(bool enable) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::culling(bool const enable) noexcept {
     mImpl->mCulling = enable;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::lightChannel(unsigned int channel, bool enable) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::lightChannel(unsigned int const channel, bool const enable) noexcept {
     if (channel < 8) {
         const uint8_t mask = 1u << channel;
         mImpl->mLightChannels &= ~mask;
@@ -171,59 +200,59 @@ RenderableManager::Builder& RenderableManager::Builder::lightChannel(unsigned in
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::castShadows(bool enable) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::castShadows(bool const enable) noexcept {
     mImpl->mCastShadows = enable;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::receiveShadows(bool enable) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::receiveShadows(bool const enable) noexcept {
     mImpl->mReceiveShadows = enable;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::screenSpaceContactShadows(bool enable) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::screenSpaceContactShadows(bool const enable) noexcept {
     mImpl->mScreenSpaceContactShadows = enable;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::skinning(size_t boneCount) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::skinning(size_t const boneCount) noexcept {
     mImpl->mSkinningBoneCount = boneCount;
     return *this;
 }
 
 RenderableManager::Builder& RenderableManager::Builder::skinning(
-        size_t boneCount, Bone const* bones) noexcept {
+        size_t const boneCount, Bone const* bones) noexcept {
     mImpl->mSkinningBoneCount = boneCount;
     mImpl->mUserBones = bones;
     return *this;
 }
 
 RenderableManager::Builder& RenderableManager::Builder::skinning(
-        size_t boneCount, mat4f const* transforms) noexcept {
+        size_t const boneCount, mat4f const* transforms) noexcept {
     mImpl->mSkinningBoneCount = boneCount;
     mImpl->mUserBoneMatrices = transforms;
     return *this;
 }
 
 RenderableManager::Builder& RenderableManager::Builder::skinning(
-        SkinningBuffer* skinningBuffer, size_t count, size_t offset) noexcept {
+        SkinningBuffer* skinningBuffer, size_t const count, size_t const offset) noexcept {
     mImpl->mSkinningBuffer = downcast(skinningBuffer);
     mImpl->mSkinningBoneCount = count;
     mImpl->mSkinningBufferOffset = offset;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::enableSkinningBuffers(bool enabled) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::enableSkinningBuffers(bool const enabled) noexcept {
     mImpl->mSkinningBufferMode = enabled;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::boneIndicesAndWeights(size_t primitiveIndex,
-               math::float2 const* indicesAndWeights, size_t count, size_t bonesPerVertex) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::boneIndicesAndWeights(size_t const primitiveIndex,
+               float2 const* indicesAndWeights, size_t const count, size_t const bonesPerVertex) noexcept {
     size_t const vertexCount = count / bonesPerVertex;
-    utils::FixedCapacityVector<utils::FixedCapacityVector<filament::math::float2>> bonePairs(vertexCount);
+    FixedCapacityVector<FixedCapacityVector<float2>> bonePairs(vertexCount);
     for (size_t iVertex = 0; iVertex < vertexCount; iVertex++) {
-        utils::FixedCapacityVector<float2> vertexData(bonesPerVertex);
+        FixedCapacityVector<float2> vertexData(bonesPerVertex);
         std::copy_n(indicesAndWeights + iVertex * bonesPerVertex,
                 bonesPerVertex, vertexData.data());
         bonePairs[iVertex] = std::move(vertexData);
@@ -231,37 +260,43 @@ RenderableManager::Builder& RenderableManager::Builder::boneIndicesAndWeights(si
     return boneIndicesAndWeights(primitiveIndex, bonePairs);
 }
 
-RenderableManager::Builder& RenderableManager::Builder::boneIndicesAndWeights(size_t primitiveIndex,
-        utils::FixedCapacityVector<
-            utils::FixedCapacityVector<math::float2>> indicesAndWeightsVector) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::boneIndicesAndWeights(size_t const primitiveIndex,
+        FixedCapacityVector<
+            FixedCapacityVector<float2>> indicesAndWeightsVector) noexcept {
     mImpl->mBonePairs[primitiveIndex] = std::move(indicesAndWeightsVector);
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::fog(bool enabled) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::fog(bool const enabled) noexcept {
     mImpl->mFogEnabled = enabled;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::morphing(size_t targetCount) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::morphing(size_t const targetCount) noexcept {
     mImpl->mMorphTargetCount = targetCount;
     return *this;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::morphing(uint8_t, size_t primitiveIndex,
-        MorphTargetBuffer* morphTargetBuffer, size_t offset, size_t count) noexcept {
-    std::vector<Entry>& entries = mImpl->mEntries;
+RenderableManager::Builder& RenderableManager::Builder::morphing(
+        MorphTargetBuffer* UTILS_NONNULL morphTargetBuffer) noexcept {
+    mImpl->mMorphTargetBuffer = downcast(morphTargetBuffer);
+    mImpl->mMorphTargetCount = morphTargetBuffer->getCount();
+    return *this;
+}
+
+RenderableManager::Builder& RenderableManager::Builder::morphing(uint8_t level,
+        size_t const primitiveIndex, size_t const offset) noexcept {
+    // the last parameter "count" is unused, because it must be equal to the primitive's vertex count
+    std::vector<BuilderDetails::Entry>& entries = mImpl->mEntries;
     if (primitiveIndex < entries.size()) {
         auto& morphing = entries[primitiveIndex].morphing;
-        morphing.buffer = morphTargetBuffer;
-        morphing.offset = offset;
-        morphing.count = count;
+        morphing.offset = uint32_t(offset);
     }
     return *this;
 }
 
 RenderableManager::Builder& RenderableManager::Builder::blendOrder(
-        size_t index, uint16_t blendOrder) noexcept {
+        size_t const index, uint16_t const blendOrder) noexcept {
     if (index < mImpl->mEntries.size()) {
         mImpl->mEntries[index].blendOrder = blendOrder;
     }
@@ -269,7 +304,7 @@ RenderableManager::Builder& RenderableManager::Builder::blendOrder(
 }
 
 RenderableManager::Builder& RenderableManager::Builder::globalBlendOrderEnabled(
-        size_t index, bool enabled) noexcept {
+        size_t const index, bool const enabled) noexcept {
     if (index < mImpl->mEntries.size()) {
         mImpl->mEntries[index].globalBlendOrderEnabled = enabled;
     }
@@ -277,26 +312,28 @@ RenderableManager::Builder& RenderableManager::Builder::globalBlendOrderEnabled(
 }
 
 UTILS_NOINLINE
-void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engine, Entity entity) {
+void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engine, Entity const entity) {
     size_t maxPairsCount = 0; //size of texture, number of bone pairs
     size_t maxPairsCountPerVertex = 0; //maximum of number of bone per vertex
 
     for (auto& bonePair: mBonePairs) {
         auto primitiveIndex = bonePair.first;
         auto entries = mEntries;
-        ASSERT_PRECONDITION(primitiveIndex < entries.size() && primitiveIndex >= 0,
-            "[primitive @ %u] primitiveindex is out of size (%u)", primitiveIndex, entries.size());
+        FILAMENT_CHECK_PRECONDITION(primitiveIndex < entries.size() && primitiveIndex >= 0)
+                << "[primitive @ " << primitiveIndex << "] primitiveindex is out of size ("
+                << entries.size() << ")";
         auto entry = mEntries[primitiveIndex];
         auto bonePairsForPrimitive = bonePair.second;
         auto vertexCount = entry.vertices->getVertexCount();
-        ASSERT_PRECONDITION(bonePairsForPrimitive.size() == vertexCount,
-            "[primitive @ %u] bone indices and weights pairs count (%u) must be equal to vertex count (%u)",
-            primitiveIndex, bonePairsForPrimitive.size(), vertexCount);
+        FILAMENT_CHECK_PRECONDITION(bonePairsForPrimitive.size() == vertexCount)
+                << "[primitive @ " << primitiveIndex << "] bone indices and weights pairs count ("
+                << bonePairsForPrimitive.size() << ") must be equal to vertex count ("
+                << vertexCount << ")";
         auto const& declaredAttributes = downcast(entry.vertices)->getDeclaredAttributes();
-        ASSERT_PRECONDITION(declaredAttributes[VertexAttribute::BONE_INDICES]
-        || declaredAttributes[VertexAttribute::BONE_WEIGHTS],
-            "[entity=%u, primitive @ %u] for advanced skinning set VertexBuffer::Builder::advancedSkinning()",
-            entity.getId(), primitiveIndex);
+        FILAMENT_CHECK_PRECONDITION(declaredAttributes[VertexAttribute::BONE_INDICES] ||
+                declaredAttributes[VertexAttribute::BONE_WEIGHTS])
+                << "[entity=" << entity.getId() << ", primitive @ " << primitiveIndex
+                << "] for advanced skinning set VertexBuffer::Builder::advancedSkinning()";
         for (size_t iVertex = 0; iVertex < vertexCount; iVertex++) {
             size_t const bonesPerVertex = bonePairsForPrimitive[iVertex].size();
             maxPairsCount += bonesPerVertex;
@@ -327,16 +364,20 @@ void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engi
                 for (size_t k = 0; k < bonePairsForPrimitive[iVertex].size(); k++) {
                     auto boneWeight = bonePairsForPrimitive[iVertex][k][1];
                     auto boneIndex = bonePairsForPrimitive[iVertex][k][0];
-                    ASSERT_PRECONDITION(boneWeight >= 0,
-                            "[entity=%u, primitive @ %u] bone weight (%f) of vertex=%u is negative ",
-                            entity.getId(), primitiveIndex, boneWeight, iVertex);
+                    FILAMENT_CHECK_PRECONDITION(boneWeight >= 0)
+                            << "[entity=" << entity.getId() << ", primitive @ " << primitiveIndex
+                            << "] bone weight (" << boneWeight << ") of vertex=" << iVertex
+                            << " is negative";
                     if (boneWeight > 0.0f) {
-                        ASSERT_PRECONDITION(boneIndex >= 0,
-                            "[entity=%u, primitive @ %u] bone index (%i) of vertex=%u is negative ",
-                            entity.getId(), primitiveIndex, (int) boneIndex, iVertex);
-                        ASSERT_PRECONDITION(boneIndex < mSkinningBoneCount,
-                            "[entity=%u, primitive @ %u] bone index (%i) of vertex=%u is bigger then bone count (%u) ",
-                            entity.getId(), primitiveIndex, (int) boneIndex, iVertex, mSkinningBoneCount);
+                        FILAMENT_CHECK_PRECONDITION(boneIndex >= 0)
+                                << "[entity=" << entity.getId() << ", primitive @ "
+                                << primitiveIndex << "] bone index (" << (int)boneIndex
+                                << ") of vertex=" << iVertex << " is negative";
+                        FILAMENT_CHECK_PRECONDITION(boneIndex < mSkinningBoneCount)
+                                << "[entity=" << entity.getId() << ", primitive @ "
+                                << primitiveIndex << "] bone index (" << (int)boneIndex
+                                << ") of vertex=" << iVertex << " is bigger then bone count ("
+                                << mSkinningBoneCount << ")";
                         boneWeightsSum += boneWeight;
                         tempPairs[tempPairCount][0] = boneIndex;
                         tempPairs[tempPairCount][1] = boneWeight;
@@ -344,9 +385,10 @@ void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engi
                     }
                 }
 
-                ASSERT_PRECONDITION(boneWeightsSum > 0,
-                    "[entity=%u, primitive @ %u] sum of bone weights of vertex=%u is %f, it should be positive.",
-                    entity.getId(), primitiveIndex, iVertex, boneWeightsSum);
+                FILAMENT_CHECK_PRECONDITION(boneWeightsSum > 0)
+                        << "[entity=" << entity.getId() << ", primitive @ " << primitiveIndex
+                        << "] sum of bone weights of vertex=" << iVertex << " is " << boneWeightsSum
+                        << ", it should be positive.";
 
                 // see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#skinned-mesh-attributes
                 double const epsilon = 2e-7 * double(tempPairCount);
@@ -355,10 +397,11 @@ void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engi
                 }
 #ifndef NDEBUG
                 else {
-                    utils::slog.w << "Warning of skinning: [entity=%" << entity.getId()
-                        << ", primitive @ %" << primitiveIndex
-                        << "] sum of bone weights of vertex=" << iVertex << " is " << boneWeightsSum
-                        << ", it should be one. Weights will be normalized." << utils::io::endl;
+                    LOG(WARNING) << "Warning of skinning: [entity=%" << entity.getId()
+                                 << ", primitive @ %" << primitiveIndex
+                                 << "] sum of bone weights of vertex=" << iVertex << " is "
+                                 << boneWeightsSum
+                                 << ", it should be one. Weights will be normalized.";
                 }
 #endif
 
@@ -391,33 +434,32 @@ void RenderableManager::BuilderDetails::processBoneIndicesAndWights(Engine& engi
     mBoneIndicesAndWeightsCount = pairsCount; // only part of mBoneIndicesAndWeights is used for real data
 }
 
-RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& engine, Entity entity) {
+RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& engine, Entity const entity) {
     bool isEmpty = true;
 
-    ASSERT_PRECONDITION(mImpl->mSkinningBoneCount <= CONFIG_MAX_BONE_COUNT,
-            "bone count > %u", CONFIG_MAX_BONE_COUNT);
+    FILAMENT_CHECK_PRECONDITION(mImpl->mSkinningBoneCount <= CONFIG_MAX_BONE_COUNT)
+            << "bone count > " << CONFIG_MAX_BONE_COUNT;
 
-    ASSERT_PRECONDITION(mImpl->mInstanceCount <= CONFIG_MAX_INSTANCES || !mImpl->mInstanceBuffer,
-            "instance count is %zu, but instance count is limited to CONFIG_MAX_INSTANCES (%zu) "
-            "instances when supplying transforms via an InstanceBuffer.",
-            mImpl->mInstanceCount,
-            CONFIG_MAX_INSTANCES);
+    FILAMENT_CHECK_PRECONDITION(
+            mImpl->mInstanceCount <= CONFIG_MAX_INSTANCES || !mImpl->mInstanceBuffer)
+            << "instance count is " << mImpl->mInstanceCount
+            << ", but instance count is limited to CONFIG_MAX_INSTANCES (" << CONFIG_MAX_INSTANCES
+            << ") instances when supplying transforms via an InstanceBuffer.";
 
     if (mImpl->mGeometryType == GeometryType::STATIC) {
-        ASSERT_PRECONDITION(mImpl->mSkinningBoneCount > 0,
-                "Skinning can't be used with STATIC geometry");
+        FILAMENT_CHECK_PRECONDITION(mImpl->mSkinningBoneCount == 0)
+                << "Skinning can't be used with STATIC geometry";
 
-        ASSERT_PRECONDITION(mImpl->mMorphTargetCount > 0,
-                "Morphing can't be used with STATIC geometry");
+        FILAMENT_CHECK_PRECONDITION(mImpl->mMorphTargetCount == 0)
+                << "Morphing can't be used with STATIC geometry";
     }
 
     if (mImpl->mInstanceBuffer) {
         size_t const bufferInstanceCount = mImpl->mInstanceBuffer->mInstanceCount;
-        ASSERT_PRECONDITION(mImpl->mInstanceCount <= bufferInstanceCount,
-                "instance count (%zu) must be less than or equal to the InstanceBuffer's instance "
-                "count "
-                "(%zu).",
-                mImpl->mInstanceCount, bufferInstanceCount);
+        FILAMENT_CHECK_PRECONDITION(mImpl->mInstanceCount <= bufferInstanceCount)
+                << "instance count (" << mImpl->mInstanceCount
+                << ") must be less than or equal to the InstanceBuffer's instance "
+                   "count (" << bufferInstanceCount << ").";
     }
 
     if (UTILS_LIKELY(mImpl->mSkinningBoneCount || mImpl->mSkinningBufferMode)) {
@@ -442,15 +484,15 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
         }
 
         // we want a feature level violation to be a hard error (exception if enabled, or crash)
-        ASSERT_PRECONDITION(downcast(engine).hasFeatureLevel(material->getFeatureLevel()),
-                "Material \"%s\" has feature level %u which is not supported by this Engine",
-                material->getName().c_str_safe(), (uint8_t)material->getFeatureLevel());
+        FILAMENT_CHECK_PRECONDITION(downcast(engine).hasFeatureLevel(material->getFeatureLevel()))
+                << "Material \"" << material->getName().c_str_safe() << "\" has feature level "
+                << (uint8_t)material->getFeatureLevel() << " which is not supported by this Engine";
 
         // reject invalid geometry parameters
-        ASSERT_PRECONDITION(entry.offset + entry.count <= entry.indices->getIndexCount(),
-                "[entity=%u, primitive @ %u] offset (%u) + count (%u) > indexCount (%u)",
-                entity.getId(), i,
-                entry.offset, entry.count, entry.indices->getIndexCount());
+        FILAMENT_CHECK_PRECONDITION(entry.offset + entry.count <= entry.indices->getIndexCount())
+                << "[entity=" << entity.getId() << ", primitive @ " << i << "] offset ("
+                << entry.offset << ") + count (" << entry.count << ") > indexCount ("
+                << entry.indices->getIndexCount() << ")";
 
         // this can't be an error because (1) those values are not immutable, so the caller
         // could fix later, and (2) the material's shader will work (i.e. compile), and
@@ -458,33 +500,32 @@ RenderableManager::Builder::Result RenderableManager::Builder::build(Engine& eng
         AttributeBitset const declared = downcast(entry.vertices)->getDeclaredAttributes();
         AttributeBitset const required = material->getRequiredAttributes();
         if ((declared & required) != required) {
-            slog.w << "[entity=" << entity.getId() << ", primitive @ " << i
-                   << "] missing required attributes ("
-                   << required << "), declared=" << declared << io::endl;
+            LOG(WARNING) << "[entity=" << entity.getId() << ", primitive @ " << i
+                         << "] missing required attributes (" << required
+                         << "), declared=" << declared;
         }
 
         // we have at least one valid primitive
         isEmpty = false;
     }
 
-    ASSERT_PRECONDITION(
-            !mImpl->mAABB.isEmpty() ||
-            (!mImpl->mCulling && (!(mImpl->mReceiveShadows || mImpl->mCastShadows)) ||
-             isEmpty),
-            "[entity=%u] AABB can't be empty, unless culling is disabled and "
-                    "the object is not a shadow caster/receiver", entity.getId());
+    FILAMENT_CHECK_PRECONDITION(!mImpl->mAABB.isEmpty() ||
+            (!mImpl->mCulling && (!(mImpl->mReceiveShadows || mImpl->mCastShadows)) || isEmpty))
+            << "[entity=" << entity.getId()
+            << "] AABB can't be empty, unless culling is disabled and "
+               "the object is not a shadow caster/receiver";
 
     downcast(engine).createRenderable(*this, entity);
     return Success;
 }
 
-RenderableManager::Builder& RenderableManager::Builder::instances(size_t instanceCount) noexcept {
+RenderableManager::Builder& RenderableManager::Builder::instances(size_t const instanceCount) noexcept {
     mImpl->mInstanceCount = clamp((unsigned int)instanceCount, 1u, 32767u);
     return *this;
 }
 
 RenderableManager::Builder& RenderableManager::Builder::instances(
-        size_t instanceCount, InstanceBuffer* instanceBuffer) noexcept {
+        size_t const instanceCount, InstanceBuffer* instanceBuffer) noexcept {
     mImpl->mInstanceCount = clamp(instanceCount, (size_t)1, CONFIG_MAX_INSTANCES);
     mImpl->mInstanceBuffer = downcast(instanceBuffer);
     return *this;
@@ -503,7 +544,7 @@ FRenderableManager::~FRenderableManager() {
 }
 
 void FRenderableManager::create(
-        const RenderableManager::Builder& UTILS_RESTRICT builder, Entity entity) {
+        const Builder& UTILS_RESTRICT builder, Entity const entity) {
     FEngine& engine = mEngine;
     auto& manager = mManager;
     FEngine::DriverApi& driver = engine.getDriverApi();
@@ -517,7 +558,7 @@ void FRenderableManager::create(
     if (ci) {
         // create and initialize all needed RenderPrimitives
         using size_type = Slice<FRenderPrimitive>::size_type;
-        Builder::Entry const * const entries = builder->mEntries.data();
+        auto const * const entries = builder->mEntries.data();
         const size_t entryCount = builder->mEntries.size();
         FRenderPrimitive* rp = new FRenderPrimitive[entryCount];
         auto& factory = mHwRenderPrimitiveFactory;
@@ -550,7 +591,10 @@ void FRenderableManager::create(
             // will get bound to the PER_RENDERABLE UBO, and we can't bind a buffer smaller than the
             // full size of the UBO.
             instances.handle = driver.createBufferObject(sizeof(PerRenderableUib),
-                    BufferObjectBinding::UNIFORM, backend::BufferUsage::DYNAMIC);
+                    BufferObjectBinding::UNIFORM, BufferUsage::DYNAMIC);
+            if (auto name = instances.buffer->getName(); !name.empty()) {
+                driver.setDebugTag(instances.handle.getId(), std::move(name));
+            }
         }
 
         const uint32_t boneCount = builder->mSkinningBoneCount;
@@ -585,7 +629,7 @@ void FRenderableManager::create(
                         .handle = driver.createBufferObject(
                                 sizeof(PerRenderableBoneUib),
                                 BufferObjectBinding::UNIFORM,
-                                backend::BufferUsage::DYNAMIC),
+                                BufferUsage::DYNAMIC),
                         .count = (uint16_t)boneCount,
                         .offset = 0,
                         .skinningBufferMode = false };
@@ -621,27 +665,24 @@ void FRenderableManager::create(
 
         // Create and initialize all needed MorphTargets.
         // It's required to avoid branches in hot loops.
-        MorphTargets* const morphTargets = new MorphTargets[entryCount];
-        std::generate_n(morphTargets, entryCount,
-                [dummy = mEngine.getDummyMorphTargetBuffer()]() -> MorphTargets {
-                    return { dummy, 0, 0 };
-                });
-
-        mManager[ci].morphTargets = { morphTargets, size_type(entryCount) };
+        FMorphTargetBuffer* morphTargetBuffer = builder->mMorphTargetBuffer;
+        if (morphTargetBuffer == nullptr) {
+            morphTargetBuffer = mEngine.getDummyMorphTargetBuffer();
+        }
 
         // Always create skinning and morphing resources if one of them is enabled because
         // the shader always handles both. See Variant::SKINNING_OR_MORPHING.
         if (UTILS_UNLIKELY(boneCount > 0 || targetCount > 0)) {
 
-            auto [sampler, texture] = FSkinningBuffer::createIndicesAndWeightsHandle(
-                    downcast(engine), builder->mBoneIndicesAndWeightsCount);
-            if (builder->mBoneIndicesAndWeightsCount > 0) {
-                FSkinningBuffer::setIndicesAndWeightsData(downcast(engine), texture,
-                        builder->mBoneIndicesAndWeights, builder->mBoneIndicesAndWeightsCount);
-            }
             Bones& bones = manager[ci].bones;
-            bones.handleSamplerGroup = sampler;
-            bones.handleTexture = texture;
+            bones.handleTexture = FSkinningBuffer::createIndicesAndWeightsHandle(
+                    engine, builder->mBoneIndicesAndWeightsCount);
+            if (builder->mBoneIndicesAndWeightsCount > 0) {
+                FSkinningBuffer::setIndicesAndWeightsData(engine,
+                        bones.handleTexture,
+                        builder->mBoneIndicesAndWeights,
+                        builder->mBoneIndicesAndWeightsCount);
+            }
 
             // Instead of using a UBO per primitive, we could also have a single UBO for all primitives
             // and use bindUniformBufferRange which might be more efficient.
@@ -650,16 +691,16 @@ void FRenderableManager::create(
                 .handle = driver.createBufferObject(
                         sizeof(PerRenderableMorphingUib),
                         BufferObjectBinding::UNIFORM,
-                        backend::BufferUsage::DYNAMIC),
+                        BufferUsage::DYNAMIC),
                 .count = targetCount };
 
-            for (size_t i = 0; i < entryCount; ++i) {
-                const auto& morphing = builder->mEntries[i].morphing;
-                if (!morphing.buffer) {
-                    continue;
+            Slice<FRenderPrimitive>& primitives = mManager[ci].primitives;
+            mManager[ci].morphTargetBuffer = morphTargetBuffer;
+            if (builder->mMorphTargetBuffer) {
+                for (size_t i = 0; i < entryCount; ++i) {
+                    const auto& morphing = builder->mEntries[i].morphing;
+                    primitives[i].setMorphingBufferOffset(morphing.offset);
                 }
-                morphTargets[i] = { downcast(morphing.buffer), (uint32_t)morphing.offset,
-                                    (uint32_t)morphing.count };
             }
             
             // When targetCount equal 0, boneCount>0 in this case, do an initialization for the
@@ -675,7 +716,7 @@ void FRenderableManager::create(
 }
 
 // this destroys a single component from an entity
-void FRenderableManager::destroy(utils::Entity e) noexcept {
+void FRenderableManager::destroy(Entity const e) noexcept {
     Instance const ci = getInstance(e);
     if (ci) {
         destroyComponent(ci);
@@ -687,10 +728,8 @@ void FRenderableManager::destroy(utils::Entity e) noexcept {
 void FRenderableManager::terminate() noexcept {
     auto& manager = mManager;
     if (!manager.empty()) {
-#ifndef NDEBUG
-        slog.d << "cleaning up " << manager.getComponentCount()
-               << " leaked Renderable components" << io::endl;
-#endif
+        DLOG(INFO) << "cleaning up " << manager.getComponentCount()
+                   << " leaked Renderable components";
         while (!manager.empty()) {
             Instance const ci = manager.end() - 1;
             destroyComponent(ci);
@@ -700,14 +739,14 @@ void FRenderableManager::terminate() noexcept {
     mHwRenderPrimitiveFactory.terminate(mEngine.getDriverApi());
 }
 
-void FRenderableManager::gc(utils::EntityManager& em) noexcept {
-    mManager.gc(em, [this](Entity e) {
+void FRenderableManager::gc(EntityManager& em) noexcept {
+    mManager.gc(em, [this](Entity const e) {
         destroy(e);
     });
 }
 
 // This is basically a Renderable's destructor.
-void FRenderableManager::destroyComponent(Instance ci) noexcept {
+void FRenderableManager::destroyComponent(Instance const ci) noexcept {
     auto& manager = mManager;
     FEngine& engine = mEngine;
 
@@ -715,15 +754,18 @@ void FRenderableManager::destroyComponent(Instance ci) noexcept {
 
     // See create(RenderableManager::Builder&, Entity)
     destroyComponentPrimitives(mHwRenderPrimitiveFactory, driver, manager[ci].primitives);
-    destroyComponentMorphTargets(engine, manager[ci].morphTargets);
+
+    // destroy the per-renderable descriptor set if we have one
+    DescriptorSet& descriptorSet = manager[ci].descriptorSet;
+    descriptorSet.terminate(driver);
 
     // destroy the bones structures if any
     Bones const& bones = manager[ci].bones;
     if (bones.handle && !bones.skinningBufferMode) {
+        // when not in skinningBufferMode, we now the handle, so we destroy it
         driver.destroyBufferObject(bones.handle);
     }
-    if (bones.handleSamplerGroup){
-        driver.destroySamplerGroup(bones.handleSamplerGroup);
+    if (bones.handleTexture) {
         driver.destroyTexture(bones.handleTexture);
     }
 
@@ -740,7 +782,7 @@ void FRenderableManager::destroyComponent(Instance ci) noexcept {
 }
 
 void FRenderableManager::destroyComponentPrimitives(
-        HwRenderPrimitiveFactory& factory, backend::DriverApi& driver,
+        HwRenderPrimitiveFactory& factory, DriverApi& driver,
         Slice<FRenderPrimitive>& primitives) noexcept {
     for (auto& primitive : primitives) {
         primitive.terminate(factory, driver);
@@ -748,38 +790,47 @@ void FRenderableManager::destroyComponentPrimitives(
     delete[] primitives.data();
 }
 
-void FRenderableManager::destroyComponentMorphTargets(FEngine&,
-        utils::Slice<MorphTargets>& morphTargets) noexcept {
-    delete[] morphTargets.data();
-}
-
-void FRenderableManager::setMaterialInstanceAt(Instance instance, uint8_t level,
-        size_t primitiveIndex, FMaterialInstance const* mi) {
+void FRenderableManager::setMaterialInstanceAt(Instance const instance, uint8_t const level,
+        size_t const primitiveIndex, FMaterialInstance const* mi) {
+    assert_invariant(mi);
     if (instance) {
         Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
-        if (primitiveIndex < primitives.size()) {
-            assert_invariant(mi);
+        if (primitiveIndex < primitives.size() && mi) {
             FMaterial const* material = mi->getMaterial();
 
             // we want a feature level violation to be a hard error (exception if enabled, or crash)
-            ASSERT_PRECONDITION(mEngine.hasFeatureLevel(material->getFeatureLevel()),
-                    "Material \"%s\" has feature level %u which is not supported by this Engine",
-                    material->getName().c_str_safe(), (uint8_t)material->getFeatureLevel());
+            FILAMENT_CHECK_PRECONDITION(mEngine.hasFeatureLevel(material->getFeatureLevel()))
+                    << "Material \"" << material->getName().c_str_safe() << "\" has feature level "
+                    << (uint8_t)material->getFeatureLevel()
+                    << " which is not supported by this Engine";
 
             primitives[primitiveIndex].setMaterialInstance(mi);
             AttributeBitset const required = material->getRequiredAttributes();
             AttributeBitset const declared = primitives[primitiveIndex].getEnabledAttributes();
-            if (UTILS_UNLIKELY((declared & required) != required)) {
-                slog.w << "[instance=" << instance.asValue() << ", primitive @ " << primitiveIndex
-                       << "] missing required attributes ("
-                       << required << "), declared=" << declared << io::endl;
+            // Print the warning only when the handle is available. Otherwise this may end up
+            // emitting many invalid warnings as the `declared` bitset is not populated yet.
+            bool const isPrimitiveInitialized = !!primitives[primitiveIndex].getHwHandle();
+            if (UTILS_UNLIKELY(isPrimitiveInitialized && (declared & required) != required)) {
+                LOG(WARNING) << "[instance=" << instance.asValue() << ", primitive @ "
+                             << primitiveIndex << "] missing required attributes (" << required
+                             << "), declared=" << declared;
             }
         }
     }
 }
 
+void FRenderableManager::clearMaterialInstanceAt(Instance instance, uint8_t level,
+        size_t primitiveIndex) {
+    if (instance) {
+        Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
+        if (primitiveIndex < primitives.size()) {
+            primitives[primitiveIndex].setMaterialInstance(nullptr);
+        }
+    }
+}
+
 MaterialInstance* FRenderableManager::getMaterialInstanceAt(
-        Instance instance, uint8_t level, size_t primitiveIndex) const noexcept {
+        Instance const instance, uint8_t const level, size_t const primitiveIndex) const noexcept {
     if (instance) {
         const Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
@@ -791,8 +842,8 @@ MaterialInstance* FRenderableManager::getMaterialInstanceAt(
     return nullptr;
 }
 
-void FRenderableManager::setBlendOrderAt(Instance instance, uint8_t level,
-        size_t primitiveIndex, uint16_t order) noexcept {
+void FRenderableManager::setBlendOrderAt(Instance const instance, uint8_t const level,
+        size_t const primitiveIndex, uint16_t const order) noexcept {
     if (instance) {
         Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
@@ -801,8 +852,8 @@ void FRenderableManager::setBlendOrderAt(Instance instance, uint8_t level,
     }
 }
 
-void FRenderableManager::setGlobalBlendOrderEnabledAt(Instance instance, uint8_t level,
-        size_t primitiveIndex, bool enabled) noexcept {
+void FRenderableManager::setGlobalBlendOrderEnabledAt(Instance const instance, uint8_t const level,
+        size_t const primitiveIndex, bool const enabled) noexcept {
     if (instance) {
         Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
@@ -812,7 +863,7 @@ void FRenderableManager::setGlobalBlendOrderEnabledAt(Instance instance, uint8_t
 }
 
 AttributeBitset FRenderableManager::getEnabledAttributesAt(
-        Instance instance, uint8_t level, size_t primitiveIndex) const noexcept {
+        Instance const instance, uint8_t const level, size_t const primitiveIndex) const noexcept {
     if (instance) {
         Slice<FRenderPrimitive> const& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
@@ -822,9 +873,9 @@ AttributeBitset FRenderableManager::getEnabledAttributesAt(
     return AttributeBitset{};
 }
 
-void FRenderableManager::setGeometryAt(Instance instance, uint8_t level, size_t primitiveIndex,
-        PrimitiveType type, FVertexBuffer* vertices, FIndexBuffer* indices,
-        size_t offset, size_t count) noexcept {
+void FRenderableManager::setGeometryAt(Instance const instance, uint8_t const level, size_t const primitiveIndex,
+        PrimitiveType const type, FVertexBuffer* vertices, FIndexBuffer* indices,
+        size_t const offset, size_t const count) noexcept {
     if (instance) {
         Slice<FRenderPrimitive>& primitives = getRenderPrimitives(instance, level);
         if (primitiveIndex < primitives.size()) {
@@ -834,13 +885,13 @@ void FRenderableManager::setGeometryAt(Instance instance, uint8_t level, size_t 
     }
 }
 
-void FRenderableManager::setBones(Instance ci,
-        Bone const* UTILS_RESTRICT transforms, size_t boneCount, size_t offset) {
+void FRenderableManager::setBones(Instance const ci,
+        Bone const* UTILS_RESTRICT transforms, size_t boneCount, size_t const offset) {
     if (ci) {
         Bones const& bones = mManager[ci].bones;
 
-        ASSERT_PRECONDITION(!bones.skinningBufferMode,
-                "Disable skinning buffer mode to use this API");
+        FILAMENT_CHECK_PRECONDITION(!bones.skinningBufferMode)
+                << "Disable skinning buffer mode to use this API";
 
         assert_invariant(bones.handle && offset + boneCount <= bones.count);
         if (bones.handle) {
@@ -850,13 +901,13 @@ void FRenderableManager::setBones(Instance ci,
     }
 }
 
-void FRenderableManager::setBones(Instance ci,
-        mat4f const* UTILS_RESTRICT transforms, size_t boneCount, size_t offset) {
+void FRenderableManager::setBones(Instance const ci,
+        mat4f const* UTILS_RESTRICT transforms, size_t boneCount, size_t const offset) {
     if (ci) {
         Bones const& bones = mManager[ci].bones;
 
-        ASSERT_PRECONDITION(!bones.skinningBufferMode,
-                "Disable skinning buffer mode to use this API");
+        FILAMENT_CHECK_PRECONDITION(!bones.skinningBufferMode)
+                << "Disable skinning buffer mode to use this API";
 
         assert_invariant(bones.handle && offset + boneCount <= bones.count);
         if (bones.handle) {
@@ -866,17 +917,16 @@ void FRenderableManager::setBones(Instance ci,
     }
 }
 
-void FRenderableManager::setSkinningBuffer(FRenderableManager::Instance ci,
-        FSkinningBuffer* skinningBuffer, size_t count, size_t offset) {
+void FRenderableManager::setSkinningBuffer(Instance const ci,
+        FSkinningBuffer* skinningBuffer, size_t count, size_t const offset) {
 
     Bones& bones = mManager[ci].bones;
 
-    ASSERT_PRECONDITION(bones.skinningBufferMode,
-            "Enable skinning buffer mode to use this API");
+    FILAMENT_CHECK_PRECONDITION(bones.skinningBufferMode)
+            << "Enable skinning buffer mode to use this API";
 
-    ASSERT_PRECONDITION(
-            count <= CONFIG_MAX_BONE_COUNT,
-            "SkinningBuffer larger than 256 (count=%u)", count);
+    FILAMENT_CHECK_PRECONDITION(count <= CONFIG_MAX_BONE_COUNT)
+            << "SkinningBuffer larger than 256 (count=" << count << ")";
 
     // According to the OpenGL ES 3.2 specification in 7.6.3 Uniform
     // Buffer Object Bindings:
@@ -888,32 +938,31 @@ void FRenderableManager::setSkinningBuffer(FRenderableManager::Instance ci,
 
     count = CONFIG_MAX_BONE_COUNT;
 
-    ASSERT_PRECONDITION(
-            count + offset <= skinningBuffer->getBoneCount(),
-            "SkinningBuffer overflow (size=%u, count=%u, offset=%u)",
-            skinningBuffer->getBoneCount(), count, offset);
+    FILAMENT_CHECK_PRECONDITION(count + offset <= skinningBuffer->getBoneCount())
+            << "SkinningBuffer overflow (size=" << skinningBuffer->getBoneCount()
+            << ", count=" << count << ", offset=" << offset << ")";
 
     bones.handle = skinningBuffer->getHwHandle();
     bones.count = uint16_t(count);
     bones.offset = uint16_t(offset);
 }
 
-static void updateMorphWeights(FEngine& engine, backend::Handle<backend::HwBufferObject> handle,
-        float const* weights, size_t count, size_t offset) noexcept {
+static void updateMorphWeights(FEngine& engine, Handle<HwBufferObject> handle,
+        float const* weights, size_t const count, size_t const offset) noexcept {
     auto& driver = engine.getDriverApi();
     auto size = sizeof(float4) * count;
     auto* UTILS_RESTRICT out = (float4*)driver.allocate(size);
     std::transform(weights, weights + count, out,
-            [](float value) { return float4(value, 0, 0, 0); });
+            [](float const value) { return float4(value, 0, 0, 0); });
     driver.updateBufferObject(handle, { out, size }, sizeof(float4) * offset);
 }
 
-void FRenderableManager::setMorphWeights(Instance instance, float const* weights,
-        size_t count, size_t offset) {
+void FRenderableManager::setMorphWeights(Instance const instance, float const* weights,
+        size_t const count, size_t const offset) {
     if (instance) {
-        ASSERT_PRECONDITION(count + offset <= CONFIG_MAX_MORPH_TARGET_COUNT,
-                "Only %d morph targets are supported (count=%d, offset=%d)",
-                CONFIG_MAX_MORPH_TARGET_COUNT, count, offset);
+        FILAMENT_CHECK_PRECONDITION(count + offset <= CONFIG_MAX_MORPH_TARGET_COUNT)
+                << "Only " << CONFIG_MAX_MORPH_TARGET_COUNT
+                << " morph targets are supported (count=" << count << ", offset=" << offset << ")";
 
         MorphWeights const& morphWeights = mManager[instance].morphWeights;
         if (morphWeights.handle) {
@@ -922,38 +971,26 @@ void FRenderableManager::setMorphWeights(Instance instance, float const* weights
     }
 }
 
-void FRenderableManager::setMorphTargetBufferAt(Instance instance, uint8_t level,
-        size_t primitiveIndex, FMorphTargetBuffer* morphTargetBuffer, size_t offset, size_t count) {
-    assert_invariant(offset == 0 && "Offset not yet supported.");
-    assert_invariant(count == morphTargetBuffer->getVertexCount() && "Count not yet supported.");
+void FRenderableManager::setMorphTargetBufferOffsetAt(Instance const instance, uint8_t level,
+        size_t const primitiveIndex,
+        size_t const offset) {
     if (instance) {
-        assert_invariant(morphTargetBuffer);
-
-        MorphWeights const& morphWeights = mManager[instance].morphWeights;
-        ASSERT_PRECONDITION(morphWeights.count == morphTargetBuffer->getCount(),
-                "Only %d morph targets can be set (count=%d)",
-                morphWeights.count, morphTargetBuffer->getCount());
-
-        Slice<MorphTargets>& morphTargets = getMorphTargets(instance, level);
-        if (primitiveIndex < morphTargets.size()) {
-            morphTargets[primitiveIndex] = { morphTargetBuffer, (uint32_t)offset,
-                                             (uint32_t)count };
+        assert_invariant(mManager[instance].morphTargetBuffer);
+        Slice<FRenderPrimitive>& primitives = mManager[instance].primitives;
+        if (primitiveIndex < primitives.size()) {
+            primitives[primitiveIndex].setMorphingBufferOffset(offset);
         }
     }
 }
 
-MorphTargetBuffer* FRenderableManager::getMorphTargetBufferAt(Instance instance, uint8_t level,
-        size_t primitiveIndex) const noexcept {
+MorphTargetBuffer* FRenderableManager::getMorphTargetBuffer(Instance const instance) const noexcept {
     if (instance) {
-        const Slice<MorphTargets>& morphTargets = getMorphTargets(instance, level);
-        if (primitiveIndex < morphTargets.size()) {
-            return morphTargets[primitiveIndex].buffer;
-        }
+        return mManager[instance].morphTargetBuffer;
     }
     return nullptr;
 }
 
-size_t FRenderableManager::getMorphTargetCount(Instance instance) const noexcept {
+size_t FRenderableManager::getMorphTargetCount(Instance const instance) const noexcept {
     if (instance) {
         const MorphWeights& morphWeights = mManager[instance].morphWeights;
         return morphWeights.count;
@@ -961,7 +998,7 @@ size_t FRenderableManager::getMorphTargetCount(Instance instance) const noexcept
     return 0;
 }
 
-void FRenderableManager::setLightChannel(Instance ci, unsigned int channel, bool enable) noexcept {
+void FRenderableManager::setLightChannel(Instance const ci, unsigned int const channel, bool const enable) noexcept {
     if (ci) {
         if (channel < 8) {
             const uint8_t mask = 1u << channel;
@@ -971,7 +1008,7 @@ void FRenderableManager::setLightChannel(Instance ci, unsigned int channel, bool
     }
 }
 
-bool FRenderableManager::getLightChannel(Instance ci, unsigned int channel) const noexcept {
+bool FRenderableManager::getLightChannel(Instance const ci, unsigned int const channel) const noexcept {
     if (ci) {
         if (channel < 8) {
             const uint8_t mask = 1u << channel;
@@ -981,7 +1018,7 @@ bool FRenderableManager::getLightChannel(Instance ci, unsigned int channel) cons
     return false;
 }
 
-size_t FRenderableManager::getPrimitiveCount(Instance instance, uint8_t level) const noexcept {
+size_t FRenderableManager::getPrimitiveCount(Instance const instance, uint8_t const level) const noexcept {
     return getRenderPrimitives(instance, level).size();
 }
 

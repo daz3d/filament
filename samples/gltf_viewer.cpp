@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "common/arguments.h"
+
 #include <filamentapp/Config.h>
 #include <filamentapp/FilamentApp.h>
 #include <filamentapp/IBL.h>
@@ -58,10 +60,13 @@
 
 #include <cgltf.h>
 
+#include <algorithm>
 #include <array>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <set>
+#include <sstream>
 #include <string>
 
 #include "generated/resources/gltf_demo.h"
@@ -136,6 +141,9 @@ struct App {
 
     AutomationSpec* automationSpec = nullptr;
     AutomationEngine* automationEngine = nullptr;
+    bool screenshot = false;
+    uint8_t screenshotSeq = 0;
+    bool screenshotAsPPM = false;
 };
 
 static const char* DEFAULT_IBL = "assets/ibl/lightroom_14b";
@@ -149,19 +157,7 @@ static void printUsage(char* name) {
         "Options:\n"
         "   --help, -h\n"
         "       Prints this message\n\n"
-        "   --api, -a\n"
-        "       Specify the backend API: "
-
-// Matches logic in filament/backend/src/PlatformFactory.cpp for Backend::DEFAULT
-#if defined(IOS) || defined(__APPLE__)
-        "opengl, vulkan, or metal (default)"
-#elif defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
-        "opengl, vulkan (default), or metal"
-#else
-        "opengl (default), vulkan, or metal"
-#endif
-        "\n\n"
-
+        "API_USAGE"
         "   --feature-level=<1|2|3>, -f <1|2|3>\n"
         "       Specify the feature level to use. The default is the highest supported feature level.\n\n"
         "   --batch=<path to JSON file or 'default'>, -b\n"
@@ -197,10 +193,17 @@ static void printUsage(char* name) {
         "       Vulkan backend allows user to choose their GPU.\n"
         "       You can provide the index of the GPU or\n"
         "       a substring to match against the device name\n\n"
+        "   --screenshot-as-ppm, -d\n"
+        "       export PPM as oppose to TIFF screenshots\n\n"
+
     );
     const std::string from("SHOWCASE");
     for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
         usage.replace(pos, from.length(), exec_name);
+    }
+    const std::string apiUsage("API_USAGE");
+    for (size_t pos = usage.find(apiUsage); pos != std::string::npos; pos = usage.find(apiUsage, pos)) {
+        usage.replace(pos, apiUsage.length(), samples::getBackendAPIArgumentsUsage());
     }
     std::cout << usage;
 }
@@ -211,22 +214,23 @@ static std::ifstream::pos_type getFileSize(const char* filename) {
 }
 
 static int handleCommandLineArguments(int argc, char* argv[], App* app) {
-    static constexpr const char* OPTSTR = "ha:f:i:usc:rt:b:evg:";
+    static constexpr const char* OPTSTR = "ha:f:i:usc:rt:b:evg:d";
     static const struct option OPTIONS[] = {
-        { "help",            no_argument,          nullptr, 'h' },
-        { "api",             required_argument,    nullptr, 'a' },
-        { "feature-level",   required_argument,    nullptr, 'f' },
-        { "batch",           required_argument,    nullptr, 'b' },
-        { "headless",        no_argument,          nullptr, 'e' },
-        { "ibl",             required_argument,    nullptr, 'i' },
-        { "ubershader",      no_argument,          nullptr, 'u' },
-        { "actual-size",     no_argument,          nullptr, 's' },
-        { "camera",          required_argument,    nullptr, 'c' },
-        { "eyes",            required_argument,    nullptr, 'y' },
-        { "recompute-aabb",  no_argument,          nullptr, 'r' },
-        { "settings",        required_argument,    nullptr, 't' },
-        { "split-view",      no_argument,          nullptr, 'v' },
-        { "vulkan-gpu-hint", required_argument,    nullptr, 'g' },
+        { "help",              no_argument,          nullptr, 'h' },
+        { "api",               required_argument,    nullptr, 'a' },
+        { "feature-level",     required_argument,    nullptr, 'f' },
+        { "batch",             required_argument,    nullptr, 'b' },
+        { "headless",          no_argument,          nullptr, 'e' },
+        { "ibl",               required_argument,    nullptr, 'i' },
+        { "ubershader",        no_argument,          nullptr, 'u' },
+        { "actual-size",       no_argument,          nullptr, 's' },
+        { "camera",            required_argument,    nullptr, 'c' },
+        { "eyes",              required_argument,    nullptr, 'y' },
+        { "recompute-aabb",    no_argument,          nullptr, 'r' },
+        { "settings",          required_argument,    nullptr, 't' },
+        { "split-view",        no_argument,          nullptr, 'v' },
+        { "vulkan-gpu-hint",   required_argument,    nullptr, 'g' },
+        { "screenshot-as-ppm", no_argument,          nullptr, 'd' },
         { nullptr, 0, nullptr, 0 }
     };
     int opt;
@@ -239,15 +243,7 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
                 printUsage(argv[0]);
                 exit(0);
             case 'a':
-                if (arg == "opengl") {
-                    app->config.backend = Engine::Backend::OPENGL;
-                } else if (arg == "vulkan") {
-                    app->config.backend = Engine::Backend::VULKAN;
-                } else if (arg == "metal") {
-                    app->config.backend = Engine::Backend::METAL;
-                } else {
-                    std::cerr << "Unrecognized backend. Must be 'opengl'|'vulkan'|'metal'.\n";
-                }
+                app->config.backend = samples::parseArgumentsForBackend(arg);
                 break;
             case 'f':
                 if (arg == "1") {
@@ -310,6 +306,10 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
             }
             case 'g': {
                 app->config.vulkanGPUHint = arg;
+                break;
+            }
+            case 'd': {
+                app->screenshotAsPPM = true;
                 break;
             }
         }
@@ -508,30 +508,57 @@ static void onClick(App& app, View* view, ImVec2 pos) {
     });
 }
 
-static utils::Path getPathForAsset(std::string_view string) {
+static utils::Path getPathForIBLAsset(std::string_view string) {
+    auto isIBL = [] (utils::Path file) -> bool {
+        return file.getExtension() == "ktx" || file.getExtension() == "hdr" ||
+            file.getExtension() == "exr";
+
+    };
+
     utils::Path filename{ string };
     if (!filename.exists()) {
         std::cerr << "file " << filename << " not found!" << std::endl;
         return {};
     }
+
     if (filename.isDirectory()) {
-        auto files = filename.listContents();
-        for (const auto& file: files) {
-            if (file.getExtension() == "gltf" || file.getExtension() == "glb") {
-                filename = file;
-                break;
-            }
-        }
-        if (filename.isDirectory()) {
-            std::cerr << "no glTF file found in " << filename << std::endl;
+        std::vector<Path> files = filename.listContents();
+        if (std::none_of(files.cbegin(), files.cend(), isIBL)) {
             return {};
         }
+    } else if (!isIBL(filename)) {
+        return {};
     }
+
     return filename;
 }
 
+static utils::Path getPathForGLTFAsset(std::string_view string) {
+    auto isGLTF = [] (utils::Path file) -> bool {
+        return file.getExtension() == "gltf" || file.getExtension() == "glb";
+    };
 
-static bool checkAsset(const utils::Path& filename) {
+    utils::Path filename{ string };
+    if (!filename.exists()) {
+        std::cerr << "file " << filename << " not found!" << std::endl;
+        return {};
+    }
+
+    if (filename.isDirectory()) {
+        std::vector<Path> files = filename.listContents();
+        auto it = std::find_if(files.cbegin(), files.cend(), isGLTF);
+        if (it == files.end()) {
+            return {};
+        }
+        filename = *it;
+    } else if (!isGLTF(filename)) {
+        return {};
+    }
+
+    return filename;
+}
+
+static bool checkGLTFAsset(const utils::Path& filename) {
     // Peek at the file size to allow pre-allocation.
     long const contentSize = static_cast<long>(getFileSize(filename.c_str()));
     if (contentSize <= 0) {
@@ -547,10 +574,11 @@ static bool checkAsset(const utils::Path& filename) {
         return false;
     }
 
-    // Parse the glTF file and create Filament entities.
+    // Try parsing the glTF file to check the validity of the file format.
     cgltf_options options{};
-    cgltf_data* sourceAsset;
+    cgltf_data* sourceAsset = nullptr;
     cgltf_result result = cgltf_parse(&options, buffer.data(), contentSize, &sourceAsset);
+    cgltf_free(sourceAsset);
     if (result != cgltf_result_success) {
         slog.e << "Unable to parse glTF file." << io::endl;
         return false;
@@ -570,8 +598,9 @@ int main(int argc, char** argv) {
     utils::Path filename;
     int const num_args = argc - optionIndex;
     if (num_args >= 1) {
-        filename = getPathForAsset(argv[optionIndex]);
+        filename = getPathForGLTFAsset(argv[optionIndex]);
         if (filename.isEmpty()) {
+            std::cerr << "no glTF file found in " << filename << std::endl;
             return 1;
         }
     }
@@ -639,7 +668,15 @@ int main(int argc, char** argv) {
         buffer.shrink_to_fit();
     };
 
-    auto loadResources = [&app] (const utils::Path& filename) {
+    auto setupIBL = [&app]() {
+        auto ibl = FilamentApp::get().getIBL();
+        if (ibl) {
+            app.viewer->setIndirectLight(ibl->getIndirectLight(), ibl->getSphericalHarmonics());
+            app.viewer->getSettings().view.fogSettings.fogColorTexture = ibl->getFogTexture();
+        }
+    };
+
+    auto loadResources = [&app, &setupIBL] (const utils::Path& filename) {
         // Load external textures and buffers.
         std::string const gltfPath = filename.getAbsolutePath();
         ResourceConfiguration configuration = {};
@@ -676,12 +713,7 @@ int main(int argc, char** argv) {
             instances[mi]->setStencilWrite(true);
             instances[mi]->setStencilOpDepthStencilPass(MaterialInstance::StencilOperation::INCR);
         }
-
-        auto ibl = FilamentApp::get().getIBL();
-        if (ibl) {
-            app.viewer->setIndirectLight(ibl->getIndirectLight(), ibl->getSphericalHarmonics());
-            app.viewer->getSettings().view.fogSettings.fogColorTexture = ibl->getFogTexture();
-        }
+        setupIBL();
     };
 
     auto setup = [&](Engine* engine, View* view, Scene* scene) {
@@ -730,6 +762,9 @@ int main(int argc, char** argv) {
             options.sleepDuration = 0.0;
             options.exportScreenshots = true;
             options.exportSettings = true;
+            options.exportFormat = app.screenshotAsPPM
+                                           ? AutomationEngine::Options::ExportFormat::PPM
+                                           : AutomationEngine::Options::ExportFormat::TIFF;
             app.automationEngine->setOptions(options);
             app.viewer->stopAnimation();
         }
@@ -849,13 +884,20 @@ int main(int argc, char** argv) {
 
             if (ImGui::CollapsingHeader("Debug")) {
                 auto& debug = engine->getDebugRegistry();
-                if (ImGui::Button("Capture frame")) {
-                    bool* captureFrame =
-                            debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
-                    *captureFrame = true;
+                if (engine->getBackend() == Engine::Backend::METAL) {
+                    if (ImGui::Button("Capture frame")) {
+                        bool* captureFrame =
+                                debug.getPropertyAddress<bool>("d.renderer.doFrameCapture");
+                        *captureFrame = true;
+                    }
+                }
+                if (ImGui::Button("Screenshot")) {
+                    app.screenshot = true;
                 }
                 ImGui::Checkbox("Disable buffer padding",
                         debug.getPropertyAddress<bool>("d.renderer.disable_buffer_padding"));
+                ImGui::Checkbox("Disable sub-passes",
+                        debug.getPropertyAddress<bool>("d.renderer.disable_subpasses"));
                 ImGui::Checkbox("Camera at origin",
                         debug.getPropertyAddress<bool>("d.view.camera_at_origin"));
                 ImGui::Checkbox("Far Origin", &app.originIsFarAway);
@@ -864,6 +906,10 @@ int main(int argc, char** argv) {
                         debug.getPropertyAddress<bool>("d.shadowmap.far_uses_shadowcasters"));
                 ImGui::Checkbox("Focus shadow casters",
                         debug.getPropertyAddress<bool>("d.shadowmap.focus_shadowcasters"));
+                ImGui::Checkbox("Disable light frustum alignment",
+                        debug.getPropertyAddress<bool>("d.shadowmap.disable_light_frustum_align"));
+                ImGui::Checkbox("Depth clamp",
+                        debug.getPropertyAddress<bool>("d.shadowmap.depth_clamp"));
 
                 bool debugDirectionalShadowmap;
                 if (debug.getProperty("d.shadowmap.debug_directional_shadowmap",
@@ -893,11 +939,6 @@ int main(int argc, char** argv) {
                                     "d.shadowmap.display_shadow_texture_channel"), 0, 3);
                     ImGui::Unindent();
                 }
-#if defined(FILAMENT_SAMPLES_STEREO_TYPE_MULTIVIEW)
-                ImGui::Checkbox("Combine Multiview Images",
-                    debug.getPropertyAddress<bool>("d.stereo.combine_multiview_images"));
-#endif
-
                 bool debugFroxelVisualization;
                 if (debug.getProperty("d.lighting.debug_froxel_visualization",
                         &debugFroxelVisualization)) {
@@ -1000,6 +1041,8 @@ int main(int argc, char** argv) {
         delete app.resourceLoader;
         delete app.stbDecoder;
         delete app.ktxDecoder;
+        delete app.automationSpec;
+        delete app.automationEngine;
 
         AssetLoader::destroy(&app.assetLoader);
     };
@@ -1109,6 +1152,15 @@ int main(int argc, char** argv) {
     };
 
     auto postRender = [&app](Engine* engine, View* view, Scene*, Renderer* renderer) {
+        if (app.screenshot) {
+            std::ostringstream stringStream;
+            stringStream << "screenshot" << std::setfill('0') << std::setw(2) << +app.screenshotSeq;
+            std::string const ext = app.screenshotAsPPM ? ".ppm" : ".tif";
+            AutomationEngine::exportScreenshot(
+                    view, renderer, stringStream.str() + ext, false, app.automationEngine);
+            ++app.screenshotSeq;
+            app.screenshot = false;
+        }
         if (app.automationEngine->shouldClose()) {
             FilamentApp::get().close();
             return;
@@ -1127,9 +1179,9 @@ int main(int argc, char** argv) {
     filamentApp.resize(resize);
 
     filamentApp.setDropHandler([&](std::string_view path) {
-        utils::Path const filename = getPathForAsset(path);
+        utils::Path filename = getPathForGLTFAsset(path);
         if (!filename.isEmpty()) {
-            if (checkAsset(filename)) {
+            if (checkGLTFAsset(filename)) {
                 app.resourceLoader->asyncCancelLoad();
                 app.resourceLoader->evictResourceData();
                 app.viewer->removeAsset();
@@ -1138,6 +1190,13 @@ int main(int argc, char** argv) {
                 loadResources(filename);
                 app.viewer->setAsset(app.asset, app.instance);
             }
+            return;
+        }
+
+        filename = getPathForIBLAsset(path);
+        if (!filename.isEmpty()) {
+            FilamentApp::get().loadIBL(path);
+            setupIBL();
         }
     });
 

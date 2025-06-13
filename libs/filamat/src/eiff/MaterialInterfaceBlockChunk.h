@@ -18,19 +18,23 @@
 #define TNT_FILAMAT_MAT_INTEFFACE_BLOCK_CHUNK_H
 
 #include "Chunk.h"
-
-#include <private/filament/EngineEnums.h>
+#include "private/filament/ConstantInfo.h"
 
 #include <backend/Program.h>
 
+#include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
 
+#include <tuple>
+
+#include <stdint.h>
+
 namespace filament {
-class SamplerBindingMap;
 class SamplerInterfaceBlock;
 class BufferInterfaceBlock;
 struct SubpassInfo;
 struct MaterialConstant;
+struct MaterialPushConstant;
 } // namespace filament
 
 namespace filamat {
@@ -38,10 +42,10 @@ namespace filamat {
 class MaterialUniformInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialUniformInterfaceBlockChunk(filament::BufferInterfaceBlock const& uib);
-    ~MaterialUniformInterfaceBlockChunk() final = default;
+    ~MaterialUniformInterfaceBlockChunk() override = default;
 
 private:
-    void flatten(Flattener&) final;
+    void flatten(Flattener&) override;
 
     filament::BufferInterfaceBlock const& mUib;
 };
@@ -51,10 +55,10 @@ private:
 class MaterialSamplerInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialSamplerInterfaceBlockChunk(filament::SamplerInterfaceBlock const& sib);
-    ~MaterialSamplerInterfaceBlockChunk() final = default;
+    ~MaterialSamplerInterfaceBlockChunk() override = default;
 
 private:
-    void flatten(Flattener&) final;
+    void flatten(Flattener&) override;
 
     filament::SamplerInterfaceBlock const& mSib;
 };
@@ -64,10 +68,10 @@ private:
 class MaterialSubpassInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialSubpassInterfaceBlockChunk(filament::SubpassInfo const& subpass);
-    ~MaterialSubpassInterfaceBlockChunk() final = default;
+    ~MaterialSubpassInterfaceBlockChunk() override = default;
 
 private:
-    void flatten(Flattener&) final;
+    void flatten(Flattener&) override;
 
     filament::SubpassInfo const& mSubpass;
 };
@@ -77,54 +81,55 @@ private:
 class MaterialConstantParametersChunk final : public Chunk {
 public:
     explicit MaterialConstantParametersChunk(
-            utils::FixedCapacityVector<filament::MaterialConstant> constants);
-    ~MaterialConstantParametersChunk() final = default;
+            FixedCapacityVector<filament::MaterialConstant> constants);
+    ~MaterialConstantParametersChunk() override = default;
 
 private:
-    void flatten(Flattener&) final;
+    void flatten(Flattener&) override;
 
-    utils::FixedCapacityVector<filament::MaterialConstant> mConstants;
+    FixedCapacityVector<filament::MaterialConstant> mConstants;
 };
 
 // ------------------------------------------------------------------------------------------------
 
-class MaterialUniformBlockBindingsChunk final : public Chunk {
-    using Container = utils::FixedCapacityVector<
-            std::pair<std::string_view, filament::UniformBindingPoints>>;
+class MaterialMutableConstantParametersChunk final : public Chunk {
 public:
-    explicit MaterialUniformBlockBindingsChunk(Container list);
-    ~MaterialUniformBlockBindingsChunk() final = default;
+    explicit MaterialMutableConstantParametersChunk(
+            FixedCapacityVector<filament::MaterialMutableConstant> constants);
+    ~MaterialMutableConstantParametersChunk() override = default;
 
 private:
-    void flatten(Flattener&) final;
+    void flatten(Flattener&) override;
 
-    Container mBindingList;
+    FixedCapacityVector<filament::MaterialMutableConstant> mConstants;
 };
 
 // ------------------------------------------------------------------------------------------------
 
-class MaterialSamplerBlockBindingChunk final : public Chunk {
+class MaterialPushConstantParametersChunk final : public Chunk {
 public:
-    explicit MaterialSamplerBlockBindingChunk(filament::SamplerBindingMap const& samplerBindings);
-    ~MaterialSamplerBlockBindingChunk() final = default;
+    explicit MaterialPushConstantParametersChunk(CString const& structVarName,
+            FixedCapacityVector<filament::MaterialPushConstant> constants);
+    ~MaterialPushConstantParametersChunk() override = default;
 
 private:
-    void flatten(Flattener &) final;
+    void flatten(Flattener&) override;
 
-    filament::SamplerBindingMap const& mSamplerBindings;
+    CString mStructVarName;
+    FixedCapacityVector<filament::MaterialPushConstant> mConstants;
 };
 
 // ------------------------------------------------------------------------------------------------
 
 class MaterialBindingUniformInfoChunk final : public Chunk {
-    using Container = FixedCapacityVector<
-            std::pair<filament::UniformBindingPoints, filament::backend::Program::UniformInfo>>;
+    using Container = FixedCapacityVector<std::tuple<
+            uint8_t, CString, filament::backend::Program::UniformInfo>>;
 public:
     explicit MaterialBindingUniformInfoChunk(Container list) noexcept;
-    ~MaterialBindingUniformInfoChunk() final = default;
+    ~MaterialBindingUniformInfoChunk() override = default;
 
 private:
-    void flatten(Flattener &) final;
+    void flatten(Flattener &) override;
 
     Container mBindingUniformInfo;
 };
@@ -132,15 +137,43 @@ private:
 // ------------------------------------------------------------------------------------------------
 
 class MaterialAttributesInfoChunk final : public Chunk {
-    using Container = FixedCapacityVector<std::pair<utils::CString, uint8_t>>;
+    using Container = FixedCapacityVector<std::pair<CString, uint8_t>>;
 public:
     explicit MaterialAttributesInfoChunk(Container list) noexcept;
-    ~MaterialAttributesInfoChunk() final = default;
+    ~MaterialAttributesInfoChunk() override = default;
 
 private:
-    void flatten(Flattener &) final;
+    void flatten(Flattener &) override;
 
     Container mAttributeInfo;
+};
+
+// ------------------------------------------------------------------------------------------------
+
+class MaterialDescriptorBindingsChuck final : public Chunk {
+    using Container = filament::SamplerInterfaceBlock;
+public:
+    explicit MaterialDescriptorBindingsChuck(Container const& sib) noexcept;
+    ~MaterialDescriptorBindingsChuck() override = default;
+
+private:
+    void flatten(Flattener&) override;
+
+    Container const& mSamplerInterfaceBlock;
+};
+
+// ------------------------------------------------------------------------------------------------
+
+class MaterialDescriptorSetLayoutChunk final : public Chunk {
+    using Container = filament::SamplerInterfaceBlock;
+public:
+    explicit MaterialDescriptorSetLayoutChunk(Container const& sib) noexcept;
+    ~MaterialDescriptorSetLayoutChunk() override = default;
+
+private:
+    void flatten(Flattener&) override;
+
+    Container const& mSamplerInterfaceBlock;
 };
 
 } // namespace filamat

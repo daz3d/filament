@@ -16,15 +16,24 @@
 
 #include "private/backend/CommandStream.h"
 
+#include <private/utils/Tracing.h>
+
 #if DEBUG_COMMAND_STREAM
 #include <utils/CallStack.h>
 #endif
 
-#include <utils/Log.h>
-#include <utils/Profiler.h>
-#include <utils/Systrace.h>
+#include <private/utils/Tracing.h>
 
+#include <utils/Logger.h>
+#include <utils/Profiler.h>
+#include <utils/compiler.h>
+#include <utils/ostream.h>
+#include <utils/sstream.h>
+
+#include <cstddef>
 #include <functional>
+#include <string>
+#include <utility>
 
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
@@ -49,7 +58,7 @@ static void printParameterPack(io::ostream& out, const FIRST& first, const REMAI
 }
 
 static UTILS_NOINLINE UTILS_UNUSED std::string extractMethodName(std::string& command) noexcept {
-    constexpr const char startPattern[] = "::Command<&(filament::backend::Driver::";
+    constexpr const char startPattern[] = "::Command<&filament::backend::Driver::";
     auto pos = command.rfind(startPattern);
     auto end = command.rfind('(');
     pos += sizeof(startPattern) - 1;
@@ -74,12 +83,13 @@ CommandStream::CommandStream(Driver& driver, CircularBuffer& buffer) noexcept
 }
 
 void CommandStream::execute(void* buffer) {
-    SYSTRACE_CALL();
-    SYSTRACE_CONTEXT();
+    // NOTE: we can't use FILAMENT_TRACING_CALL() or similar here because, execute() below, also
+    // uses systrace BEGIN/END and the END is not guaranteed to be happening in this scope.
 
     Profiler profiler;
 
-    if (SYSTRACE_TAG) {
+
+    if constexpr (FILAMENT_TRACING_ENABLED) {
         if (UTILS_UNLIKELY(mUsePerformanceCounter)) {
             // we want to remove all this when tracing is completely disabled
             profiler.resetEvents(Profiler::EV_CPU_CYCLES  | Profiler::EV_BPU_MISSES);
@@ -95,16 +105,17 @@ void CommandStream::execute(void* buffer) {
         }
     });
 
-    if (SYSTRACE_TAG) {
+    if constexpr (FILAMENT_TRACING_ENABLED) {
         if (UTILS_UNLIKELY(mUsePerformanceCounter)) {
             // we want to remove all this when tracing is completely disabled
             profiler.stop();
             UTILS_UNUSED Profiler::Counters const counters = profiler.readCounters();
-            SYSTRACE_VALUE32("GLThread (I)", counters.getInstructions());
-            SYSTRACE_VALUE32("GLThread (C)", counters.getCpuCycles());
-            SYSTRACE_VALUE32("GLThread (CPI x10)", counters.getCPI() * 10);
-            SYSTRACE_VALUE32("GLThread (BPU miss)", counters.getBranchMisses());
-            SYSTRACE_VALUE32("GLThread (I / BPU miss)",
+            FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
+            FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "GLThread (I)", counters.getInstructions());
+            FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "GLThread (C)", counters.getCpuCycles());
+            FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "GLThread (CPI x10)", counters.getCPI() * 10);
+            FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "GLThread (BPU miss)", counters.getBranchMisses());
+            FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "GLThread (I / BPU miss)",
                     counters.getInstructions() / counters.getBranchMisses());
         }
     }
@@ -121,9 +132,10 @@ void CommandType<void (Driver::*)(ARGS...)>::Command<METHOD>::log(std::index_seq
 #if DEBUG_COMMAND_STREAM
     static_assert(UTILS_HAS_RTTI, "DEBUG_COMMAND_STREAM can only be used with RTTI");
     std::string command = utils::CallStack::demangleTypeName(typeid(Command).name()).c_str();
-    slog.d << extractMethodName(command) << " : size=" << sizeof(Command) << "\n\t";
-    printParameterPack(slog.d, std::get<I>(mArgs)...);
-    slog.d << io::endl;
+    DLOG(INFO) << extractMethodName(command) << " : size=" << sizeof(Command);
+    utils::io::sstream parameterPack;
+    printParameterPack(parameterPack, std::get<I>(mArgs)...);
+    DLOG(INFO) << "\t" << parameterPack.c_str();
 #endif
 }
 

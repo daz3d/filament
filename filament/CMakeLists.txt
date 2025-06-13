@@ -61,10 +61,12 @@ set(SRCS
         src/Engine.cpp
         src/Exposure.cpp
         src/Fence.cpp
+        src/FilamentBuilder.cpp
         src/FrameInfo.cpp
         src/FrameSkipper.cpp
         src/Froxelizer.cpp
         src/Frustum.cpp
+        src/HwDescriptorSetLayoutFactory.cpp
         src/HwRenderPrimitiveFactory.cpp
         src/HwVertexBufferInfoFactory.cpp
         src/IndexBuffer.cpp
@@ -75,8 +77,6 @@ set(SRCS
         src/MaterialInstance.cpp
         src/MaterialParser.cpp
         src/MorphTargetBuffer.cpp
-        src/PerViewUniforms.cpp
-        src/PerShadowMapUniforms.cpp
         src/PostProcessManager.cpp
         src/RenderPass.cpp
         src/RenderPrimitive.cpp
@@ -125,6 +125,12 @@ set(SRCS
         src/details/Texture.cpp
         src/details/VertexBuffer.cpp
         src/details/View.cpp
+        src/ds/ColorPassDescriptorSet.cpp
+        src/ds/DescriptorSet.cpp
+        src/ds/DescriptorSetLayout.cpp
+        src/ds/PostProcessDescriptorSet.cpp
+        src/ds/ShadowMapDescriptorSet.cpp
+        src/ds/SsrPassDescriptorSet.cpp
         src/fg/Blackboard.cpp
         src/fg/DependencyGraph.cpp
         src/fg/FrameGraph.cpp
@@ -148,22 +154,21 @@ set(PRIVATE_HDRS
         src/FrameInfo.h
         src/FrameSkipper.h
         src/Froxelizer.h
+        src/HwDescriptorSetLayoutFactory.h
         src/HwRenderPrimitiveFactory.h
         src/HwVertexBufferInfoFactory.h
         src/Intersections.h
         src/MaterialParser.h
-        src/PerViewUniforms.h
-        src/PerShadowMapUniforms.h
         src/PIDController.h
         src/PostProcessManager.h
-        src/RendererUtils.h
         src/RenderPass.h
         src/RenderPrimitive.h
+        src/RendererUtils.h
         src/ResourceAllocator.h
         src/ResourceList.h
         src/ShadowMap.h
         src/ShadowMapManager.h
-        src/TypedUniformBuffer.h
+        src/SharedHandle.h
         src/UniformBuffer.h
         src/components/CameraManager.h
         src/components/LightManager.h
@@ -191,6 +196,14 @@ set(PRIVATE_HDRS
         src/details/Texture.h
         src/details/VertexBuffer.h
         src/details/View.h
+        src/downcast.h
+        src/ds/ColorPassDescriptorSet.h
+        src/ds/DescriptorSetLayout.h
+        src/ds/PostProcessDescriptorSet.h
+        src/ds/ShadowMapDescriptorSet.h
+        src/ds/SsrPassDescriptorSet.h
+        src/ds/TypedBuffer.h
+        src/ds/TypedUniformBuffer.h
         src/fg/Blackboard.h
         src/fg/FrameGraph.h
         src/fg/FrameGraphId.h
@@ -208,12 +221,12 @@ set(PRIVATE_HDRS
         src/materials/fsr/ffx_a.h
         src/materials/fsr/ffx_fsr1.h
         src/materials/fsr/ffx_fsr1_mobile.fs
-        src/downcast.h
 )
 
 set(MATERIAL_SRCS
         src/materials/antiAliasing/fxaa.mat
         src/materials/antiAliasing/taa.mat
+        src/materials/blitDepth.mat
         src/materials/blitLow.mat
         src/materials/blitArray.mat
         src/materials/bloom/bloomDownsample.mat
@@ -239,6 +252,7 @@ set(MATERIAL_SRCS
         src/materials/fsr/fsr_easu_mobile.mat
         src/materials/fsr/fsr_easu_mobileF.mat
         src/materials/fsr/fsr_rcas.mat
+        src/materials/sgsr/sgsr1.mat
         src/materials/resolveDepth.mat
         src/materials/separableGaussianBlur.mat
         src/materials/skybox.mat
@@ -250,6 +264,13 @@ set(MATERIAL_SRCS
         src/materials/ssao/saoBentNormals.mat
         src/materials/vsmMipmap.mat
 )
+
+if (NOT FILAMENT_DISABLE_GTAO)
+    list(APPEND MATERIAL_SRCS
+        src/materials/ssao/gtao.mat
+        src/materials/ssao/gtaoBentNormals.mat
+    )
+endif()
 
 set(MATERIAL_FL0_SRCS
         src/materials/defaultMaterial.mat
@@ -295,12 +316,19 @@ if (FILAMENT_ENABLE_MULTIVIEW)
     add_definitions(-DFILAMENT_ENABLE_MULTIVIEW)
 endif()
 
+# Whether to force the profiling mode.
+if (FILAMENT_FORCE_PROFILING_MODE)
+    add_definitions(-DFILAMENT_FORCE_PROFILING_MODE)
+endif()
+
+if (FILAMENT_DISABLE_GTAO)
+    add_definitions(-DFILAMENT_DISABLE_GTAO)
+endif()
+
 # ==================================================================================================
 # Definitions
 # ==================================================================================================
 
-# "2" corresponds to SYSTRACE_TAG_FILEMENT (See: utils/Systrace.h)
-add_definitions(-DSYSTRACE_TAG=2)
 add_definitions(-DFILAMENT_DFG_LUT_SIZE=${DFG_LUT_SIZE})
 add_definitions(
     -DFILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB=${FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB}
@@ -366,16 +394,16 @@ endforeach()
 
 add_custom_command(
         OUTPUT "${MATERIAL_DIR}/colorGrading.filamat"
-        DEPENDS ../shaders/src/dithering.fs
-        DEPENDS ../shaders/src/vignette.fs
+        DEPENDS ../shaders/src/inline_dithering.fs
+        DEPENDS ../shaders/src/inline_vignette.fs
         DEPENDS src/materials/colorGrading/colorGrading.fs
         APPEND
 )
 
 add_custom_command(
         OUTPUT "${MATERIAL_DIR}/colorGradingAsSubpass.filamat"
-        DEPENDS ../shaders/src/dithering.fs
-        DEPENDS ../shaders/src/vignette.fs
+        DEPENDS ../shaders/src/inline_dithering.fs
+        DEPENDS ../shaders/src/inline_vignette.fs
         DEPENDS src/materials/colorGrading/colorGrading.fs
         APPEND
 )
@@ -444,6 +472,30 @@ add_custom_command(
         APPEND
 )
 
+if (NOT FILAMENT_DISABLE_GTAO)
+    add_custom_command(
+            OUTPUT "${MATERIAL_DIR}/gtao.filamat"
+            DEPENDS src/materials/ssao/ssaoUtils.fs
+            DEPENDS src/materials/ssao/ssct.fs
+            DEPENDS src/materials/utils/depthUtils.fs
+            DEPENDS src/materials/utils/geometry.fs
+            DEPENDS src/materials/ssao/gtaoImpl.fs
+            DEPENDS src/materials/ssao/ssctImpl.fs
+            APPEND
+    )
+
+    add_custom_command(
+            OUTPUT "${MATERIAL_DIR}/gtaoBentNormals.filamat"
+            DEPENDS src/materials/ssao/ssaoUtils.fs
+            DEPENDS src/materials/ssao/ssct.fs
+            DEPENDS src/materials/utils/depthUtils.fs
+            DEPENDS src/materials/utils/geometry.fs
+            DEPENDS src/materials/ssao/gtaoImpl.fs
+            DEPENDS src/materials/ssao/ssctImpl.fs
+            APPEND
+    )
+endif()
+
 add_custom_command(
         OUTPUT "${MATERIAL_DIR}/bilateralBlur.filamat"
         DEPENDS src/materials/ssao/ssaoUtils.fs
@@ -483,6 +535,12 @@ add_custom_command(
         OUTPUT "${MATERIAL_DIR}/fsr_rcas.filamat"
         DEPENDS src/materials/fsr/ffx_a.h
         DEPENDS src/materials/fsr/ffx_fsr1.h
+        APPEND
+)
+
+add_custom_command(
+        OUTPUT "${MATERIAL_DIR}/sgsr1.filamat"
+        DEPENDS src/materials/sgsr/sgsr1_shader_mobile.fs
         APPEND
 )
 
@@ -543,6 +601,17 @@ target_link_libraries(${TARGET} PUBLIC filaflat)
 target_link_libraries(${TARGET} PUBLIC filabridge)
 target_link_libraries(${TARGET} PUBLIC ibl-lite)
 
+if (FILAMENT_USE_ABSEIL_LOGGING)
+    target_link_libraries(${TARGET} PUBLIC absl::log)
+endif()
+
+if (FILAMENT_ENABLE_FGVIEWER)
+    target_link_libraries(${TARGET} PUBLIC fgviewer)
+    add_definitions(-DFILAMENT_ENABLE_FGVIEWER=1)
+else()
+    add_definitions(-DFILAMENT_ENABLE_FGVIEWER=0)
+endif()
+
 if (FILAMENT_ENABLE_MATDBG)
     target_link_libraries(${TARGET} PUBLIC matdbg)
     add_definitions(-DFILAMENT_ENABLE_MATDBG=1)
@@ -594,6 +663,13 @@ else()
             -Wover-aligned
             -Werror
     )
+    if (CMAKE_CXX_STANDARD EQUAL 20)
+        # The lambdas for passes in PostProcessManager.cpp capture this
+        # implicitly in a way that's deprecated in c++20, but can't easily be
+        # fixed in a way that's backwards compatible with c++17:
+        # https://www.nextptr.com/tutorial/ta1430524603/capture-this-in-lambda-expression-timeline-of-change
+        list(APPEND FILAMENT_WARNINGS -Wno-deprecated-this-capture)
+    endif()
 endif()
 
 target_compile_options(${TARGET} PRIVATE

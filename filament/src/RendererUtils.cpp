@@ -40,6 +40,7 @@
 #include <utils/Panic.h>
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include <stddef.h>
@@ -50,11 +51,12 @@ namespace filament {
 using namespace backend;
 using namespace math;
 
-FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
+RendererUtils::ColorPassOutput RendererUtils::colorPass(
         FrameGraph& fg, const char* name, FEngine& engine, FView const& view,
+        ColorPassInput const& colorPassInput,
         FrameGraphTexture::Descriptor const& colorBufferDesc,
-        ColorPassConfig const& config, PostProcessManager::ColorGradingConfig colorGradingConfig,
-        RenderPass::Executor const& passExecutor) noexcept {
+        ColorPassConfig const& config, PostProcessManager::ColorGradingConfig const colorGradingConfig,
+        RenderPass::Executor passExecutor) noexcept {
 
     struct ColorPassData {
         FrameGraphId<FrameGraphTexture> shadows;
@@ -67,31 +69,28 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
         FrameGraphId<FrameGraphTexture> structure;
     };
 
-    Blackboard& blackboard = fg.getBlackboard();
-
     auto& colorPass = fg.addPass<ColorPassData>(name,
             [&](FrameGraph::Builder& builder, ColorPassData& data) {
 
                 TargetBufferFlags const clearColorFlags = config.clearFlags & TargetBufferFlags::COLOR;
                 TargetBufferFlags clearDepthFlags = config.clearFlags & TargetBufferFlags::DEPTH;
                 TargetBufferFlags clearStencilFlags = config.clearFlags & TargetBufferFlags::STENCIL;
-                uint8_t layerCount = 0;
 
-                data.shadows = blackboard.get<FrameGraphTexture>("shadows");
-                data.ssao = blackboard.get<FrameGraphTexture>("ssao");
-                data.color = blackboard.get<FrameGraphTexture>("color");
-                data.depth = blackboard.get<FrameGraphTexture>("depth");
+                data.color = colorPassInput.linearColor;
+                data.depth = colorPassInput.depth;
+                data.shadows = colorPassInput.shadows;
+                data.ssao = colorPassInput.ssao;
 
                 // Screen-space reflection or refractions
                 if (config.hasScreenSpaceReflectionsOrRefractions) {
-                    data.ssr = blackboard.get<FrameGraphTexture>("ssr");
+                    data.ssr = colorPassInput.ssr;
                     if (data.ssr) {
                         data.ssr = builder.sample(data.ssr);
                     }
                 }
 
                 if (config.hasContactShadows) {
-                    data.structure = blackboard.get<FrameGraphTexture>("structure");
+                    data.structure = colorPassInput.structure;
                     assert_invariant(data.structure);
                     data.structure = builder.sample(data.structure);
                 }
@@ -154,6 +153,8 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                 }
 
                 if (colorGradingConfig.asSubpass) {
+                    assert_invariant(config.msaa <= 1);
+                    assert_invariant(colorBufferDesc.samples <= 1);
                     data.output = builder.createTexture("Tonemapped Buffer", {
                             .width = colorBufferDesc.width,
                             .height = colorBufferDesc.height,
@@ -172,9 +173,6 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
 
                 data.color = builder.write(data.color, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
                 data.depth = builder.write(data.depth, FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
-                if (engine.getConfig().stereoscopicType == StereoscopicType::MULTIVIEW) {
-                    layerCount = engine.getConfig().stereoscopicEyeCount;
-                }
 
                 /*
                  * There is a bit of magic happening here regarding the viewport used.
@@ -196,11 +194,10 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                         .stencil = data.stencil },
                         .clearColor = config.clearColor,
                         .samples = config.msaa,
-                        .layerCount = layerCount,
+                        .layerCount = static_cast<uint8_t>(colorBufferDesc.depth),
                         .clearFlags = clearColorFlags | clearDepthFlags | clearStencilFlags});
-                blackboard["depth"] = data.depth;
             },
-            [=, &view, &engine](FrameGraphResources const& resources,
+            [=, passExecutor = std::move(passExecutor), &view, &engine](FrameGraphResources const& resources,
                     ColorPassData const& data, DriverApi& driver) {
                 auto out = resources.getRenderPassInfo();
 
@@ -208,11 +205,13 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                 view.prepareSSAO(data.ssao ?
                         resources.getTexture(data.ssao) : engine.getOneTextureArray());
 
-                view.prepareShadowMapping(view.getVsmShadowOptions().highPrecision);
+                view.prepareShadowMapping(engine, view.getVsmShadowOptions().highPrecision);
 
                 // set shadow sampler
                 view.prepareShadow(data.shadows ?
-                        resources.getTexture(data.shadows) : engine.getOneTextureArray());
+                        resources.getTexture(data.shadows) :
+                            (view.getShadowType() != ShadowType::PCF ?
+                                engine.getOneTextureArray() : engine.getOneTextureArrayDepth()));
 
                 // set structure sampler
                 view.prepareStructure(data.structure ?
@@ -236,7 +235,7 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                 view.prepareViewport(static_cast<filament::Viewport&>(out.params.viewport),
                         config.logicalViewport);
 
-                view.commitUniforms(driver);
+                view.commitUniformsAndSamplers(driver);
 
                 // TODO: this should be a parameter of FrameGraphRenderPass::Descriptor
                 out.params.clearStencil = config.clearStencil;
@@ -254,7 +253,7 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
                 }
 
                 driver.beginRenderPass(out.target, out.params);
-                passExecutor.execute(engine, resources.getPassName());
+                passExecutor.execute(engine, driver);
                 driver.endRenderPass();
 
                 // color pass is typically heavy, and we don't have much CPU work left after
@@ -264,23 +263,20 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
             }
     );
 
-    // when color grading is done as a subpass, the output of the color-pass is the ldr buffer
-    auto output = colorGradingConfig.asSubpass ? colorPass->output : colorPass->color;
-
-    blackboard["color"] = output;
-    return output;
+    return {
+            .linearColor = colorPass->color,
+            .tonemappedColor = colorPass->output,   // can be null
+            .depth = colorPass->depth
+    };
 }
 
-std::pair<FrameGraphId<FrameGraphTexture>, bool> RendererUtils::refractionPass(
+std::optional<RendererUtils::ColorPassOutput> RendererUtils::refractionPass(
         FrameGraph& fg, FEngine& engine, FView const& view,
+        ColorPassInput colorPassInput,
         ColorPassConfig config,
         PostProcessManager::ScreenSpaceRefConfig const& ssrConfig,
-        PostProcessManager::ColorGradingConfig colorGradingConfig,
+        PostProcessManager::ColorGradingConfig const colorGradingConfig,
         RenderPass const& pass) noexcept {
-
-    auto& blackboard = fg.getBlackboard();
-    auto input = blackboard.get<FrameGraphTexture>("color");
-    FrameGraphId<FrameGraphTexture> output;
 
     // find the first refractive object in channel 2
     RenderPass::Command const* const refraction = std::partition_point(pass.begin(), pass.end(),
@@ -296,34 +292,39 @@ std::pair<FrameGraphId<FrameGraphTexture>, bool> RendererUtils::refractionPass(
 
     // if there wasn't any refractive object, just skip everything below.
     if (UTILS_UNLIKELY(hasScreenSpaceRefraction)) {
-        PostProcessManager& ppm = engine.getPostProcessManager();
-
-        // clear the color/depth buffers, which will orphan (and cull) the color pass
-        input.clear();
-        blackboard.remove("color");
-        blackboard.remove("depth");
-
+        assert_invariant(!colorPassInput.linearColor);
+        assert_invariant(!colorPassInput.depth);
         config.hasScreenSpaceReflectionsOrRefractions = true;
 
-        input = RendererUtils::colorPass(fg, "Color Pass (opaque)", engine, view, {
+        PostProcessManager& ppm = engine.getPostProcessManager();
+        auto const opaquePassOutput = colorPass(fg,
+                "Color Pass (opaque)", engine, view, colorPassInput, {
                         // When rendering the opaques, we need to conserve the sample buffer,
                         // so create a config that specifies the sample count.
                         .width = config.physicalViewport.width,
                         .height = config.physicalViewport.height,
                         .samples = config.msaa,
                         .format = config.hdrFormat
-                }, config, { .asSubpass = false },
+                },
+                config, { .asSubpass = false, .customResolve = false },
                 pass.getExecutor(pass.begin(), refraction));
 
-        // generate the mipmap chain
+
+        // Generate the mipmap chain
+        // Note: we can run some post-processing effects while the "color pass" descriptor set
+        // in bound because only the descriptor 0 (frame uniforms) matters, and it's
+        // present in both.
         PostProcessManager::generateMipmapSSR(ppm, fg,
-                input, ssrConfig.refraction, true, ssrConfig);
+                opaquePassOutput.linearColor,
+                ssrConfig.refraction,
+                true, ssrConfig);
 
         // Now we're doing the refraction pass proper.
-        // This uses the same framebuffer (color and depth) used by the opaque pass. This happens
-        // automatically because these are set in the Blackboard (they were set by the opaque
-        // pass). For this reason, `desc` below is only used in colorPass() for the width and
-        // height.
+        // This uses the same framebuffer (color and depth) used by the opaque pass.
+        // For this reason, the `colorBufferDesc` parameter of colorPass() below is only used  for
+        // the width and height.
+        colorPassInput.linearColor = opaquePassOutput.linearColor;
+        colorPassInput.depth = opaquePassOutput.depth;
 
         // Since we're reusing the existing target we don't want to clear any of its buffer.
         // Important: if this target ended up being an imported target, then the clearFlags
@@ -331,36 +332,37 @@ std::pair<FrameGraphId<FrameGraphTexture>, bool> RendererUtils::refractionPass(
         // and we'd end up clearing the opaque pass. This scenario never happens because it is
         // prevented in Renderer.cpp's final blit.
         config.clearFlags = TargetBufferFlags::NONE;
-        output = RendererUtils::colorPass(fg, "Color Pass (transparent)", engine, view, {
+        auto transparentPassOutput = colorPass(fg, "Color Pass (transparent)",
+                engine, view, colorPassInput, {
                         .width = config.physicalViewport.width,
                         .height = config.physicalViewport.height },
-                config, colorGradingConfig, pass.getExecutor(refraction, pass.end()));
+                config, colorGradingConfig,
+                pass.getExecutor(refraction, pass.end()));
 
         if (config.msaa > 1 && !colorGradingConfig.asSubpass) {
             // We need to do a resolve here because later passes (such as color grading or DoF) will
             // need to sample from 'output'. However, because we have MSAA, we know we're not
             // sampleable. And this is because in the SSR case, we had to use a renderbuffer to
             // conserve the multi-sample buffer.
-            output = ppm.resolve(fg, "Resolved Color Buffer", output, { .levels = 1 });
+            transparentPassOutput.linearColor = ppm.resolve(fg, "Resolved Color Buffer",
+                    transparentPassOutput.linearColor, { .levels = 1 });
         }
-    } else {
-        output = input;
+        return transparentPassOutput;
     }
-    return { output, hasScreenSpaceRefraction };
+
+    return std::nullopt;
 }
 
 UTILS_NOINLINE
-void RendererUtils::readPixels(backend::DriverApi& driver, Handle<HwRenderTarget> renderTargetHandle,
-        uint32_t xoffset, uint32_t yoffset, uint32_t width, uint32_t height,
-        backend::PixelBufferDescriptor&& buffer) {
-    ASSERT_PRECONDITION(
-            buffer.type != PixelDataType::COMPRESSED,
-            "buffer.format cannot be COMPRESSED");
+void RendererUtils::readPixels(DriverApi& driver, Handle<HwRenderTarget> renderTargetHandle,
+        uint32_t const xoffset, uint32_t const yoffset, uint32_t const width, uint32_t const height,
+        PixelBufferDescriptor&& buffer) {
+    FILAMENT_CHECK_PRECONDITION(buffer.type != PixelDataType::COMPRESSED)
+            << "buffer.format cannot be COMPRESSED";
 
-    ASSERT_PRECONDITION(
-            buffer.alignment > 0 && buffer.alignment <= 8 &&
-            !(buffer.alignment & (buffer.alignment - 1u)),
-            "buffer.alignment must be 1, 2, 4 or 8");
+    FILAMENT_CHECK_PRECONDITION(buffer.alignment > 0 && buffer.alignment <= 8 &&
+            !(buffer.alignment & (buffer.alignment - 1u)))
+            << "buffer.alignment must be 1, 2, 4 or 8";
 
     // It's not really possible to know here which formats will be supported because
     // it can vary depending on the RenderTarget, in GL the following are ALWAYS supported though:
@@ -373,8 +375,9 @@ void RendererUtils::readPixels(backend::DriverApi& driver, Handle<HwRenderTarget
             buffer.top + height,
             buffer.alignment);
 
-    ASSERT_PRECONDITION(buffer.size >= sizeNeeded,
-            "Pixel buffer too small: has %u bytes, needs %u bytes", buffer.size, sizeNeeded);
+    FILAMENT_CHECK_PRECONDITION(buffer.size >= sizeNeeded)
+            << "Pixel buffer too small: has " << buffer.size << " bytes, needs " << sizeNeeded
+            << " bytes";
 
     driver.readPixels(renderTargetHandle, xoffset, yoffset, width, height, std::move(buffer));
 }

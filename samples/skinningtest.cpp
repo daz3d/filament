@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "common/arguments.h"
+
 #include <filament/Camera.h>
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
@@ -28,17 +30,22 @@
 #include <filament/View.h>
 
 #include <utils/EntityManager.h>
+#include <utils/Path.h>
+
+#include <getopt/getopt.h>
 
 #include <filamentapp/Config.h>
 #include <filamentapp/FilamentApp.h>
 
 #include <cmath>
+#include <iostream>
 
 #include "generated/resources/resources.h"
 
 using namespace filament;
 using utils::Entity;
 using utils::EntityManager;
+using utils::Path;
 using utils::FixedCapacityVector;
 using namespace filament::math;
 
@@ -128,6 +135,54 @@ mat4f transforms[] = {math::mat4f(1),
                       mat4f::translation(float3(0, -1, 0)),
                       mat4f::translation(float3(1, -1, 0))};
 
+
+static void printUsage(char* name) {
+    std::string exec_name(Path(name).getName());
+    std::string usage(
+            "SAMPLE is a command-line tool for testing Filament skinning buffers.\n"
+            "Usage:\n"
+            "    SAMPLE [options]\n"
+            "Options:\n"
+            "   --help, -h\n"
+            "       Prints this message\n\n"
+            "API_USAGE"
+    );
+    const std::string from("SAMPLE");
+    for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
+        usage.replace(pos, from.length(), exec_name);
+    }
+    const std::string apiUsage("API_USAGE");
+    for (size_t pos = usage.find(apiUsage); pos != std::string::npos; pos = usage.find(apiUsage, pos)) {
+        usage.replace(pos, apiUsage.length(), samples::getBackendAPIArgumentsUsage());
+    }
+    std::cout << usage;
+}
+
+static int handleCommandLineArgments(int argc, char* argv[], Config* config) {
+    static constexpr const char* OPTSTR = "ha:";
+    static const struct option OPTIONS[] = {
+            { "help",         no_argument,       nullptr, 'h' },
+            { "api",          required_argument, nullptr, 'a' },
+            { nullptr, 0, nullptr, 0 }  // termination of the option list
+    };
+    int opt;
+    int option_index = 0;
+    while ((opt = getopt_long(argc, argv, OPTSTR, OPTIONS, &option_index)) >= 0) {
+        std::string arg(optarg != nullptr ? optarg : "");
+        switch (opt) {
+            default:
+            case 'h':
+                printUsage(argv[0]);
+                exit(0);
+            case 'a':
+                config->backend = samples::parseArgumentsForBackend(arg);
+                break;
+        }
+    }
+
+    return optind;
+}
+
 int main(int argc, char** argv) {
     App app;
 
@@ -137,6 +192,8 @@ int main(int argc, char** argv) {
 
     Config config;
     config.title = "skinning test with more than 4 bones per vertex";
+
+    handleCommandLineArgments(argc, argv, &config);
 
     size_t boneCount = app.bonesPerVertex;
     float weight = 1.f / boneCount;
@@ -450,26 +507,27 @@ int main(int argc, char** argv) {
 // primitive 2 = triangle, no skinning, no morph target, buffer objects enabled
 // primitive 3 = triangle, no skinning, morph target, buffer objects enabled
         app.renderables[0] = EntityManager::get().create();
-        RenderableManager::Builder(4)
-            .boundingBox({{ -1, -1, -1}, { 1, 1, 1}})
-            .material(0, app.mat->getDefaultInstance())
-            .material(1, app.mat->getDefaultInstance())
-            .material(2, app.mat->getDefaultInstance())
-            .material(3, app.mat->getDefaultInstance())
-            .geometry(0,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[0],app.ib,0,3)
-            .geometry(1,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[0],app.ib,0,3)
-            .geometry(2,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[1],app.ib,0,3)
-            .geometry(3,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[1],app.ib,0,3)
-            .culling(false)
-            .receiveShadows(false)
-            .castShadows(false)
-            .morphing(3)
-            .morphing(0,1,app.mt)
-            .morphing(0,3,app.mt)
+            RenderableManager::Builder(4)
+                    .boundingBox({{ -1, -1, -1 },
+                                  { 1,  1,  1 }})
+                    .material(0, app.mat->getDefaultInstance())
+                    .material(1, app.mat->getDefaultInstance())
+                    .material(2, app.mat->getDefaultInstance())
+                    .material(3, app.mat->getDefaultInstance())
+                    .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[0], app.ib, 0, 3)
+                    .geometry(1, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[0], app.ib, 0, 3)
+                    .geometry(2, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[1], app.ib, 0, 3)
+                    .geometry(3, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[1], app.ib, 0, 3)
+                    .culling(false)
+                    .receiveShadows(false)
+                    .castShadows(false)
+                    .morphing(app.mt)
+                    .morphing(0, 1, 0)
+                    .morphing(0, 3, 0)
             .build(*engine, app.renderables[0]);
 
 // renderable 1: attribute bone data definitions skinning
@@ -478,28 +536,29 @@ int main(int argc, char** argv) {
 // primitive 3 = triangle with skinning, bone data defined as vertex attributes (buffer object)
 // primitive 2 = triangle with skinning and with morphing, bone data defined as vertex attributes
         app.renderables[1] = EntityManager::get().create();
-        RenderableManager::Builder(4)
-            .boundingBox({{ -1, -1, -1}, { 1, 1, 1}})
-            .material(0, app.mat->getDefaultInstance())
-            .material(1, app.mat->getDefaultInstance())
-            .material(2, app.mat->getDefaultInstance())
-            .material(3, app.mat->getDefaultInstance())
-            .geometry(1,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[2],app.ib,0,3)
-            .geometry(2,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[2],app.ib,0,3)
-            .geometry(0,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[3],app.ib,0,3)
-            .geometry(3,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[3],app.ib,0,3)
-            .culling(false)
-            .receiveShadows(false)
-            .castShadows(false)
-            .enableSkinningBuffers(true)
-            .skinning(app.sb, 9, 0)
-            .morphing(3)
-            .morphing(0,2,app.mt)
-            .morphing(0,0,app.mt)
+            RenderableManager::Builder(4)
+                    .boundingBox({{ -1, -1, -1 },
+                                  { 1,  1,  1 }})
+                    .material(0, app.mat->getDefaultInstance())
+                    .material(1, app.mat->getDefaultInstance())
+                    .material(2, app.mat->getDefaultInstance())
+                    .material(3, app.mat->getDefaultInstance())
+                    .geometry(1, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[2], app.ib, 0, 3)
+                    .geometry(2, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[2], app.ib, 0, 3)
+                    .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[3], app.ib, 0, 3)
+                    .geometry(3, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[3], app.ib, 0, 3)
+                    .culling(false)
+                    .receiveShadows(false)
+                    .castShadows(false)
+                    .enableSkinningBuffers(true)
+                    .skinning(app.sb, 9, 0)
+                    .morphing(app.mt)
+                    .morphing(0, 2, 0)
+                    .morphing(0, 0, 0)
             .build(*engine, app.renderables[1]);
 
 // renderable 2: various ways of skinning definitions
@@ -508,30 +567,31 @@ int main(int argc, char** argv) {
 // primitive 2 = triangle with skinning and with morphing, advanced bone data
 //               defined as vector per primitive
         app.renderables[2] = EntityManager::get().create();
-        RenderableManager::Builder(3)
-            .boundingBox({{ -1, -1, -1}, { 1, 1, 1}})
-            .material(0, app.mat->getDefaultInstance())
-            .material(1, app.mat->getDefaultInstance())
-            .material(2, app.mat->getDefaultInstance())
-            .geometry(0,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[4], app.ib, 0, 3)
-            .geometry(1,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[5], app.ib, 0, 3)
-            .geometry(2,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[6], app.ib, 0, 3)
-            .culling(false)
-            .receiveShadows(false)
-            .castShadows(false)
-            .enableSkinningBuffers(true)
-            .skinning(app.sb, 9, 0)
+            RenderableManager::Builder(3)
+                    .boundingBox({{ -1, -1, -1 },
+                                  { 1,  1,  1 }})
+                    .material(0, app.mat->getDefaultInstance())
+                    .material(1, app.mat->getDefaultInstance())
+                    .material(2, app.mat->getDefaultInstance())
+                    .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[4], app.ib, 0, 3)
+                    .geometry(1, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[5], app.ib, 0, 3)
+                    .geometry(2, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[6], app.ib, 0, 3)
+                    .culling(false)
+                    .receiveShadows(false)
+                    .castShadows(false)
+                    .enableSkinningBuffers(true)
+                    .skinning(app.sb, 9, 0)
 
-            .boneIndicesAndWeights(0, boneDataArray,
-                                   3 * app.bonesPerVertex, app.bonesPerVertex)
-            .boneIndicesAndWeights(1, app.boneDataPerPrimitive)
-            .boneIndicesAndWeights(2, app.boneDataPerPrimitive)
+                    .boneIndicesAndWeights(0, boneDataArray,
+                            3 * app.bonesPerVertex, app.bonesPerVertex)
+                    .boneIndicesAndWeights(1, app.boneDataPerPrimitive)
+                    .boneIndicesAndWeights(2, app.boneDataPerPrimitive)
 
-            .morphing(3)
-            .morphing(0, 2, app.mt)
+                    .morphing(app.mt)
+                    .morphing(0, 2, 0)
             .build(*engine, app.renderables[2]);
 
 // renderable 3: combination attribute and advance bone data
@@ -541,27 +601,28 @@ int main(int argc, char** argv) {
 // primitive 2 = triangle with skinning and morphing, advanced bone data defined
 //               as vector per primitive
         app.renderables[3] = EntityManager::get().create();
-        RenderableManager::Builder(3)
-            .boundingBox({{ -1, -1, -1}, { 1, 1, 1}})
-            .material(0, app.mat->getDefaultInstance())
-            .material(1, app.mat->getDefaultInstance())
-            .material(2, app.mat->getDefaultInstance())
-            .geometry(0,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[2], app.ib, 0, 3)
-            .geometry(1,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[7], app.ib2, 0, 6)
-            .geometry(2,RenderableManager::PrimitiveType::TRIANGLES,
-                app.vbs[8], app.ib, 0, 3)
-            .culling(false)
-            .receiveShadows(false)
-            .castShadows(false)
-            .enableSkinningBuffers(true)
-            .skinning(app.sb, 9, 0)
-            .boneIndicesAndWeights(1, app.boneDataPerPrimitiveMulti)
-            .boneIndicesAndWeights(2, app.boneDataPerPrimitive)
-            .morphing(3)
-            .morphing(0,0,app.mt)
-            .morphing(0,2,app.mt)
+            RenderableManager::Builder(3)
+                    .boundingBox({{ -1, -1, -1 },
+                                  { 1,  1,  1 }})
+                    .material(0, app.mat->getDefaultInstance())
+                    .material(1, app.mat->getDefaultInstance())
+                    .material(2, app.mat->getDefaultInstance())
+                    .geometry(0, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[2], app.ib, 0, 3)
+                    .geometry(1, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[7], app.ib2, 0, 6)
+                    .geometry(2, RenderableManager::PrimitiveType::TRIANGLES,
+                            app.vbs[8], app.ib, 0, 3)
+                    .culling(false)
+                    .receiveShadows(false)
+                    .castShadows(false)
+                    .enableSkinningBuffers(true)
+                    .skinning(app.sb, 9, 0)
+                    .boneIndicesAndWeights(1, app.boneDataPerPrimitiveMulti)
+                    .boneIndicesAndWeights(2, app.boneDataPerPrimitive)
+                    .morphing(app.mt)
+                    .morphing(0, 0, 0)
+                    .morphing(0, 2, 0)
             .build(*engine, app.renderables[3]);
 
         scene->addEntity(app.renderables[0]);
@@ -574,6 +635,15 @@ int main(int argc, char** argv) {
     };
 
     auto cleanup = [&app](Engine* engine, View*, Scene*) {
+        for (auto i = 0; i < 4; i++) {
+            engine->destroy(app.renderables[i]);
+        }
+        for (auto i = 0; i < app.boCount; i++) {
+            engine->destroy(app.bos[i]);
+        }
+        for (auto i = 0; i < app.vbCount; i++) {
+            engine->destroy(app.vbs[i]);
+        }
         engine->destroy(app.skybox);
         engine->destroy(app.mat);
         engine->destroy(app.ib);
@@ -583,15 +653,6 @@ int main(int argc, char** argv) {
         engine->destroy(app.mt);
         engine->destroyCameraComponent(app.camera);
         EntityManager::get().destroy(app.camera);
-        for (auto i = 0; i < app.vbCount; i++) {
-            engine->destroy(app.vbs[i]);
-        }
-        for ( auto i = 0; i < app.boCount; i++) {
-            engine->destroy(app.bos[i]);
-        }
-        for ( auto i = 0; i < 4; i++) {
-            engine->destroy(app.renderables[i]);
-        }
     };
 
     FilamentApp::get().animate([&app](Engine* engine, View* view, double now) {

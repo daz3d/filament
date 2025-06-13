@@ -60,6 +60,14 @@ static void setParameter(JNIEnv* env, jlong nativeMaterialInstance, jstring name
     env->ReleaseStringUTFChars(name_, name);
 }
 
+template<typename T>
+static void setConstant(JNIEnv* env, jlong nativeMaterialInstance, jstring name_, T v) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    const char *name = env->GetStringUTFChars(name_, 0);
+    instance->setConstant(name, v);
+    env->ReleaseStringUTFChars(name_, name);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_google_android_filament_MaterialInstance_nSetParameterBool(JNIEnv *env, jclass,
@@ -266,6 +274,13 @@ Java_com_google_android_filament_MaterialInstance_nSetParameterTexture(
 
 extern "C"
 JNIEXPORT void JNICALL
+Java_com_google_android_filament_MaterialInstance_nSetConstantBool(JNIEnv *env, jclass,
+        jlong nativeMaterialInstance, jstring name_, jboolean x) {
+    setConstant(env, nativeMaterialInstance, name_, bool(x));
+}
+
+extern "C"
+JNIEXPORT void JNICALL
 Java_com_google_android_filament_MaterialInstance_nSetScissor(
         JNIEnv *env, jclass, jlong nativeMaterialInstance, jint left,
         jint bottom, jint width, jint height) {
@@ -327,6 +342,18 @@ Java_com_google_android_filament_MaterialInstance_nSetCullingMode(JNIEnv*,
         jclass, jlong nativeMaterialInstance, jlong cullingMode) {
     MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
     instance->setCullingMode((MaterialInstance::CullingMode) cullingMode);
+}
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_google_android_filament_MaterialInstance_nSetCullingModeSeparate(JNIEnv*, jclass,
+        jlong nativeMaterialInstance,
+        jlong colorPassCullingMode, jlong shadowPassCullingMode) {
+    MaterialInstance* instance = (MaterialInstance*) nativeMaterialInstance;
+    instance->setCullingMode(
+            (MaterialInstance::CullingMode) colorPassCullingMode,
+            (MaterialInstance::CullingMode) shadowPassCullingMode);
 }
 
 extern "C"
@@ -503,6 +530,14 @@ Java_com_google_android_filament_MaterialInstance_nGetCullingMode(JNIEnv* env, j
         jlong nativeMaterialInstance) {
     MaterialInstance* instance = (MaterialInstance*)nativeMaterialInstance;
     return (jint)instance->getCullingMode();
+}
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_google_android_filament_MaterialInstance_nGetShadowCullingMode(JNIEnv* env, jclass,
+        jlong nativeMaterialInstance) {
+    MaterialInstance* instance = (MaterialInstance*)nativeMaterialInstance;
+    return (jint)instance->getShadowCullingMode();
 }
 
 extern "C"

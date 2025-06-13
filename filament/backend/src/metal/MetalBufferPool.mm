@@ -18,8 +18,8 @@
 
 #include "MetalContext.h"
 
+#include <utils/Logger.h>
 #include <utils/Panic.h>
-#include <utils/Log.h>
 #include <utils/trap.h>
 
 #include <thread>
@@ -42,11 +42,16 @@ MetalBufferPoolEntry const* MetalBufferPool::acquireBuffer(size_t numBytes) {
     }
 
     // We were not able to find a sufficiently large stage, so create a new one.
-    id<MTLBuffer> buffer = [mContext.device newBufferWithLength:numBytes
-                                                        options:MTLResourceStorageModeShared];
-    ASSERT_POSTCONDITION(buffer, "Could not allocate Metal staging buffer of size %zu.", numBytes);
+    id<MTLBuffer> buffer = nil;
+    {
+        ScopedAllocationTimer timer("staging");
+        buffer = [mContext.device newBufferWithLength:numBytes
+                                              options:MTLResourceStorageModeShared];
+    }
+    FILAMENT_CHECK_POSTCONDITION(buffer)
+            << "Could not allocate Metal staging buffer of size " << numBytes << ".";
     MetalBufferPoolEntry* stage = new MetalBufferPoolEntry {
-        .buffer = buffer,
+        .buffer = { buffer, TrackedMetalBuffer::Type::STAGING },
         .capacity = numBytes,
         .lastAccessed = mCurrentFrame,
         .referenceCount = 1
@@ -72,8 +77,7 @@ void MetalBufferPool::releaseBuffer(MetalBufferPoolEntry const *stage) noexcept 
 
     auto iter = mUsedStages.find(stage);
     if (iter == mUsedStages.end()) {
-        utils::slog.e << "Unknown Metal buffer: " << stage->capacity << " bytes"
-                << utils::io::endl;
+        LOG(ERROR) << "Unknown Metal buffer: " << stage->capacity << " bytes";
         return;
     }
     stage->lastAccessed = mCurrentFrame;
@@ -109,6 +113,40 @@ void MetalBufferPool::reset() noexcept {
         delete pair.second;
     }
     mFreeStages.clear();
+}
+
+MetalBumpAllocator::MetalBumpAllocator(id<MTLDevice> device, size_t capacity)
+    : mDevice(device), mCapacity(capacity) {
+    if (mCapacity > 0) {
+        mCurrentUploadBuffer = { [device newBufferWithLength:capacity options:MTLStorageModeShared],
+            TrackedMetalBuffer::Type::STAGING };
+    }
+}
+
+std::pair<id<MTLBuffer>, size_t> MetalBumpAllocator::allocateStagingArea(size_t size) {
+    if (size == 0) {
+        return { nil, 0 };
+    }
+    if (size > mCapacity) {
+        return { [mDevice newBufferWithLength:size options:MTLStorageModeShared], 0 };
+    }
+    assert_invariant(mCurrentUploadBuffer);
+
+    // Align the head to a 4-byte boundary.
+    mHead = (mHead + 3) & ~3;
+
+    if (UTILS_LIKELY(mHead + size <= mCapacity)) {
+        const size_t oldHead = mHead;
+        mHead += size;
+        return { mCurrentUploadBuffer.get(), oldHead };
+    }
+
+    // We're finished with the current allocation.
+    mCurrentUploadBuffer = { [mDevice newBufferWithLength:mCapacity options:MTLStorageModeShared],
+        TrackedMetalBuffer::Type::STAGING };
+    mHead = size;
+
+    return { mCurrentUploadBuffer.get(), 0 };
 }
 
 } // namespace backend

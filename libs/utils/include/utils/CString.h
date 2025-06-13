@@ -21,6 +21,9 @@
 
 #include <utils/compiler.h>
 
+#include <string_view>
+#include <utility>
+
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -28,6 +31,9 @@
 #include <string.h>
 
 namespace utils {
+namespace io {
+class ostream;
+}
 
 //! \privatesection
 struct hashCStrings {
@@ -35,7 +41,7 @@ struct hashCStrings {
     typedef size_t result_type;
     result_type operator()(argument_type cstr) const noexcept {
         size_t hash = 5381;
-        while (int const c = *cstr++) {
+        while (int const c = static_cast<unsigned char>(*cstr++)) {
             hash = (hash * 33u) ^ size_t(c);
         }
         return hash;
@@ -94,11 +100,7 @@ public:
         return *this;
     }
 
-    ~CString() noexcept {
-        if (mData) {
-            free(mData - 1);
-        }
-    }
+    ~CString() noexcept;
 
     void swap(CString& other) noexcept {
         // don't use std::swap(), we don't want an STL dependency in this file
@@ -107,8 +109,8 @@ public:
         other.mCStr = temp;
     }
 
-    const_pointer c_str() const noexcept { return mCStr; }
     pointer c_str() noexcept { return mCStr; }
+    const_pointer c_str() const noexcept { return const_cast<CString*>(this)->c_str(); }
     const_pointer c_str_safe() const noexcept { return mData ? c_str() : ""; }
     const_pointer data() const noexcept { return c_str(); }
     pointer data() noexcept { return c_str(); }
@@ -116,32 +118,89 @@ public:
     size_type length() const noexcept { return size(); }
     bool empty() const noexcept { return size() == 0; }
 
-    iterator begin() noexcept { return mCStr; }
+    iterator begin() noexcept { return c_str(); }
     iterator end() noexcept { return begin() + length(); }
     const_iterator begin() const noexcept { return data(); }
     const_iterator end() const noexcept { return begin() + length(); }
     const_iterator cbegin() const noexcept { return begin(); }
     const_iterator cend() const noexcept { return end(); }
 
-    CString& replace(size_type pos, size_type len, const CString& str) noexcept;
-    CString& insert(size_type pos, const CString& str) noexcept { return replace(pos, 0, str); }
+    // replace
+    template<size_t N>
+    CString& replace(size_type const pos,
+            size_type const len, const StringLiteral<N>& str) & noexcept {
+        return replace(pos, len, str, N - 1);
+    }
 
-    const_reference operator[](size_type pos) const noexcept {
+    CString& replace(size_type const pos, size_type const len, const CString& str) & noexcept {
+        return replace(pos, len, str.c_str_safe(), str.size());
+    }
+
+    template<size_t N>
+    CString&& replace(size_type const pos,
+            size_type const len, const StringLiteral<N>& str) && noexcept {
+        return std::move(replace(pos, len, str));
+    }
+
+    CString&& replace(size_type const pos, size_type const len, const CString& str) && noexcept {
+        return std::move(replace(pos, len, str));
+    }
+
+    // insert
+    template<size_t N>
+    CString& insert(size_type const pos, const StringLiteral<N>& str) & noexcept {
+        return replace(pos, 0, str);
+    }
+
+    CString& insert(size_type const pos, const CString& str) & noexcept {
+        return replace(pos, 0, str);
+    }
+
+    template<size_t N>
+    CString&& insert(size_type const pos, const StringLiteral<N>& str) && noexcept {
+        return std::move(*this).replace(pos, 0, str);
+    }
+
+    CString&& insert(size_type const pos, const CString& str) && noexcept {
+        return std::move(*this).replace(pos, 0, str);
+    }
+
+    // append
+    template<size_t N>
+    CString& append(const StringLiteral<N>& str) & noexcept {
+        return insert(length(), str);
+    }
+
+    CString& append(const CString& str) & noexcept {
+        return insert(length(), str);
+    }
+
+    template<size_t N>
+    CString&& append(const StringLiteral<N>& str) && noexcept {
+        return std::move(*this).insert(length(), str);
+    }
+
+    CString&& append(const CString& str) && noexcept {
+        return std::move(*this).insert(length(), str);
+    }
+
+
+    const_reference operator[](size_type const pos) const noexcept {
         assert(pos < size());
         return begin()[pos];
     }
 
-    reference operator[](size_type pos) noexcept {
+    reference operator[](size_type const pos) noexcept {
         assert(pos < size());
         return begin()[pos];
     }
 
-    const_reference at(size_type pos) const noexcept {
+    const_reference at(size_type const pos) const noexcept {
         assert(pos < size());
         return begin()[pos];
     }
 
-    reference at(size_type pos) noexcept {
+    reference at(size_type const pos) noexcept {
         assert(pos < size());
         return begin()[pos];
     }
@@ -167,7 +226,7 @@ public:
     }
 
     // placement new declared as "throw" to avoid the compiler's null-check
-    inline void* operator new(size_t, void* ptr) {
+    void* operator new(size_t, void* ptr) {
         assert(ptr);
         return ptr;
     }
@@ -181,6 +240,12 @@ public:
     };
 
 private:
+    CString& replace(size_type pos, size_type len, char const* str, size_t l) & noexcept;
+
+#if !defined(NDEBUG)
+    friend io::ostream& operator<<(io::ostream& out, const CString& rhs);
+#endif
+
     struct Data {
         size_type length;
     };
@@ -192,16 +257,13 @@ private:
     };
 
     int compare(const CString& rhs) const noexcept {
-        size_type const lhs_size = size();
-        size_type const rhs_size = rhs.size();
-        if (lhs_size < rhs_size) return -1;
-        if (lhs_size > rhs_size) return 1;
-        return strncmp(data(), rhs.data(), size());
+        auto const l = std::string_view{data(), size()};
+        auto const r = std::string_view{rhs.data(), rhs.size()};
+        return l.compare(r);
     }
 
     friend bool operator==(CString const& lhs, CString const& rhs) noexcept {
-        return (lhs.data() == rhs.data()) ||
-               ((lhs.size() == rhs.size()) && !strncmp(lhs.data(), rhs.data(), lhs.size()));
+        return lhs.compare(rhs) == 0;
     }
     friend bool operator!=(CString const& lhs, CString const& rhs) noexcept {
         return !(lhs == rhs);
@@ -220,7 +282,7 @@ private:
     }
 };
 
-// implement this for your type for automatic conversion to CString. Failing to do so leads
+// Implement this for your type for automatic conversion to CString. Failing to do so leads
 // to a compile-time failure.
 template<typename T>
 CString to_string(T value) noexcept;
@@ -244,7 +306,7 @@ public:
     pointer c_str() noexcept { return mData; }
 
 private:
-    value_type mData[N] = {0};
+    value_type mData[N] = {};
 };
 
 } // namespace utils
