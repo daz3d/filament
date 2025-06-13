@@ -25,12 +25,18 @@ using namespace filament;
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_google_android_filament_Material_nBuilderBuild(JNIEnv *env, jclass,
-        jlong nativeEngine, jobject buffer_, jint size) {
+        jlong nativeEngine, jobject buffer_, jint size, jint shBandCount, jint shadowQuality) {
     Engine* engine = (Engine*) nativeEngine;
     AutoBuffer buffer(env, buffer_, size);
-    Material* material = Material::Builder()
+    auto builder = Material::Builder();
+    if (shBandCount) {
+        builder.sphericalHarmonicsBandCount(shBandCount);
+    }
+    builder.shadowSamplingQuality((Material::Builder::ShadowSamplingQuality)shadowQuality);
+    Material* material = builder
             .package(buffer.getData(), buffer.getSize())
             .build(*engine);
+
     return (jlong) material;
 }
 

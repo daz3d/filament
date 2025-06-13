@@ -21,6 +21,7 @@
 
 #include <utils/JobSystem.h>
 #include <utils/Log.h>
+#include <utils/Panic.h>
 
 using namespace filament;
 using namespace filament::math;
@@ -92,16 +93,17 @@ void FFilamentInstance::detachSkin(size_t skinIndex, Entity target) noexcept {
 
 mat4f const* FFilamentInstance::getInverseBindMatricesAt(size_t skinIndex) const {
     assert_invariant(mOwner);
-    ASSERT_PRECONDITION(skinIndex < mOwner->mSkins.size(), "skinIndex must be less than the number of skins in this instance.");
+    FILAMENT_CHECK_PRECONDITION(skinIndex < mOwner->mSkins.size())
+            << "skinIndex must be less than the number of skins in this instance.";
     return mOwner->mSkins[skinIndex].inverseBindMatrices.data();
 }
 
 void FFilamentInstance::recomputeBoundingBoxes() {
-    ASSERT_PRECONDITION(mOwner->mSourceAsset,
-            "Do not call releaseSourceData before recomputeBoundingBoxes");
+    FILAMENT_CHECK_PRECONDITION(mOwner->mSourceAsset)
+            << "Do not call releaseSourceData before recomputeBoundingBoxes";
 
-    ASSERT_PRECONDITION(mOwner->mResourcesLoaded,
-            "Do not call recomputeBoundingBoxes before loadResources or asyncBeginLoad");
+    FILAMENT_CHECK_PRECONDITION(mOwner->mResourcesLoaded)
+            << "Do not call recomputeBoundingBoxes before loadResources or asyncBeginLoad";
 
     auto& rm = mOwner->mEngine->getRenderableManager();
     auto& tm = mOwner->mEngine->getTransformManager();

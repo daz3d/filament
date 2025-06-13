@@ -16,13 +16,15 @@
 
 #include "VulkanStagePool.h"
 
+#include "VulkanCommands.h"
 #include "VulkanConstants.h"
 #include "VulkanMemory.h"
-#include "VulkanUtility.h"
+#include "vulkan/utils/Conversion.h"
+#include "vulkan/utils/Image.h"
 
 #include <utils/Panic.h>
 
-static constexpr uint32_t TIME_BEFORE_EVICTION = FVK_MAX_COMMAND_BUFFERS;
+static constexpr uint32_t TIME_BEFORE_EVICTION = 3;
 
 namespace filament::backend {
 
@@ -36,7 +38,8 @@ VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
     if (iter != mFreeStages.end()) {
         auto stage = iter->second;
         mFreeStages.erase(iter);
-        mUsedStages.insert(stage);
+        stage->lastAccessed = mCurrentFrame;
+        mUsedStages.push_back(stage);
         return stage;
     }
     // We were not able to find a sufficiently large stage, so create a new one.
@@ -48,7 +51,7 @@ VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
     });
 
     // Create the VkBuffer.
-    mUsedStages.insert(stage);
+    mUsedStages.push_back(stage);
     VkBufferCreateInfo bufferInfo {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = numBytes,
@@ -58,9 +61,9 @@ VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
     UTILS_UNUSED_IN_RELEASE VkResult result = vmaCreateBuffer(mAllocator, &bufferInfo,
             &allocInfo, &stage->buffer, &stage->memory, nullptr);
 
-#if FVK_ENABLED(FVK_DEBUG_ALLOCATION)
+#if FVK_ENABLED(FVK_DEBUG_STAGING_ALLOCATION)
     if (result != VK_SUCCESS) {
-        utils::slog.e << "Allocation error: " << result << utils::io::endl;
+        FVK_LOGE << "Allocation error: " << result << utils::io::endl;
     }
 #endif
 
@@ -69,11 +72,12 @@ VulkanStage const* VulkanStagePool::acquireStage(uint32_t numBytes) {
 
 VulkanStageImage const* VulkanStagePool::acquireImage(PixelDataFormat format, PixelDataType type,
         uint32_t width, uint32_t height) {
-    const VkFormat vkformat = getVkFormat(format, type);
+    const VkFormat vkformat = fvkutils::getVkFormat(format, type);
     for (auto image : mFreeImages) {
         if (image->format == vkformat && image->width == width && image->height == height) {
             mFreeImages.erase(image);
-            mUsedImages.insert(image);
+            image->lastAccessed = mCurrentFrame;
+            mUsedImages.push_back(image);
             return image;
         }
     }
@@ -85,7 +89,7 @@ VulkanStageImage const* VulkanStagePool::acquireImage(PixelDataFormat format, Pi
         .lastAccessed = mCurrentFrame,
     });
 
-    mUsedImages.insert(image);
+    mUsedImages.push_back(image);
 
     const VkImageCreateInfo imageInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -109,7 +113,7 @@ VulkanStageImage const* VulkanStagePool::acquireImage(PixelDataFormat format, Pi
 
     assert_invariant(result == VK_SUCCESS);
 
-    VkImageAspectFlags const aspectFlags = getImageAspect(vkformat);
+    VkImageAspectFlags const aspectFlags = fvkutils::getImageAspect(vkformat);
     VkCommandBuffer const cmdbuffer = mCommands->get().buffer();
 
     // We use VK_IMAGE_LAYOUT_GENERAL here because the spec says:
@@ -118,10 +122,10 @@ VulkanStageImage const* VulkanStagePool::acquireImage(PixelDataFormat format, Pi
     // VK_IMAGE_LAYOUT_PREINITIALIZED or VK_IMAGE_LAYOUT_GENERAL layout. Calling
     // vkGetImageSubresourceLayout for a linear image returns a subresource layout mapping that is
     // valid for either of those image layouts."
-    VulkanImageUtility::transitionLayout(cmdbuffer, {
+    fvkutils::transitionLayout(cmdbuffer, {
             .image = image->image,
             .oldLayout = VulkanLayout::UNDEFINED,
-            .newLayout = VulkanLayout::READ_WRITE, // (= VK_IMAGE_LAYOUT_GENERAL)
+            .newLayout = VulkanLayout::STAGING, // (= VK_IMAGE_LAYOUT_GENERAL)
             .subresources = { aspectFlags, 0, 1, 0, 1 },
         });
     return image;
@@ -157,7 +161,7 @@ void VulkanStagePool::gc() noexcept {
             stage->lastAccessed = mCurrentFrame;
             mFreeStages.insert(std::make_pair(stage->capacity, stage));
         } else {
-            mUsedStages.insert(stage);
+            mUsedStages.push_back(stage);
         }
     }
 
@@ -181,7 +185,7 @@ void VulkanStagePool::gc() noexcept {
             image->lastAccessed = mCurrentFrame;
             mFreeImages.insert(image);
         } else {
-            mUsedImages.insert(image);
+            mUsedImages.push_back(image);
         }
     }
     FVK_SYSTRACE_END();
@@ -204,13 +208,13 @@ void VulkanStagePool::terminate() noexcept {
         vmaDestroyImage(mAllocator, image->image, image->memory);
         delete image;
     }
-    mUsedStages.clear();
+    mUsedImages.clear();
 
     for (auto image : mFreeImages) {
         vmaDestroyImage(mAllocator, image->image, image->memory);
         delete image;
     }
-    mFreeStages.clear();
+    mFreeImages.clear();
 }
 
 } // namespace filament::backend

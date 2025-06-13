@@ -17,8 +17,6 @@
 #ifndef TNT_UTILS_QUADTREE_H
 #define TNT_UTILS_QUADTREE_H
 
-#include <utils/debug.h>
-
 #include <array>
 #include <type_traits>
 
@@ -50,7 +48,7 @@ static inline constexpr uint16_t morton(uint8_t x, uint8_t y) noexcept {
  * @return the number of elements in the tree
  */
 static inline constexpr size_t size(size_t height) noexcept {
-    return QuadTreeUtils::morton(uint8_t((1u << height) - 1u), 0u);
+    return morton(uint8_t((1u << height) - 1u), 0u);
 }
 
 /**
@@ -70,7 +68,7 @@ static inline constexpr size_t index(size_t l, size_t code) noexcept {
  * @return      index in the QuadTreeArray of this node's parent
  */
 static inline constexpr size_t parent(size_t l, size_t code) noexcept {
-    assert_invariant(l > 0);
+    assert(l > 0);
     return index(l - 1u, code >> 2u);
 }
 
@@ -80,6 +78,9 @@ static_assert(size(1) == 1);
 static_assert(size(2) == 5);
 static_assert(size(3) == 21);
 static_assert(size(4) == 85);
+static_assert(size(5) == 341);
+static_assert(size(6) == 1365);
+static_assert(size(7) == 5461);
 
 } // namespace QuadTreeUtils
 
@@ -94,18 +95,18 @@ class QuadTreeArray : public std::array<T, QuadTreeUtils::size(HEIGHT)> {
 
     // Simple fixed capacity stack
     template<typename TYPE, size_t CAPACITY,
-            typename = typename std::enable_if<std::is_trivial<TYPE>::value>::type>
+            typename = std::enable_if_t<std::is_trivial_v<TYPE>>>
     class stack {
         TYPE mElements[CAPACITY];
         size_t mSize = 0;
     public:
         bool empty() const noexcept { return mSize == 0; }
         void push(TYPE const& v) noexcept {
-            assert_invariant(mSize < CAPACITY);
+            assert(mSize < CAPACITY);
             mElements[mSize++] = v;
         }
         void pop() noexcept {
-            assert_invariant(mSize > 0);
+            assert(mSize > 0);
             --mSize;
         }
         const TYPE& back() const noexcept {
@@ -114,11 +115,14 @@ class QuadTreeArray : public std::array<T, QuadTreeUtils::size(HEIGHT)> {
     };
 
 public:
-    using code_t = uint8_t;
+    // code_t needs to be able to encode the # of entries for the largest level supported
+    // the tree. With 7 levels, the largest one as 4096 entries, 0 to 4095 so 12 bits suffice.
+    using code_t = uint16_t;
 
     struct NodeId {
-        int8_t l;       // height of the node or -1 if invalid
-        code_t code;    // morton code of the node
+        int8_t l      :  4;     // height of the node or -1 if invalid
+        code_t   code : 12;     // morton code of the node
+        static_assert(12 >= (HEIGHT - 1) * 2);
     };
 
     enum class TraversalResult {
@@ -141,10 +145,10 @@ public:
      * @param process   closure to process each visited node
      */
     template<typename Process,
-            typename = typename std::enable_if<
-                    std::is_invocable_r_v<TraversalResult, Process, NodeId>>::type>
+            typename = std::enable_if_t<
+                    std::is_invocable_r_v<TraversalResult, Process, NodeId>>>
     static void traverse(int8_t l, code_t code, size_t maxHeight, Process&& process) noexcept {
-        assert_invariant(maxHeight < height());
+        assert(maxHeight < height());
         const int8_t h = int8_t(maxHeight);
         stack<NodeId, 4 * height()> stack;
         stack.push({ l, code });
@@ -167,8 +171,8 @@ public:
     }
 
     template<typename Node,
-            typename = typename std::enable_if<
-                    std::is_invocable_r_v<TraversalResult, Node, NodeId>>::type>
+            typename = std::enable_if_t<
+                    std::is_invocable_r_v<TraversalResult, Node, NodeId>>>
     static void traverse(int8_t l, code_t code, Node&& process) noexcept {
         traverse(l, code, height() - 1, std::forward<Node>(process));
     }

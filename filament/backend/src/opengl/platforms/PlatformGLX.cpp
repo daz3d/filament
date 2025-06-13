@@ -128,7 +128,7 @@ namespace filament::backend {
 
 using namespace backend;
 
-Driver* PlatformGLX::createDriver(void* const sharedGLContext,
+Driver* PlatformGLX::createDriver(void* sharedGLContext,
         const DriverConfig& driverConfig) noexcept {
     loadLibraries();
     // Get the display device
@@ -226,7 +226,7 @@ Driver* PlatformGLX::createDriver(void* const sharedGLContext,
     g_glx.setCurrentContext(mGLXDisplay, mDummySurface, mDummySurface, mGLXContext);
 
     int result = bluegl::bind();
-    ASSERT_POSTCONDITION(!result, "Unable to load OpenGL entry points.");
+    FILAMENT_CHECK_POSTCONDITION(!result) << "Unable to load OpenGL entry points.";
 
     return OpenGLPlatform::createDefaultDriver(this, sharedGLContext, driverConfig);
 }
@@ -266,7 +266,7 @@ void PlatformGLX::destroySwapChain(Platform::SwapChain* swapChain) noexcept {
 }
 
 bool PlatformGLX::makeCurrent(ContextType type, SwapChain* drawSwapChain,
-        SwapChain* readSwapChain) noexcept {
+        SwapChain* readSwapChain) {
     g_glx.setCurrentContext(mGLXDisplay,
             (GLXDrawable)drawSwapChain, (GLXDrawable)readSwapChain, mGLXContext);
     return true;

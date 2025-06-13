@@ -13,7 +13,7 @@ set(CMAKE_OSX_ARCHITECTURES ${IOS_ARCH} CACHE STRING "Build architecture for iOS
 # Necessary for correct install location
 set(DIST_ARCH ${IOS_ARCH})
 
-add_definitions(-DIOS)
+add_definitions(-DFILAMENT_IOS)
 
 set(IOS_MIN_TARGET "11.0")
 
@@ -108,11 +108,3 @@ SET(IOS_COMMON_FLAGS "-m${PLATFORM_FLAG_NAME}-version-min=${IOS_MIN_TARGET}")
 SET(CMAKE_C_FLAGS_INIT "${IOS_COMMON_FLAGS}")
 SET(CMAKE_CXX_FLAGS_INIT "${IOS_COMMON_FLAGS}")
 SET(CMAKE_ASM_FLAGS_INIT "${IOS_COMMON_FLAGS}")
-
-SET(CMAKE_C_FLAGS_DEBUG_INIT "-fembed-bitcode-marker")
-SET(CMAKE_CXX_FLAGS_DEBUG_INIT "-fembed-bitcode-marker")
-SET(CMAKE_ASM_FLAGS_DEBUG_INIT "-fembed-bitcode-marker")
-
-SET(CMAKE_C_FLAGS_RELEASE_INIT "-fembed-bitcode")
-SET(CMAKE_CXX_FLAGS_RELEASE_INIT "-fembed-bitcode")
-SET(CMAKE_ASM_FLAGS_RELEASE_INIT "-fembed-bitcode")

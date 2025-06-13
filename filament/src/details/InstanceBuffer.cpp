@@ -21,6 +21,8 @@
 
 #include "FilamentAPI-impl.h"
 
+#include <utils/StaticString.h>
+
 #include <math/mat3.h>
 #include <math/vec3.h>
 
@@ -34,15 +36,15 @@ struct InstanceBuffer::BuilderDetails {
 };
 
 using BuilderType = InstanceBuffer;
-BuilderType::Builder::Builder(size_t instanceCount) noexcept {
+BuilderType::Builder::Builder(size_t const instanceCount) noexcept {
     mImpl->mInstanceCount = instanceCount;
 }
 
 BuilderType::Builder::~Builder() noexcept = default;
-BuilderType::Builder::Builder(BuilderType::Builder const& rhs) noexcept = default;
-BuilderType::Builder::Builder(BuilderType::Builder&& rhs) noexcept = default;
-BuilderType::Builder& BuilderType::Builder::operator=(BuilderType::Builder const& rhs) noexcept = default;
-BuilderType::Builder& BuilderType::Builder::operator=(BuilderType::Builder&& rhs) noexcept = default;
+BuilderType::Builder::Builder(Builder const& rhs) noexcept = default;
+BuilderType::Builder::Builder(Builder&& rhs) noexcept = default;
+BuilderType::Builder& BuilderType::Builder::operator=(Builder const& rhs) noexcept = default;
+BuilderType::Builder& BuilderType::Builder::operator=(Builder&& rhs) noexcept = default;
 
 InstanceBuffer::Builder& InstanceBuffer::Builder::localTransforms(
         math::mat4f const* localTransforms) noexcept {
@@ -50,19 +52,27 @@ InstanceBuffer::Builder& InstanceBuffer::Builder::localTransforms(
     return *this;
 }
 
+InstanceBuffer::Builder& InstanceBuffer::Builder::name(const char* name, size_t const len) noexcept {
+    return BuilderNameMixin::name(name, len);
+}
+
+InstanceBuffer::Builder& InstanceBuffer::Builder::name(utils::StaticString const& name) noexcept {
+    return BuilderNameMixin::name(name);
+}
+
 InstanceBuffer* InstanceBuffer::Builder::build(Engine& engine) {
-    ASSERT_PRECONDITION(mImpl->mInstanceCount >= 1, "instanceCount must be >= 1.");
-    ASSERT_PRECONDITION(mImpl->mInstanceCount <= engine.getMaxAutomaticInstances(),
-            "instanceCount is %zu, but instance count is limited to "
-            "Engine::getMaxAutomaticInstances() (%zu) instances when supplying transforms.",
-            mImpl->mInstanceCount,
-            engine.getMaxAutomaticInstances());
+    FILAMENT_CHECK_PRECONDITION(mImpl->mInstanceCount >= 1) << "instanceCount must be >= 1.";
+    FILAMENT_CHECK_PRECONDITION(mImpl->mInstanceCount <= engine.getMaxAutomaticInstances())
+            << "instanceCount is " << mImpl->mInstanceCount
+            << ", but instance count is limited to Engine::getMaxAutomaticInstances() ("
+            << engine.getMaxAutomaticInstances() << ") instances when supplying transforms.";
     return downcast(engine).createInstanceBuffer(*this);
 }
 
 // ------------------------------------------------------------------------------------------------
 
-FInstanceBuffer::FInstanceBuffer(FEngine& engine, const Builder& builder) {
+FInstanceBuffer::FInstanceBuffer(FEngine& engine, const Builder& builder)
+    : mName(builder.getName()) {
     mInstanceCount = builder->mInstanceCount;
 
     mLocalTransforms.reserve(mInstanceCount);
@@ -75,13 +85,11 @@ FInstanceBuffer::FInstanceBuffer(FEngine& engine, const Builder& builder) {
 }
 
 void FInstanceBuffer::setLocalTransforms(
-        math::mat4f const* localTransforms, size_t count, size_t offset) {
-    ASSERT_PRECONDITION(offset + count <= mInstanceCount,
-            "setLocalTransforms overflow. InstanceBuffer has only %zu instances, but trying to set "
-            "%zu transforms at offset %zu.",
-            mInstanceCount,
-            count,
-            offset);
+        math::mat4f const* localTransforms, size_t const count, size_t const offset) {
+    FILAMENT_CHECK_PRECONDITION(offset + count <= mInstanceCount)
+            << "setLocalTransforms overflow. InstanceBuffer has only " << mInstanceCount
+            << " instances, but trying to set " << count 
+            << " transforms at offset " << offset << ".";
     memcpy(mLocalTransforms.data() + offset, localTransforms, sizeof(math::mat4f) * count);
 }
 
@@ -91,7 +99,7 @@ void FInstanceBuffer::prepare(FEngine& engine, math::mat4f rootTransform,
 
     // TODO: allocate this staging buffer from a pool.
     uint32_t stagingBufferSize = sizeof(PerRenderableUib);
-    PerRenderableData* stagingBuffer = (PerRenderableData*)::malloc(stagingBufferSize);
+    PerRenderableData* stagingBuffer = (PerRenderableData*)malloc(stagingBufferSize);
     // TODO: consider using JobSystem to parallelize this.
     for (size_t i = 0, c = mInstanceCount; i < c; i++) {
         stagingBuffer[i] = ubo;
@@ -104,7 +112,7 @@ void FInstanceBuffer::prepare(FEngine& engine, math::mat4f rootTransform,
     driver.updateBufferObject(handle, {
             stagingBuffer, stagingBufferSize,
             +[](void* buffer, size_t, void*) {
-                ::free(buffer);
+                free(buffer);
             }
     }, 0);
 }

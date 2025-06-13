@@ -35,6 +35,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <string>// for printing usage/help
 
 
 #include "generated/resources/resources.h"
@@ -77,7 +78,7 @@ static void printUsage(char* name) {
             "   --help, -h\n"
             "       Prints this message\n\n"
             "   --api, -a\n"
-            "       Specify the backend API: opengl, vulkan, or metal\n"
+            "       Specify the backend API: opengl, vulkan, metal, or webgpu\n"
     );
     const std::string from("HELLOTRIANGLE");
     for (size_t pos = usage.find(from); pos != std::string::npos; pos = usage.find(from, pos)) {
@@ -109,8 +110,11 @@ static int handleCommandLineArguments(int argc, char* argv[], App* app) {
                     app->config.backend = Engine::Backend::VULKAN;
                 } else if (arg == "metal") {
                     app->config.backend = Engine::Backend::METAL;
+                } else if (arg == "webgpu") {
+                    app->config.backend = Engine::Backend::WEBGPU;
                 } else {
-                    std::cerr << "Unrecognized backend. Must be 'opengl'|'vulkan'|'metal'.\n";
+                    std::cerr << "Unrecognized backend. Must be "
+                                 "'opengl'|'vulkan'|'metal'|'webgpu'.\n";
                     exit(1);
                 }
                 break;

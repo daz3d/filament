@@ -29,9 +29,6 @@
 
 #include "backend/DriverApiForward.h"
 
-#include <fg/FrameGraphId.h>
-#include <fg/FrameGraphTexture.h>
-
 #include <filament/Renderer.h>
 #include <filament/Viewport.h>
 
@@ -40,10 +37,24 @@
 
 #include <utils/compiler.h>
 #include <utils/Allocator.h>
+#include <utils/FixedCapacityVector.h>
+
+#include <math/vec4.h>
 
 #include <tsl/robin_set.h>
 
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <utility>
+
+#include <stddef.h>
+#include <stdint.h>
+
 namespace filament {
+
+class ResourceAllocator;
 
 namespace backend {
 class Driver;
@@ -77,6 +88,11 @@ public:
 
 
     void setPresentationTime(int64_t monotonic_clock_ns);
+
+    void setVsyncTime(uint64_t steadyClockTimeNano) noexcept;
+
+    // skip a frame
+    void skipFrame(uint64_t vsyncSteadyClockTimeNano);
 
     // start a frame
     bool beginFrame(FSwapChain* swapChain, uint64_t vsyncSteadyClockTimeNano);
@@ -131,6 +147,14 @@ public:
         return mClearOptions;
     }
 
+    utils::FixedCapacityVector<FrameInfo> getFrameInfoHistory(size_t const historySize) const noexcept {
+        return mFrameInfoManager.getFrameInfoHistory(historySize);
+    }
+
+    size_t getMaxFrameHistorySize() const noexcept {
+        return MAX_FRAMETIME_HISTORY;
+    }
+
 private:
     friend class Renderer;
     using Command = RenderPass::Command;
@@ -154,7 +178,7 @@ private:
     std::pair<backend::Handle<backend::HwRenderTarget>, backend::TargetBufferFlags>
             getRenderTarget(FView const& view) const noexcept;
 
-    void recordHighWatermark(size_t watermark) noexcept {
+    void recordHighWatermark(size_t const watermark) noexcept {
         mCommandsHighWatermark = std::max(mCommandsHighWatermark, watermark);
     }
 
@@ -187,6 +211,8 @@ private:
     backend::TargetBufferFlags mClearFlags{};
     tsl::robin_set<FRenderTarget*> mPreviousRenderTargets;
     std::function<void()> mBeginFrameInternal;
+    uint64_t mVsyncSteadyClockTimeNano = 0;
+    std::unique_ptr<ResourceAllocator> mResourceAllocator{};
 };
 
 FILAMENT_DOWNCAST(Renderer)

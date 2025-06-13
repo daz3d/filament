@@ -17,6 +17,7 @@
 #ifndef TNT_FILAMENT_DRIVER_METALDRIVER_H
 #define TNT_FILAMENT_DRIVER_METALDRIVER_H
 
+#include <backend/DriverEnums.h>
 #include "private/backend/Driver.h"
 #include "DriverBase.h"
 
@@ -31,15 +32,15 @@
 #include <functional>
 #include <mutex>
 #include <vector>
+#include <deque>
 
 namespace filament {
 namespace backend {
 
-class MetalPlatform;
+class PlatformMetal;
 
 class MetalBuffer;
 class MetalProgram;
-class MetalSamplerGroup;
 class MetalTexture;
 struct MetalUniformBuffer;
 struct MetalContext;
@@ -50,32 +51,46 @@ struct BufferState;
 #endif
 
 class MetalDriver final : public DriverBase {
-    explicit MetalDriver(MetalPlatform* platform, const Platform::DriverConfig& driverConfig) noexcept;
+    explicit MetalDriver(PlatformMetal* platform, const Platform::DriverConfig& driverConfig) noexcept;
     ~MetalDriver() noexcept override;
     Dispatcher getDispatcher() const noexcept final;
 
 public:
-    static Driver* create(MetalPlatform* platform, const Platform::DriverConfig& driverConfig);
-    void runAtNextTick(const std::function<void()>& fn) noexcept;
+    static Driver* create(PlatformMetal* platform, const Platform::DriverConfig& driverConfig);
 
 private:
 
     friend class MetalSwapChain;
+    friend struct MetalDescriptorSet;
 
-    MetalPlatform& mPlatform;
+    PlatformMetal& mPlatform;
     MetalContext* mContext;
 
     ShaderModel getShaderModel() const noexcept final;
+    ShaderLanguage getShaderLanguage() const noexcept final;
 
     // Overrides the default implementation by wrapping the call to fn in an @autoreleasepool block.
     void execute(std::function<void(void)> const& fn) noexcept final;
 
     /*
      * Tasks run regularly on the driver thread.
+     * Not thread-safe; tasks are run from the driver thead and must be enqueued from the driver
+     * thread.
      */
+    void runAtNextTick(const std::function<void()>& fn) noexcept;
     void executeTickOps() noexcept;
     std::vector<std::function<void()>> mTickOps;
-    std::mutex mTickOpsLock;
+
+    // Tasks regularly executed on the driver thread after a command buffer has completed
+    struct DeferredTask {
+        DeferredTask(uint64_t commandBufferId, utils::Invocable<void()>&& fn) noexcept
+            : commandBufferId(commandBufferId), fn(std::move(fn)) {}
+        uint64_t commandBufferId;     // after this command buffer completes
+        utils::Invocable<void()> fn;  // execute this task
+    };
+    void executeAfterCurrentCommandBufferCompletes(utils::Invocable<void()>&& fn) noexcept;
+    void executeDeferredOps() noexcept;
+    std::deque<DeferredTask> mDeferredTasks;
 
     /*
      * Driver interface
@@ -136,10 +151,10 @@ private:
     inline void setRenderPrimitiveBuffer(Handle<HwRenderPrimitive> rph, PrimitiveType pt,
             Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh);
 
-    void finalizeSamplerGroup(MetalSamplerGroup* sg);
     void enumerateBoundBuffers(BufferObjectBinding bindingType,
             const std::function<void(const BufferState&, MetalBuffer*, uint32_t)>& f);
 
+    backend::StereoscopicType const mStereoscopicType;
 };
 
 } // namespace backend

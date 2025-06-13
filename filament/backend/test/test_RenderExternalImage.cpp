@@ -16,149 +16,113 @@
 
 #include "BackendTest.h"
 
-#include "ShaderGenerator.h"
+#include "ImageExpectations.h"
+#include "Lifetimes.h"
+#include "Shader.h"
+#include "SharedShaders.h"
+#include "Skip.h"
 #include "TrianglePrimitive.h"
 
-#include "private/backend/SamplerGroup.h"
+#include <backend/DriverEnums.h>
+#include <backend/Handle.h>
 
 #include <CoreVideo/CoreVideo.h>
 
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// Shaders
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-std::string vertex (R"(#version 450 core
-
-layout(location = 0) in vec4 mesh_position;
-layout(location = 0) out vec2 uv;
-
-void main() {
-    gl_Position = vec4(mesh_position.xy, 0.0, 1.0);
-    uv = (mesh_position.xy * 0.5 + 0.5);
-}
-)");
-
-std::string fragment (R"(#version 450 core
-
-layout(location = 0) out vec4 fragColor;
-layout(location = 0) in vec2 uv;
-
-layout(location = 0, set = 1) uniform sampler2D test_tex;
-
-void main() {
-    fragColor = texture(test_tex, uv);
-}
-)");
-
-}
+#include <stddef.h>
+#include <stdint.h>
 
 namespace test {
 
 using namespace filament;
 using namespace filament::backend;
 
+Shader createShader(DriverApi& api, Cleanup& cleanup, Backend backend) {
+    return SharedShaders::makeShader(api, cleanup, ShaderRequest{
+            .mVertexType = VertexShaderType::Textured,
+            .mFragmentType = FragmentShaderType::Textured,
+            .mUniformType = ShaderUniformType::Sampler
+    });
+}
+
 // Rendering an external image without setting any data should not crash.
 TEST_F(BackendTest, RenderExternalImageWithoutSet) {
-    TrianglePrimitive triangle(getDriverApi());
+    SKIP_IF(Backend::METAL, "External images aren't supported in metal");
+    SKIP_IF(Backend::VULKAN, "External images aren't supported in vulkan");
+    auto& api = getDriverApi();
+    Cleanup cleanup(api);
 
-    auto swapChain = createSwapChain();
+    TrianglePrimitive triangle(api);
 
-    SamplerInterfaceBlock sib = filament::SamplerInterfaceBlock::Builder()
-            .name("Test")
-            .stageFlags(backend::ShaderStageFlags::ALL_SHADER_STAGE_FLAGS)
-            .add( {{"tex", SamplerType::SAMPLER_EXTERNAL, SamplerFormat::FLOAT, Precision::HIGH }} )
-            .build();
-    ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform, &sib);
+    auto swapChain = cleanup.add(createSwapChain());
 
-    // Create a program that samples a texture.
-    Program p = shaderGen.getProgram(getDriverApi());
-    Program::Sampler sampler { utils::CString("test_tex"), 0 };
-    p.setSamplerGroup(0, ShaderStageFlags::ALL_SHADER_STAGE_FLAGS, &sampler, 1);
-    backend::Handle<HwProgram> program = getDriverApi().createProgram(std::move(p));
+    Shader shader = createShader(api, cleanup, sBackend);
 
-    backend::Handle<HwRenderTarget> defaultRenderTarget = getDriverApi().createDefaultRenderTarget(0);
+    backend::Handle<HwRenderTarget> defaultRenderTarget = cleanup.add(
+            api.createDefaultRenderTarget(0));
 
     // Create a texture that will be backed by an external image.
     auto usage = TextureUsage::COLOR_ATTACHMENT | TextureUsage::SAMPLEABLE;
     const NativeView& view = getNativeView();
-    backend::Handle<HwTexture> texture = getDriverApi().createTexture(
-                SamplerType::SAMPLER_EXTERNAL,      // target
-                1,                                  // levels
-                TextureFormat::RGBA8,               // format
-                1,                                  // samples
-                view.width,                         // width
-                view.height,                        // height
-                1,                                  // depth
-                usage);                             // usage
+    backend::Handle<HwTexture> texture = cleanup.add(api.createTexture(
+            SamplerType::SAMPLER_EXTERNAL,      // target
+            1,                                  // levels
+            TextureFormat::RGBA8,               // format
+            1,                                  // samples
+            view.width,                         // width
+            view.height,                        // height
+            1,                                  // depth
+            usage));                             // usage
 
-    RenderPassParams params = {};
-    fullViewport(params);
-    params.flags.clear = TargetBufferFlags::COLOR;
-    params.clearColor = {0.f, 1.f, 0.f, 1.f};
-    params.flags.discardStart = TargetBufferFlags::ALL;
-    params.flags.discardEnd = TargetBufferFlags::NONE;
+    PipelineState state = getColorWritePipelineState();
+    shader.addProgramToPipelineState(state);
 
-    PipelineState state;
-    state.program = program;
-    state.rasterState.colorWrite = true;
-    state.rasterState.depthWrite = false;
-    state.rasterState.depthFunc = RasterState::DepthFunc::A;
-    state.rasterState.culling = CullingMode::NONE;
+    RenderPassParams params = getClearColorRenderPass();
+    params.viewport = getFullViewport();
 
-    getDriverApi().startCapture(0);
-    getDriverApi().makeCurrent(swapChain, swapChain);
-    getDriverApi().beginFrame(0, 0);
+    DescriptorSetHandle descriptorSet = shader.createDescriptorSet(api);
 
-    SamplerGroup samplers(1);
-    samplers.setSampler(0, { texture, {} });
-    backend::Handle<HwSamplerGroup> samplerGroup =
-            getDriverApi().createSamplerGroup(1, utils::FixedSizeString<32>("Test"));
-    getDriverApi().updateSamplerGroup(samplerGroup, samplers.toBufferDescriptor(getDriverApi()));
-    getDriverApi().bindSamplers(0, samplerGroup);
+    api.startCapture(0);
+    api.makeCurrent(swapChain, swapChain);
+    api.beginFrame(0, 0, 0);
+
+    api.updateDescriptorSetTexture(descriptorSet, 0, texture, {});
+    api.bindDescriptorSet(descriptorSet, 0, {});
 
     // Render a triangle.
-    getDriverApi().beginRenderPass(defaultRenderTarget, params);
-    getDriverApi().draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
-    getDriverApi().endRenderPass();
+    api.beginRenderPass(defaultRenderTarget, params);
+    state.primitiveType = PrimitiveType::TRIANGLES;
+    state.vertexBufferInfo = triangle.getVertexBufferInfo();
+    api.bindPipeline(state);
+    api.bindRenderPrimitive(triangle.getRenderPrimitive());
+    api.draw2(0, 3, 1);
+    api.endRenderPass();
 
-    getDriverApi().flush();
-    getDriverApi().commit(swapChain);
-    getDriverApi().endFrame(0);
+    api.flush();
+    api.commit(swapChain);
+    api.endFrame(0);
 
-    getDriverApi().stopCapture(0);
+    api.stopCapture(0);
 
-    // Delete our resources.
-    getDriverApi().destroyTexture(texture);
-    getDriverApi().destroySamplerGroup(samplerGroup);
-
-    // Destroy frame resources.
-    getDriverApi().destroyProgram(program);
-    getDriverApi().destroyRenderTarget(defaultRenderTarget);
+    api.finish();
 
     executeCommands();
 }
 
 TEST_F(BackendTest, RenderExternalImage) {
-    TrianglePrimitive triangle(getDriverApi());
+    SKIP_IF(Backend::METAL, "External images aren't supported in metal");
+    SKIP_IF(Backend::VULKAN, "External images aren't supported in vulkan");
+    auto& api = getDriverApi();
+    Cleanup cleanup(api);
 
-    auto swapChain = createSwapChain();
+    TrianglePrimitive triangle(api);
 
-    SamplerInterfaceBlock sib = filament::SamplerInterfaceBlock::Builder()
-            .name("Test")
-            .stageFlags(backend::ShaderStageFlags::ALL_SHADER_STAGE_FLAGS)
-            .add( {{"tex", SamplerType::SAMPLER_EXTERNAL, SamplerFormat::FLOAT, Precision::HIGH }} )
-            .build();
-    ShaderGenerator shaderGen(vertex, fragment, sBackend, sIsMobilePlatform, &sib);
+    auto swapChain = cleanup.add(createSwapChain());
 
-    // Create a program that samples a texture.
-    Program p = shaderGen.getProgram(getDriverApi());
-    Program::Sampler sampler { utils::CString("test_tex"), 0 };
-    p.setSamplerGroup(0, ShaderStageFlags::ALL_SHADER_STAGE_FLAGS, &sampler, 1);
-    auto program = getDriverApi().createProgram(std::move(p));
+    Shader shader = createShader(api, cleanup, sBackend);
+    DescriptorSetHandle descriptorSet = shader.createDescriptorSet(api);
 
-    backend::Handle<HwRenderTarget> defaultRenderTarget = getDriverApi().createDefaultRenderTarget(0);
+    backend::Handle<HwRenderTarget> defaultRenderTarget = cleanup.add(
+            api.createDefaultRenderTarget(0));
 
     // require users to create two Filament textures and have two material parameters
     // add a "plane" parameter to setExternalImage
@@ -166,15 +130,6 @@ TEST_F(BackendTest, RenderExternalImage) {
     // Create a texture that will be backed by an external image.
     auto usage = TextureUsage::COLOR_ATTACHMENT | TextureUsage::SAMPLEABLE;
     const NativeView& view = getNativeView();
-    backend::Handle<HwTexture> texture = getDriverApi().createTexture(
-                SamplerType::SAMPLER_EXTERNAL,      // target
-                1,                                  // levels
-                TextureFormat::RGBA8,               // format
-                1,                                  // samples
-                view.width,                         // width
-                view.height,                        // height
-                1,                                  // depth
-                usage);                             // usage
 
     // Create an external image.
     CFStringRef keys[4];
@@ -188,10 +143,12 @@ TEST_F(BackendTest, RenderExternalImage) {
     values[1] = values[0];
     values[2] = values[0];
     values[3] = values[0];
-    CFDictionaryRef options = CFDictionaryCreate(kCFAllocatorDefault, (const void**) keys, (const void**) values, 4, nullptr, nullptr);
+    CFDictionaryRef options = CFDictionaryCreate(kCFAllocatorDefault, (const void**)keys,
+            (const void**)values, 4, nullptr, nullptr);
     CVPixelBufferRef pixBuffer = nullptr;
     CVReturn status =
-            CVPixelBufferCreate(kCFAllocatorDefault, 1024, 1024, kCVPixelFormatType_32BGRA, options, &pixBuffer);
+            CVPixelBufferCreate(kCFAllocatorDefault, 1024, 1024, kCVPixelFormatType_32BGRA, options,
+                    &pixBuffer);
     assert(status == kCVReturnSuccess);
 
     // Fill image with checker-pattern.
@@ -200,7 +157,7 @@ TEST_F(BackendTest, RenderExternalImage) {
     const uint32_t black = 0xFF000000;
     CVReturn lockStatus = CVPixelBufferLockBaseAddress(pixBuffer, 0);
     assert(lockStatus == kCVReturnSuccess);
-    uint32_t* pix = (uint32_t*) CVPixelBufferGetBaseAddressOfPlane(pixBuffer, 0);
+    uint32_t* pix = (uint32_t*)CVPixelBufferGetBaseAddressOfPlane(pixBuffer, 0);
     assert(pix);
     for (size_t r = 0; r < 1024; r++) {
         for (size_t c = 0; c < 1024; c++) {
@@ -209,57 +166,46 @@ TEST_F(BackendTest, RenderExternalImage) {
         }
     }
 
-    getDriverApi().setupExternalImage(pixBuffer);
-    getDriverApi().setExternalImage(texture, pixBuffer);
+    api.setupExternalImage(pixBuffer);
+    backend::Handle<HwTexture> texture =
+            cleanup.add(api.createTextureExternalImage(SamplerType::SAMPLER_EXTERNAL,
+                    TextureFormat::RGBA8, 1024, 1024, usage, pixBuffer));
 
     // We're now free to release the buffer.
     CVBufferRelease(pixBuffer);
 
-    RenderPassParams params = {};
-    fullViewport(params);
-    params.flags.clear = TargetBufferFlags::COLOR;
-    params.clearColor = {0.f, 1.f, 0.f, 1.f};
-    params.flags.discardStart = TargetBufferFlags::ALL;
-    params.flags.discardEnd = TargetBufferFlags::NONE;
+    PipelineState state = getColorWritePipelineState();
+    shader.addProgramToPipelineState(state);
 
-    PipelineState state;
-    state.program = program;
-    state.rasterState.colorWrite = true;
-    state.rasterState.depthWrite = false;
-    state.rasterState.depthFunc = RasterState::DepthFunc::A;
-    state.rasterState.culling = CullingMode::NONE;
+    RenderPassParams params = getClearColorRenderPass();
+    params.viewport = getFullViewport();
 
-    getDriverApi().startCapture(0);
-    getDriverApi().makeCurrent(swapChain, swapChain);
-    getDriverApi().beginFrame(0, 0);
+    api.startCapture(0);
+    api.makeCurrent(swapChain, swapChain);
+    api.beginFrame(0, 0, 0);
 
-    SamplerGroup samplers(1);
-    samplers.setSampler(0, { texture, {} });
-    backend::Handle<HwSamplerGroup> samplerGroup =
-            getDriverApi().createSamplerGroup(1, utils::FixedSizeString<32>("Test"));
-    getDriverApi().updateSamplerGroup(samplerGroup, samplers.toBufferDescriptor(getDriverApi()));
-    getDriverApi().bindSamplers(0, samplerGroup);
+    api.updateDescriptorSetTexture(descriptorSet, 0, texture, {});
+    api.bindDescriptorSet(descriptorSet, 0, {});
 
     // Render a triangle.
-    getDriverApi().beginRenderPass(defaultRenderTarget, params);
-    getDriverApi().draw(state, triangle.getRenderPrimitive(), 0, 3, 1);
-    getDriverApi().endRenderPass();
+    api.beginRenderPass(defaultRenderTarget, params);
+    state.primitiveType = PrimitiveType::TRIANGLES;
+    state.vertexBufferInfo = triangle.getVertexBufferInfo();
+    api.bindPipeline(state);
+    api.bindRenderPrimitive(triangle.getRenderPrimitive());
+    api.draw2(0, 3, 1);
+    api.endRenderPass();
 
-    getDriverApi().flush();
-    getDriverApi().commit(swapChain);
-    getDriverApi().endFrame(0);
+    api.flush();
+    api.commit(swapChain);
+    api.endFrame(0);
+    EXPECT_IMAGE(defaultRenderTarget, getExpectations(),
+            ScreenshotParams(screenWidth(), screenHeight(), "RenderExternalImage", 1206264951));
 
-    getDriverApi().stopCapture(0);
+    api.stopCapture(0);
+    api.finish();
+    flushAndWait();
 
-    // Delete our resources.
-    getDriverApi().destroyTexture(texture);
-    getDriverApi().destroySamplerGroup(samplerGroup);
-
-    // Destroy frame resources.
-    getDriverApi().destroyProgram(program);
-    getDriverApi().destroyRenderTarget(defaultRenderTarget);
-
-    executeCommands();
 }
 
 } // namespace test

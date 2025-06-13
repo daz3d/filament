@@ -16,6 +16,8 @@
 
 #include "details/Engine.h"
 
+#include "ResourceAllocator.h"
+
 #include "details/BufferObject.h"
 #include "details/Camera.h"
 #include "details/Fence.h"
@@ -31,17 +33,27 @@
 #include "details/Texture.h"
 #include "details/VertexBuffer.h"
 #include "details/View.h"
-#include "filament/Engine.h"
 
+#include <filament/Engine.h>
 
 #include <backend/DriverEnums.h>
 
 #include <utils/compiler.h>
 #include <utils/Panic.h>
+#include <utils/Slice.h>
+
+#include <chrono>
+
+#include <stddef.h>
+#include <stdint.h>
 
 using namespace utils;
 
 namespace filament {
+
+namespace backend {
+class Platform;
+}
 
 using namespace math;
 using namespace backend;
@@ -55,6 +67,10 @@ Engine* Engine::getEngine(void* token) {
     return FEngine::getEngine(token);
 }
 #endif
+
+Driver const* Engine::getDriver() const noexcept {
+    return std::addressof(downcast(this)->getDriver());
+}
 
 void Engine::destroy(Engine** pEngine) {
     if (pEngine) {
@@ -92,15 +108,15 @@ Scene* Engine::createScene() noexcept {
     return downcast(this)->createScene();
 }
 
-Camera* Engine::createCamera(Entity entity) noexcept {
+Camera* Engine::createCamera(Entity const entity) noexcept {
     return downcast(this)->createCamera(entity);
 }
 
-Camera* Engine::getCameraComponent(utils::Entity entity) noexcept {
+Camera* Engine::getCameraComponent(Entity const entity) noexcept {
     return downcast(this)->getCameraComponent(entity);
 }
 
-void Engine::destroyCameraComponent(utils::Entity entity) noexcept {
+void Engine::destroyCameraComponent(Entity const entity) noexcept {
     downcast(this)->destroyCameraComponent(entity);
 }
 
@@ -108,11 +124,11 @@ Fence* Engine::createFence() noexcept {
     return downcast(this)->createFence();
 }
 
-SwapChain* Engine::createSwapChain(void* nativeWindow, uint64_t flags) noexcept {
+SwapChain* Engine::createSwapChain(void* nativeWindow, uint64_t const flags) noexcept {
     return downcast(this)->createSwapChain(nativeWindow, flags);
 }
 
-SwapChain* Engine::createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept {
+SwapChain* Engine::createSwapChain(uint32_t const width, uint32_t const height, uint64_t const flags) noexcept {
     return downcast(this)->createSwapChain(width, height, flags);
 }
 
@@ -192,74 +208,149 @@ bool Engine::destroy(const InstanceBuffer* p) {
     return downcast(this)->destroy(downcast(p));
 }
 
-void Engine::destroy(Entity e) {
+void Engine::destroy(Entity const e) {
     downcast(this)->destroy(e);
 }
 
-bool Engine::isValid(const BufferObject* p) {
+bool Engine::isValid(const BufferObject* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const VertexBuffer* p) {
+bool Engine::isValid(const VertexBuffer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Fence* p) {
+bool Engine::isValid(const Fence* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const IndexBuffer* p) {
+bool Engine::isValid(const IndexBuffer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const SkinningBuffer* p) {
+bool Engine::isValid(const SkinningBuffer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const MorphTargetBuffer* p) {
+bool Engine::isValid(const MorphTargetBuffer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const IndirectLight* p) {
+bool Engine::isValid(const IndirectLight* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Material* p) {
+bool Engine::isValid(const Material* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Renderer* p) {
+bool Engine::isValid(const Material* m, const MaterialInstance* p) const {
+    return downcast(this)->isValid(downcast(m), downcast(p));
+}
+bool Engine::isValidExpensive(const MaterialInstance* p) const {
+    return downcast(this)->isValidExpensive(downcast(p));
+}
+bool Engine::isValid(const Renderer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Scene* p) {
+bool Engine::isValid(const Scene* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Skybox* p) {
+bool Engine::isValid(const Skybox* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const ColorGrading* p) {
+bool Engine::isValid(const ColorGrading* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const SwapChain* p) {
+bool Engine::isValid(const SwapChain* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Stream* p) {
+bool Engine::isValid(const Stream* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const Texture* p) {
+bool Engine::isValid(const Texture* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const RenderTarget* p) {
+bool Engine::isValid(const RenderTarget* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const View* p) {
+bool Engine::isValid(const View* p) const {
     return downcast(this)->isValid(downcast(p));
 }
-bool Engine::isValid(const InstanceBuffer* p) {
+bool Engine::isValid(const InstanceBuffer* p) const {
     return downcast(this)->isValid(downcast(p));
 }
 
+size_t Engine::getBufferObjectCount() const noexcept {
+    return downcast(this)->getBufferObjectCount();
+}
+
+size_t Engine::getViewCount() const noexcept {
+    return downcast(this)->getViewCount();
+}
+
+size_t Engine::getSceneCount() const noexcept {
+    return downcast(this)->getSceneCount();
+}
+
+size_t Engine::getSwapChainCount() const noexcept {
+    return downcast(this)->getSwapChainCount();
+}
+
+size_t Engine::getStreamCount() const noexcept {
+    return downcast(this)->getStreamCount();
+}
+
+size_t Engine::getIndexBufferCount() const noexcept {
+    return downcast(this)->getIndexBufferCount();
+}
+
+size_t Engine::getSkinningBufferCount() const noexcept {
+    return downcast(this)->getSkinningBufferCount();
+}
+
+size_t Engine::getMorphTargetBufferCount() const noexcept {
+    return downcast(this)->getMorphTargetBufferCount();
+}
+
+size_t Engine::getInstanceBufferCount() const noexcept {
+    return downcast(this)->getInstanceBufferCount();
+}
+
+size_t Engine::getVertexBufferCount() const noexcept {
+    return downcast(this)->getVertexBufferCount();
+}
+
+size_t Engine::getIndirectLightCount() const noexcept {
+    return downcast(this)->getIndirectLightCount();
+}
+
+size_t Engine::getMaterialCount() const noexcept {
+    return downcast(this)->getMaterialCount();
+}
+
+size_t Engine::getTextureCount() const noexcept {
+    return downcast(this)->getTextureCount();
+}
+
+size_t Engine::getSkyboxeCount() const noexcept {
+    return downcast(this)->getSkyboxeCount();
+}
+
+size_t Engine::getColorGradingCount() const noexcept {
+    return downcast(this)->getColorGradingCount();
+}
+
+size_t Engine::getRenderTargetCount() const noexcept {
+    return downcast(this)->getRenderTargetCount();
+}
+
+
 void Engine::flushAndWait() {
     downcast(this)->flushAndWait();
+}
+
+bool Engine::flushAndWait(uint64_t timeout) {
+    return downcast(this)->flushAndWait(timeout);
 }
 
 void Engine::flush() {
     downcast(this)->flush();
 }
 
-utils::EntityManager& Engine::getEntityManager() noexcept {
+EntityManager& Engine::getEntityManager() noexcept {
     return downcast(this)->getEntityManager();
 }
 
@@ -279,24 +370,32 @@ void Engine::enableAccurateTranslations() noexcept  {
     getTransformManager().setAccurateTranslationsEnabled(true);
 }
 
-void* Engine::streamAlloc(size_t size, size_t alignment) noexcept {
+void* Engine::streamAlloc(size_t const size, size_t const alignment) noexcept {
     return downcast(this)->streamAlloc(size, alignment);
 }
 
 // The external-facing execute does a flush, and is meant only for single-threaded environments.
 // It also discards the boolean return value, which would otherwise indicate a thread exit.
 void Engine::execute() {
-    ASSERT_PRECONDITION(!UTILS_HAS_THREADING, "Execute is meant for single-threaded platforms.");
+    FILAMENT_CHECK_PRECONDITION(!UTILS_HAS_THREADING)
+            << "Execute is meant for single-threaded platforms.";
     downcast(this)->flush();
     downcast(this)->execute();
 }
 
-utils::JobSystem& Engine::getJobSystem() noexcept {
+JobSystem& Engine::getJobSystem() noexcept {
     return downcast(this)->getJobSystem();
 }
 
-void Engine::setPaused(bool paused) {
-    ASSERT_PRECONDITION(UTILS_HAS_THREADING, "Pause is meant for multi-threaded platforms.");
+bool Engine::isPaused() const noexcept(UTILS_HAS_THREADING) {
+    FILAMENT_CHECK_PRECONDITION(UTILS_HAS_THREADING)
+            << "Pause is meant for multi-threaded platforms.";
+    return downcast(this)->isPaused();
+}
+
+void Engine::setPaused(bool const paused) {
+    FILAMENT_CHECK_PRECONDITION(UTILS_HAS_THREADING)
+            << "Pause is meant for multi-threaded platforms.";
     downcast(this)->setPaused(paused);
 }
 
@@ -308,7 +407,11 @@ void Engine::pumpMessageQueues() {
     downcast(this)->pumpMessageQueues();
 }
 
-void Engine::setAutomaticInstancingEnabled(bool enable) noexcept {
+void Engine::unprotected() noexcept {
+    downcast(this)->unprotected();
+}
+
+void Engine::setAutomaticInstancingEnabled(bool const enable) noexcept {
     downcast(this)->setAutomaticInstancingEnabled(enable);
 }
 
@@ -320,7 +423,7 @@ FeatureLevel Engine::getSupportedFeatureLevel() const noexcept {
     return downcast(this)->getSupportedFeatureLevel();
 }
 
-FeatureLevel Engine::setActiveFeatureLevel(FeatureLevel featureLevel) {
+FeatureLevel Engine::setActiveFeatureLevel(FeatureLevel const featureLevel) {
     return downcast(this)->setActiveFeatureLevel(featureLevel);
 }
 
@@ -336,12 +439,32 @@ const Engine::Config& Engine::getConfig() const noexcept {
     return downcast(this)->getConfig();
 }
 
-bool Engine::isStereoSupported(StereoscopicType stereoscopicType) const noexcept {
-    return downcast(this)->isStereoSupported(stereoscopicType);
+bool Engine::isStereoSupported(StereoscopicType) const noexcept {
+    return downcast(this)->isStereoSupported();
 }
 
 size_t Engine::getMaxStereoscopicEyes() noexcept {
     return FEngine::getMaxStereoscopicEyes();
+}
+
+uint64_t Engine::getSteadyClockTimeNano() noexcept {
+    return std::chrono::steady_clock::now().time_since_epoch().count();
+}
+
+Slice<const Engine::FeatureFlag> Engine::getFeatureFlags() const noexcept {
+    return downcast(this)->getFeatureFlags();
+}
+
+bool Engine::setFeatureFlag(char const* name, bool const value) noexcept {
+    return downcast(this)->setFeatureFlag(name, value);
+}
+
+std::optional<bool> Engine::getFeatureFlag(char const* name) const noexcept {
+    return downcast(this)->getFeatureFlag(name);
+}
+
+bool* Engine::getFeatureFlagPtr(char const* UTILS_NONNULL name) const noexcept {
+    return downcast(this)->getFeatureFlagPtr(name);
 }
 
 #if defined(__EMSCRIPTEN__)

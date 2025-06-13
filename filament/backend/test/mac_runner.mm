@@ -53,8 +53,7 @@ test::NativeView getNativeView() {
     nativeView.width = static_cast<size_t>(drawableSize.width);
     nativeView.height = static_cast<size_t>(drawableSize.height);
 
-    test::runTests();
-    // exit(runTests());
+    exit(test::runTests());
 }
 
 - (NSView*)createView {
@@ -99,7 +98,7 @@ test::NativeView getNativeView() {
 
 int main(int argc, char* argv[]) {
     auto backend = test::parseArgumentsForBackend(argc, argv);
-    test::initTests(backend, false, argc, argv);
+    test::initTests(backend, test::OperatingSystem::APPLE, false, argc, argv);
     AppDelegate* delegate = [AppDelegate new];
     delegate.backend = backend;
     NSApplication* app = [NSApplication sharedApplication];

@@ -17,11 +17,11 @@
 #ifndef TNT_UTILS_JOBSYSTEM_H
 #define TNT_UTILS_JOBSYSTEM_H
 
+#include <utility>
 #include <utils/Allocator.h>
 #include <utils/architecture.h>
 #include <utils/compiler.h>
 #include <utils/Condition.h>
-#include <utils/Log.h>
 #include <utils/memalign.h>
 #include <utils/Mutex.h>
 #include <utils/Slice.h>
@@ -44,14 +44,22 @@
 namespace utils {
 
 class JobSystem {
-    static constexpr size_t MAX_JOB_COUNT = 16384;
+    static constexpr size_t MAX_JOB_COUNT = 1 << 14; // 16384
+    static constexpr uint32_t JOB_COUNT_MASK = MAX_JOB_COUNT - 1;
+    static constexpr uint32_t WAITER_COUNT_SHIFT = 24;
     static_assert(MAX_JOB_COUNT <= 0x7FFE, "MAX_JOB_COUNT must be <= 0x7FFE");
     using WorkQueue = WorkStealingDequeue<uint16_t, MAX_JOB_COUNT>;
+    using Mutex = utils::Mutex;
+    using Condition = utils::Condition;
 
 public:
     class Job;
 
+    using ThreadId = uint8_t;
+
     using JobFunc = void(*)(void*, JobSystem&, Job*);
+
+    static constexpr ThreadId invalidThreadId = 0xff;
 
     class alignas(CACHELINE_SIZE) Job {
     public:
@@ -75,11 +83,17 @@ public:
         void* storage[JOB_STORAGE_SIZE_WORDS];                  // 48 | 48
         JobFunc function;                                       //  4 |  8
         uint16_t parent;                                        //  2 |  2
-        std::atomic<uint16_t> runningJobCount = { 1 };          //  2 |  2
-        mutable std::atomic<uint16_t> refCount = { 1 };         //  2 |  2
-                                                                //  6 |  2 (padding)
+        mutable ThreadId id = invalidThreadId;                  //  1 |  1
+        mutable std::atomic<uint8_t> refCount = { 1 };          //  1 |  1
+        std::atomic<uint32_t> runningJobCount = { 1 };          //  4 |  4
+                                                                //  4 |  0 (padding)
                                                                 // 64 | 64
     };
+
+#ifndef WIN32
+    // on windows std::function<void()> is bigger and forces the whole structure to be larger
+    static_assert(sizeof(Job) == 64);
+#endif
 
     explicit JobSystem(size_t threadCount = 0, size_t adoptableThreadsCount = 1) noexcept;
 
@@ -175,7 +189,7 @@ public:
     template<typename T, void(T::*method)(JobSystem&, Job*)>
     Job* createJob(Job* parent, T* data) noexcept {
         Job* job = create(parent, +[](void* storage, JobSystem& js, Job* job) {
-            T* const that = static_cast<T*>(reinterpret_cast<void**>(storage)[0]);
+            T* const that = static_cast<T*>(static_cast<void**>(storage)[0]);
             (that->*method)(js, job);
         });
         if (job) {
@@ -199,6 +213,21 @@ public:
         return job;
     }
 
+    // creates a job from a KNOWN method pointer w/ object passed by value
+    template<typename T, void(T::*method)(JobSystem&, Job*), typename ... ARGS>
+    Job* emplaceJob(Job* parent, ARGS&& ... args) noexcept {
+        static_assert(sizeof(T) <= sizeof(Job::storage), "user data too large");
+        Job* job = create(parent, [](void* storage, JobSystem& js, Job* job) {
+            T* const that = static_cast<T*>(storage);
+            (that->*method)(js, job);
+            that->~T();
+        });
+        if (job) {
+            new(job->storage) T(std::forward<ARGS>(args)...);
+        }
+        return job;
+    }
+
     // creates a job from a functor passed by value
     template<typename T>
     Job* createJob(Job* parent, T functor) noexcept {
@@ -210,6 +239,21 @@ public:
         });
         if (job) {
             new(job->storage) T(std::move(functor));
+        }
+        return job;
+    }
+
+    // creates a job from a functor passed by value
+    template<typename T, typename ... ARGS>
+    Job* emplaceJob(Job* parent, ARGS&& ... args) noexcept {
+        static_assert(sizeof(T) <= sizeof(Job::storage), "functor too large");
+        Job* job = create(parent, [](void* storage, JobSystem& js, Job* job){
+            T* const that = static_cast<T*>(storage);
+            that->operator()(js, job);
+            that->~T();
+        });
+        if (job) {
+            new(job->storage) T(std::forward<ARGS>(args)...);
         }
         return job;
     }
@@ -230,7 +274,7 @@ public:
      *
      * This job MUST BE waited on with waitAndRelease(), or released with release().
      */
-    Job* retain(Job* job) noexcept;
+    static Job* retain(Job* job) noexcept;
 
     /*
      * Releases a reference from a Job obtained with runAndRetain() or a call to retain().
@@ -244,8 +288,8 @@ public:
     }
 
     /*
-     * Add job to this thread's execution queue. It's reference will drop automatically.
-     * Current thread must be owned by JobSystem's thread pool. See adopt().
+     * Add job to this thread's execution queue. Its reference will drop automatically.
+     * The current thread must be owned by JobSystem's thread pool. See adopt().
      *
      * The job can't be used after this call.
      */
@@ -255,11 +299,23 @@ public:
         run(p);
     }
 
-    void signal() noexcept;
+    /*
+     * Add job to this thread's execution queue. Its reference will drop automatically.
+     * The current thread must be owned by JobSystem's thread pool. See adopt().
+     * id must be the current thread id obtained with JobSystem::getThreadId(Job*). This
+     * API is more efficient than the methods above.
+     *
+     * The job can't be used after this call.
+     */
+    void run(Job*& job, ThreadId id) noexcept;
+    void run(Job*&& job, ThreadId const id) noexcept { // allows run(createJob(...));
+        Job* p = job;
+        run(p, id);
+    }
 
     /*
      * Add job to this thread's execution queue and keep a reference to it.
-     * Current thread must be owned by JobSystem's thread pool. See adopt().
+     * The current thread must be owned by JobSystem's thread pool. See adopt().
      *
      * This job MUST BE waited on with wait(), or released with release().
      */
@@ -267,7 +323,7 @@ public:
 
     /*
      * Wait on a job and destroys it.
-     * Current thread must be owned by JobSystem's thread pool. See adopt().
+     * The current thread must be owned by JobSystem's thread pool. See adopt().
      *
      * The job must first be obtained from runAndRetain() or retain().
      * The job can't be used after this call.
@@ -288,7 +344,7 @@ public:
     }
 
     // for debugging
-    friend utils::io::ostream& operator << (utils::io::ostream& out, JobSystem const& js);
+    friend io::ostream& operator << (io::ostream& out, JobSystem const& js);
 
 
     // utility functions...
@@ -312,16 +368,34 @@ public:
 
     size_t getThreadCount() const { return mThreadCount; }
 
+    // returns the current ThreadId, which can be used with run(). This method can only be
+    // called from a job's function.
+    static ThreadId getThreadId(Job const* job) noexcept {
+        assert(job->id != invalidThreadId);
+        return job->id;
+    }
+
 private:
     // this is just to avoid using std::default_random_engine, since we're in a public header.
     class default_random_engine {
         static constexpr uint32_t m = 0x7fffffffu;
         uint32_t mState; // must be 0 < seed < 0x7fffffff
     public:
-        inline constexpr explicit default_random_engine(uint32_t seed = 1u) noexcept
+        using result_type = uint32_t;
+
+        static constexpr result_type min() noexcept {
+            return 1;
+        }
+
+        static constexpr result_type max() noexcept {
+            return m - 1;
+        }
+
+        constexpr explicit default_random_engine(uint32_t const seed = 1u) noexcept
                 : mState(((seed % m) == 0u) ? 1u : seed % m) {
         }
-        inline uint32_t operator()() noexcept {
+
+        uint32_t operator()() noexcept {
             return mState = uint32_t((uint64_t(mState) * 48271u) % m);
         }
     };
@@ -331,53 +405,54 @@ private:
         WorkQueue workQueue;
 
         // these are not accessed by the worker threads
-        alignas(CACHELINE_SIZE)     // this causes 56-bytes padding
-        JobSystem* js;
-        std::thread thread;
+        alignas(CACHELINE_SIZE)         // this causes 56-bytes padding
+        JobSystem* js;                  // this is in fact const and always initialized
+        std::thread thread;             // unused for adopted threads
         default_random_engine rndGen;
-        uint32_t id;
     };
 
     static_assert(sizeof(ThreadState) % CACHELINE_SIZE == 0,
             "ThreadState doesn't align to a cache line");
 
-    ThreadState& getState() noexcept;
+    ThreadState& getState();
 
-    void incRef(Job const* job) noexcept;
+    static void incRef(Job const* job) noexcept;
     void decRef(Job const* job) noexcept;
 
     Job* allocateJob() noexcept;
-    JobSystem::ThreadState* getStateToStealFrom(JobSystem::ThreadState& state) noexcept;
-    bool hasJobCompleted(Job const* job) noexcept;
+    ThreadState* getStateToStealFrom(ThreadState& state) noexcept;
+    static bool hasJobCompleted(Job const* job) noexcept;
 
     void requestExit() noexcept;
     bool exitRequested() const noexcept;
     bool hasActiveJobs() const noexcept;
 
-    void loop(ThreadState* state) noexcept;
-    bool execute(JobSystem::ThreadState& state) noexcept;
-    Job* steal(JobSystem::ThreadState& state) noexcept;
+    void loop(ThreadState* state);
+    bool execute(ThreadState& state) noexcept;
+    Job* steal(ThreadState& state) noexcept;
     void finish(Job* job) noexcept;
 
-    void put(WorkQueue& workQueue, Job* job) noexcept;
+    void put(WorkQueue& workQueue, Job const* job) noexcept;
     Job* pop(WorkQueue& workQueue) noexcept;
     Job* steal(WorkQueue& workQueue) noexcept;
 
-    void wait(std::unique_lock<Mutex>& lock, Job* job = nullptr) noexcept;
+    [[nodiscard]]
+    uint32_t wait(std::unique_lock<Mutex>& lock, Job* job) noexcept;
+    void wait(std::unique_lock<Mutex>& lock) noexcept;
     void wakeAll() noexcept;
     void wakeOne() noexcept;
 
     // these have thread contention, keep them together
-    utils::Mutex mWaiterLock;
-    utils::Condition mWaiterCondition;
+    Mutex mWaiterLock;
+    Condition mWaiterCondition;
 
-    std::atomic<uint32_t> mActiveJobs = { 0 };
-    utils::Arena<utils::ThreadSafeObjectPoolAllocator<Job>, LockingPolicy::NoLock> mJobPool;
+    std::atomic<int32_t> mActiveJobs = { 0 };
+    Arena<ObjectPoolAllocator<Job>, LockingPolicy::Mutex> mJobPool;
 
     template <typename T>
-    using aligned_vector = std::vector<T, utils::STLAlignedAllocator<T>>;
+    using aligned_vector = std::vector<T, STLAlignedAllocator<T>>;
 
-    // these are essentially const, make sure they're on a different cache-lines than the
+    // These are essentially const, make sure they're on a different cache-lines than the
     // read-write atomics.
     // We can't use "alignas(CACHELINE_SIZE)" because the standard allocator can't make this
     // guarantee.
@@ -392,7 +467,7 @@ private:
     uint8_t mParallelSplitCount = 0;                    // # of split allowable in parallel_for
     Job* mRootJob = nullptr;
 
-    utils::Mutex mThreadMapLock; // this should have very little contention
+    Mutex mThreadMapLock; // this should have very little contention
     tsl::robin_map<std::thread::id, ThreadState *> mThreadMap;
 };
 
@@ -410,28 +485,30 @@ template<typename CALLABLE, typename ... ARGS>
 JobSystem::Job* createJob(JobSystem& js, JobSystem::Job* parent,
         CALLABLE&& func, ARGS&&... args) noexcept {
     struct Data {
+        explicit Data(std::function<void()> f) noexcept: f(std::move(f)) {}
         std::function<void()> f;
         // Renaming the method below could cause an Arrested Development.
         void gob(JobSystem&, JobSystem::Job*) noexcept { f(); }
-    } user{ std::bind(std::forward<CALLABLE>(func),
-            std::forward<ARGS>(args)...) };
-    return js.createJob<Data, &Data::gob>(parent, std::move(user));
+    };
+    return js.emplaceJob<Data, &Data::gob>(parent,
+            std::bind(std::forward<CALLABLE>(func), std::forward<ARGS>(args)...));
 }
 
 template<typename CALLABLE, typename T, typename ... ARGS,
-        typename = typename std::enable_if<
-                std::is_member_function_pointer<typename std::remove_reference<CALLABLE>::type>::value
-        >::type
+        typename = std::enable_if_t<
+                std::is_member_function_pointer_v<std::remove_reference_t<CALLABLE>>
+        >
 >
 JobSystem::Job* createJob(JobSystem& js, JobSystem::Job* parent,
         CALLABLE&& func, T&& o, ARGS&&... args) noexcept {
     struct Data {
+        explicit Data(std::function<void()> f) noexcept: f(std::move(f)) {}
         std::function<void()> f;
         // Renaming the method below could cause an Arrested Development.
         void gob(JobSystem&, JobSystem::Job*) noexcept { f(); }
-    } user{ std::bind(std::forward<CALLABLE>(func), std::forward<T>(o),
-            std::forward<ARGS>(args)...) };
-    return js.createJob<Data, &Data::gob>(parent, std::move(user));
+    };
+    return js.emplaceJob<Data, &Data::gob>(parent,
+            std::bind(std::forward<CALLABLE>(func), std::forward<T>(o), std::forward<ARGS>(args)...));
 }
 
 
@@ -444,7 +521,7 @@ struct ParallelForJobData {
     using JobData = ParallelForJobData;
     using size_type = uint32_t;
 
-    ParallelForJobData(size_type start, size_type count, uint8_t splits,
+    ParallelForJobData(size_type const start, size_type const count, uint8_t const splits,
             Functor functor,
             const SplitterType& splitter) noexcept
             : start(start), count(count),
@@ -460,8 +537,8 @@ struct ParallelForJobData {
 right_side:
         if (splitter.split(splits, count)) {
             const size_type lc = count / 2;
-            JobData ld(start, lc, splits + uint8_t(1), functor, splitter);
-            JobSystem::Job* l = js.createJob<JobData, &JobData::parallelWithJobs>(parent, std::move(ld));
+            JobSystem::Job* l = js.emplaceJob<JobData, &JobData::parallelWithJobs>(parent,
+                    start, lc, splits + uint8_t(1), functor, splitter);
             if (UTILS_UNLIKELY(l == nullptr)) {
                 // couldn't create a job, just pretend we're done splitting
                 goto execute;
@@ -469,7 +546,7 @@ right_side:
 
             // start the left side before attempting the right side, so we parallelize in case
             // of job creation failure -- rare, but still.
-            js.run(l);
+            js.run(l, JobSystem::getThreadId(parent));
 
             // don't spawn a job for the right side, just reuse us -- spawning jobs is more
             // costly than we'd like.
@@ -501,8 +578,8 @@ template<typename S, typename F>
 JobSystem::Job* parallel_for(JobSystem& js, JobSystem::Job* parent,
         uint32_t start, uint32_t count, F functor, const S& splitter) noexcept {
     using JobData = details::ParallelForJobData<S, F>;
-    JobData jobData(start, count, 0, std::move(functor), splitter);
-    return js.createJob<JobData, &JobData::parallelWithJobs>(parent, std::move(jobData));
+    return js.emplaceJob<JobData, &JobData::parallelWithJobs>(parent,
+            start, count, 0, std::move(functor), splitter);
 }
 
 // parallel jobs with pointer/count
@@ -513,22 +590,22 @@ JobSystem::Job* parallel_for(JobSystem& js, JobSystem::Job* parent,
         f(data + s, c);
     };
     using JobData = details::ParallelForJobData<S, decltype(user)>;
-    JobData jobData(0, count, 0, std::move(user), splitter);
-    return js.createJob<JobData, &JobData::parallelWithJobs>(parent, std::move(jobData));
+    return js.emplaceJob<JobData, &JobData::parallelWithJobs>(parent,
+            0, count, 0, std::move(user), splitter);
 }
 
 // parallel jobs on a Slice<>
 template<typename T, typename S, typename F>
 JobSystem::Job* parallel_for(JobSystem& js, JobSystem::Job* parent,
-        utils::Slice<T> slice, F functor, const S& splitter) noexcept {
+        Slice<T> slice, F functor, const S& splitter) noexcept {
     return parallel_for(js, parent, slice.data(), slice.size(), functor, splitter);
 }
 
 
-template <size_t COUNT, size_t MAX_SPLITS = 12>
+template<size_t COUNT, size_t MAX_SPLITS = 12>
 class CountSplitter {
 public:
-    bool split(size_t splits, size_t count) const noexcept {
+    bool split(size_t const splits, size_t const count) const noexcept {
         return (splits < MAX_SPLITS && count >= COUNT * 2);
     }
 };

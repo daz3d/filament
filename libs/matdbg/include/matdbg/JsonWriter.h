@@ -17,6 +17,8 @@
 #ifndef MATDBG_JSONWRITER_H
 #define MATDBG_JSONWRITER_H
 
+#include <matdbg/DebugServer.h>
+
 #include <filaflat/ChunkContainer.h>
 
 #include <backend/DriverEnums.h>
@@ -46,7 +48,8 @@ public:
     // The array is of the form [ backend, shaderIndex0, shaderIndex1, ... ] where each
     // shader index is an active variant. Each bit in the activeVariants bitmask
     // represents one of the possible variant combinations.
-    bool writeActiveInfo(const filaflat::ChunkContainer& package, backend::Backend backend,
+    bool writeActiveInfo(const filaflat::ChunkContainer& package,
+            backend::ShaderLanguage shaderLanguage, DbgShaderModel shaderModel,
             VariantList activeVariants);
 
 private:

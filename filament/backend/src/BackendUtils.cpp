@@ -18,6 +18,8 @@
 
 #include "DataReshaper.h"
 
+#include <backend/DriverEnums.h>
+
 #include <utils/CString.h>
 
 #include <string_view>
@@ -221,6 +223,143 @@ size_t getFormatSize(TextureFormat format) noexcept {
         default:
             return 0;
     }
+}
+
+TextureType getTextureType(TextureFormat const format) noexcept {
+    switch (format) {
+        case TextureFormat::UNUSED:
+            // should not happen
+            return TextureType::FLOAT;
+
+        case TextureFormat::R8:
+        case TextureFormat::R16F:
+        case TextureFormat::RG8:
+        case TextureFormat::RGB565:
+        case TextureFormat::RGB5_A1:
+        case TextureFormat::RGBA4:
+        case TextureFormat::R32F:
+        case TextureFormat::RGB8:
+        case TextureFormat::SRGB8:
+        case TextureFormat::RG16F:
+        case TextureFormat::R11F_G11F_B10F:
+        case TextureFormat::RGB9_E5:
+        case TextureFormat::RGBA8:
+        case TextureFormat::SRGB8_A8:
+        case TextureFormat::RGB10_A2:
+        case TextureFormat::RGB16F:
+        case TextureFormat::RG32F:
+        case TextureFormat::RGBA16F:
+        case TextureFormat::RGB32F:
+        case TextureFormat::RGBA32F:
+            return TextureType::FLOAT;
+
+        case TextureFormat::R8_SNORM:
+        case TextureFormat::RG8_SNORM:
+        case TextureFormat::RGB8_SNORM:
+        case TextureFormat::RGBA8_SNORM:
+            // SNORM are treated as float
+            return TextureType::FLOAT;
+
+        case TextureFormat::R8UI:
+        case TextureFormat::R16UI:
+        case TextureFormat::RG8UI:
+        case TextureFormat::RGB8UI:
+        case TextureFormat::R32UI:
+        case TextureFormat::RG16UI:
+        case TextureFormat::RGBA8UI:
+        case TextureFormat::RGB16UI:
+        case TextureFormat::RG32UI:
+        case TextureFormat::RGBA16UI:
+        case TextureFormat::RGB32UI:
+        case TextureFormat::RGBA32UI:
+            return TextureType::UINT;
+
+        case TextureFormat::R8I:
+        case TextureFormat::R16I:
+        case TextureFormat::RG8I:
+        case TextureFormat::RGB8I:
+        case TextureFormat::R32I:
+        case TextureFormat::RG16I:
+        case TextureFormat::RGBA8I:
+        case TextureFormat::RGB16I:
+        case TextureFormat::RG32I:
+        case TextureFormat::RGBA16I:
+        case TextureFormat::RGB32I:
+        case TextureFormat::RGBA32I:
+            return TextureType::INT;
+
+        case TextureFormat::DEPTH16:
+        case TextureFormat::DEPTH24:
+        case TextureFormat::DEPTH32F:
+            return TextureType::DEPTH;
+
+        case TextureFormat::STENCIL8:
+            return TextureType::STENCIL;
+
+        case TextureFormat::DEPTH24_STENCIL8:
+        case TextureFormat::DEPTH32F_STENCIL8:
+            return TextureType::DEPTH_STENCIL;
+
+        // Compressed formats ---------------------------------------------------------------------
+
+        case TextureFormat::EAC_RG11:
+        case TextureFormat::EAC_RG11_SIGNED:
+        case TextureFormat::ETC2_EAC_RGBA8:
+        case TextureFormat::ETC2_EAC_SRGBA8:
+        case TextureFormat::EAC_R11:
+        case TextureFormat::EAC_R11_SIGNED:
+        case TextureFormat::ETC2_RGB8:
+        case TextureFormat::ETC2_SRGB8:
+        case TextureFormat::ETC2_RGB8_A1:
+        case TextureFormat::ETC2_SRGB8_A1:
+        case TextureFormat::DXT1_RGB:
+        case TextureFormat::DXT1_RGBA:
+        case TextureFormat::DXT1_SRGB:
+        case TextureFormat::DXT1_SRGBA:
+        case TextureFormat::DXT3_RGBA:
+        case TextureFormat::DXT3_SRGBA:
+        case TextureFormat::DXT5_RGBA:
+        case TextureFormat::DXT5_SRGBA:
+        case TextureFormat::RED_RGTC1:
+        case TextureFormat::SIGNED_RED_RGTC1:
+        case TextureFormat::RED_GREEN_RGTC2:
+        case TextureFormat::SIGNED_RED_GREEN_RGTC2:
+        case TextureFormat::RGB_BPTC_SIGNED_FLOAT:
+        case TextureFormat::RGB_BPTC_UNSIGNED_FLOAT:
+        case TextureFormat::RGBA_BPTC_UNORM:
+        case TextureFormat::SRGB_ALPHA_BPTC_UNORM:
+        case TextureFormat::RGBA_ASTC_4x4:
+        case TextureFormat::RGBA_ASTC_5x4:
+        case TextureFormat::RGBA_ASTC_5x5:
+        case TextureFormat::RGBA_ASTC_6x5:
+        case TextureFormat::RGBA_ASTC_6x6:
+        case TextureFormat::RGBA_ASTC_8x5:
+        case TextureFormat::RGBA_ASTC_8x6:
+        case TextureFormat::RGBA_ASTC_8x8:
+        case TextureFormat::RGBA_ASTC_10x5:
+        case TextureFormat::RGBA_ASTC_10x6:
+        case TextureFormat::RGBA_ASTC_10x8:
+        case TextureFormat::RGBA_ASTC_10x10:
+        case TextureFormat::RGBA_ASTC_12x10:
+        case TextureFormat::RGBA_ASTC_12x12:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_4x4:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_5x4:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_5x5:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_6x5:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_6x6:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_8x5:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_8x6:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_8x8:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_10x5:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_10x6:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_10x8:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_10x10:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_12x10:
+        case TextureFormat::SRGB8_ALPHA8_ASTC_12x12:
+            return TextureType::FLOAT;
+    }
+
+    return TextureType::FLOAT;
 }
 
 size_t getFormatComponentCount(TextureFormat format) noexcept {
@@ -589,6 +728,49 @@ CString to_string<filament::backend::TargetBufferFlags>(filament::backend::Targe
         string[5]='S';
     }
     return { string, 6 };
+}
+
+
+template<>
+CString to_string<filament::backend::TextureFormat>(filament::backend::TextureFormat value) noexcept {
+    using namespace filament::backend;
+    switch (value) {
+#define CASE(T) case TextureFormat::T: return #T;
+        CASE(R8) CASE(R8_SNORM) CASE(R8UI) CASE(R8I) CASE(STENCIL8)
+        CASE(R16F) CASE(R16UI) CASE(R16I) CASE(RG8) CASE(RG8_SNORM)
+        CASE(RG8UI) CASE(RG8I) CASE(RGB565) CASE(RGB9_E5) CASE(RGB5_A1)
+        CASE(RGBA4) CASE(DEPTH16) CASE(RGB8) CASE(SRGB8) CASE(RGB8_SNORM)
+        CASE(RGB8UI) CASE(RGB8I) CASE(DEPTH24) CASE(R32F) CASE(R32UI)
+        CASE(R32I) CASE(RG16F) CASE(RG16UI) CASE(RG16I) CASE(R11F_G11F_B10F)
+        CASE(RGBA8) CASE(SRGB8_A8) CASE(RGBA8_SNORM) CASE(UNUSED) CASE(RGB10_A2)
+        CASE(RGBA8UI) CASE(RGBA8I) CASE(DEPTH32F) CASE(DEPTH24_STENCIL8)
+        CASE(DEPTH32F_STENCIL8) CASE(RGB16F) CASE(RGB16UI) CASE(RGB16I)
+        CASE(RG32F) CASE(RG32UI) CASE(RG32I) CASE(RGBA16F) CASE(RGBA16UI)
+        CASE(RGBA16I) CASE(RGB32F) CASE(RGB32UI) CASE(RGB32I) CASE(RGBA32F)
+        CASE(RGBA32UI) CASE(RGBA32I) CASE(EAC_R11) CASE(EAC_R11_SIGNED)
+        CASE(EAC_RG11) CASE(EAC_RG11_SIGNED) CASE(ETC2_RGB8) CASE(ETC2_SRGB8)
+        CASE(ETC2_RGB8_A1) CASE(ETC2_SRGB8_A1) CASE(ETC2_EAC_RGBA8)
+        CASE(ETC2_EAC_SRGBA8) CASE(DXT1_RGB) CASE(DXT1_RGBA) CASE(DXT3_RGBA)
+        CASE(DXT5_RGBA) CASE(DXT1_SRGB) CASE(DXT1_SRGBA) CASE(DXT3_SRGBA)
+        CASE(DXT5_SRGBA) CASE(RGBA_ASTC_4x4) CASE(RGBA_ASTC_5x4)
+        CASE(RGBA_ASTC_5x5) CASE(RGBA_ASTC_6x5) CASE(RGBA_ASTC_6x6)
+        CASE(RGBA_ASTC_8x5) CASE(RGBA_ASTC_8x6) CASE(RGBA_ASTC_8x8)
+        CASE(RGBA_ASTC_10x5) CASE(RGBA_ASTC_10x6) CASE(RGBA_ASTC_10x8)
+        CASE(RGBA_ASTC_10x10) CASE(RGBA_ASTC_12x10) CASE(RGBA_ASTC_12x12)
+        CASE(SRGB8_ALPHA8_ASTC_4x4) CASE(SRGB8_ALPHA8_ASTC_5x4)
+        CASE(SRGB8_ALPHA8_ASTC_5x5) CASE(SRGB8_ALPHA8_ASTC_6x5)
+        CASE(SRGB8_ALPHA8_ASTC_6x6) CASE(SRGB8_ALPHA8_ASTC_8x5)
+        CASE(SRGB8_ALPHA8_ASTC_8x6) CASE(SRGB8_ALPHA8_ASTC_8x8)
+        CASE(SRGB8_ALPHA8_ASTC_10x5) CASE(SRGB8_ALPHA8_ASTC_10x6)
+        CASE(SRGB8_ALPHA8_ASTC_10x8) CASE(SRGB8_ALPHA8_ASTC_10x10)
+        CASE(SRGB8_ALPHA8_ASTC_12x10) CASE(SRGB8_ALPHA8_ASTC_12x12)
+        CASE(RED_RGTC1) CASE(SIGNED_RED_RGTC1) CASE(RED_GREEN_RGTC2)
+        CASE(SIGNED_RED_GREEN_RGTC2) CASE(RGB_BPTC_SIGNED_FLOAT)
+        CASE(RGB_BPTC_UNSIGNED_FLOAT) CASE(RGBA_BPTC_UNORM)
+        CASE(SRGB_ALPHA_BPTC_UNORM)
+#undef CASE
+    }
+    return "Unknown";
 }
 
 } // namespace utils

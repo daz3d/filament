@@ -1,4 +1,28 @@
 //------------------------------------------------------------------------------
+// Common Helpers
+//------------------------------------------------------------------------------
+
+/**
+ * Index of the eye being rendered, starting at 0.
+ * @public-api
+ */
+int getEyeIndex() {
+#if defined(VARIANT_HAS_STEREO) && defined(FILAMENT_STEREO_INSTANCED)
+    return instance_index % CONFIG_STEREO_EYE_COUNT;
+#elif defined(VARIANT_HAS_STEREO) && defined(FILAMENT_STEREO_MULTIVIEW)
+
+#   if defined(TARGET_VULKAN_ENVIRONMENT)
+    return int(gl_ViewIndex);
+#   else
+    // gl_ViewID_OVR is of uint type, which needs an explicit conversion.
+    return int(gl_ViewID_OVR);
+#   endif // TARGET_VULKAN_ENVIRONMENT
+
+#endif
+    return 0;
+}
+
+//------------------------------------------------------------------------------
 // Uniforms access
 //------------------------------------------------------------------------------
 
@@ -24,16 +48,7 @@ highp mat4 getViewFromClipMatrix() {
 
 /** @public-api */
 highp mat4 getClipFromWorldMatrix() {
-#if defined(VARIANT_HAS_STEREO)
-#if defined(FILAMENT_STEREO_INSTANCED)
-    int eye = instance_index % CONFIG_STEREO_EYE_COUNT;
-    return frameUniforms.clipFromWorldMatrix[eye];
-#elif defined(FILAMENT_STEREO_MULTIVIEW)
-    return frameUniforms.clipFromWorldMatrix[gl_ViewID_OVR];
-#endif
-#else
-    return frameUniforms.clipFromWorldMatrix[0];
-#endif
+    return frameUniforms.clipFromWorldMatrix[getEyeIndex()];
 }
 
 /** @public-api */
@@ -64,10 +79,10 @@ highp float getUserTimeMod(float m) {
 /**
  * Transforms a texture UV to make it suitable for a render target attachment.
  *
- * In Vulkan and Metal, texture coords are Y-down but in OpenGL they are Y-up. This wrapper function
- * accounts for these differences. When sampling from non-render targets (i.e. uploaded textures)
- * these differences do not matter because OpenGL has a second piece of backwardness, which is that
- * the first row of texels in glTexImage2D is interpreted as the bottom row.
+ * In Vulkan, WebGPU and Metal, texture coords are Y-down but in OpenGL they are Y-up. This wrapper
+ * function accounts for these differences. When sampling from non-render targets (i.e. uploaded
+ * textures) these differences do not matter because OpenGL has a second piece of backwardness,
+ * which is that the first row of texels in glTexImage2D is interpreted as the bottom row.
  *
  * To protect users from these differences, we recommend that materials in the SURFACE domain
  * leverage this wrapper function when sampling from offscreen render targets.
@@ -75,7 +90,7 @@ highp float getUserTimeMod(float m) {
  * @public-api
  */
 highp vec2 uvToRenderTargetUV(const highp vec2 uv) {
-#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT)
+#if defined(TARGET_METAL_ENVIRONMENT) || defined(TARGET_VULKAN_ENVIRONMENT) || defined(TARGET_WEBGPU_ENVIRONMENT)
     return vec2(uv.x, 1.0 - uv.y);
 #else
     return uv;

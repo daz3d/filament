@@ -23,6 +23,8 @@ function print_help {
     echo "        This is sometimes needed instead of -c (which still misses some clean steps)."
     echo "    -d"
     echo "        Enable matdbg."
+    echo "    -t"
+    echo "        Enable fgviewer."
     echo "    -f"
     echo "        Always invoke CMake before incremental builds."
     echo "    -g"
@@ -42,10 +44,10 @@ function print_help {
     echo "        Run all unit tests, will trigger a debug build if needed."
     echo "    -v"
     echo "        Exclude Vulkan support from the Android build."
+    echo "    -W"
+    echo "        Include WebGPU support for the target platform. (NOT functional atm)."
     echo "    -s"
     echo "        Add iOS simulator support to the iOS build."
-    echo "    -t"
-    echo "        Enable SwiftShader support for Vulkan in desktop builds."
     echo "    -e"
     echo "        Enable EGL on Linux support for desktop builds."
     echo "    -l"
@@ -61,6 +63,17 @@ function print_help {
     echo "    -b"
     echo "        Enable Address and Undefined Behavior Sanitizers (asan/ubsan) for debugging."
     echo "        This is only for the desktop build."
+    echo "    -x value"
+    echo "        Define a preprocessor flag FILAMENT_BACKEND_DEBUG_FLAG with [value]. This is useful for"
+    echo "        enabling debug paths in the backend from the build script. For example, make a"
+    echo "        systrace-enabled build without directly changing #defines. Remember to add -f when"
+    echo "        changing this option."
+    echo "    -X osmesa_path"
+    echo "        Indicates a path to a completed OSMesa build. OSMesa is used to create an offscreen GL"
+    echo "        context for software rasterization"
+    echo "    -S type"
+    echo "        Enable stereoscopic rendering where type is one of [instanced|multiview]. This is only"
+    echo "        meant for building the samples."
     echo ""
     echo "Build types:"
     echo "    release"
@@ -116,8 +129,29 @@ function print_matdbg_help {
     echo ""
 }
 
+function print_fgviewer_help {
+    echo "fgviewer is enabled in the build, but some extra steps are needed."
+    echo ""
+    echo "FOR DESKTOP BUILDS:"
+    echo ""
+    echo "Please set the port environment variable before launching. e.g., on macOS do:"
+    echo "   export FILAMENT_FGVIEWER_PORT=8085"
+    echo ""
+    echo "FOR ANDROID BUILDS:"
+    echo ""
+    echo "1) For Android Studio builds, make sure to set:"
+    echo "       -Pcom.google.android.filament.fgviewer"
+    echo "   option in Preferences > Build > Compiler > Command line options."
+    echo ""
+    echo "2) The port number is hardcoded to 8085 so you will need to do:"
+    echo "       adb forward tcp:8085 tcp:8085"
+    echo ""
+    echo "3) Be sure to enable INTERNET permission in your app's manifest file."
+    echo ""
+}
+
 # Unless explicitly specified, NDK version will be selected as highest available version within same major release chain
-FILAMENT_NDK_VERSION=${FILAMENT_NDK_VERSION:-$(cat `dirname $0`/build/android/ndk.version | cut -f 1 -d ".")}
+FILAMENT_NDK_VERSION=${FILAMENT_NDK_VERSION:-$(cat `dirname $0`/build/common/versions | grep GITHUB_NDK_VERSION | sed s/GITHUB_NDK_VERSION=//g | cut -f 1 -d ".")}
 
 # Requirements
 CMAKE_MAJOR=3
@@ -160,17 +194,26 @@ INSTALL_COMMAND=
 VULKAN_ANDROID_OPTION="-DFILAMENT_SUPPORTS_VULKAN=ON"
 VULKAN_ANDROID_GRADLE_OPTION=""
 
-SWIFTSHADER_OPTION="-DFILAMENT_USE_SWIFTSHADER=OFF"
+WEBGPU_OPTION="-DFILAMENT_SUPPORTS_WEBGPU=OFF"
+WEBGPU_ANDROID_GRADLE_OPTION=""
 
 EGL_ON_LINUX_OPTION="-DFILAMENT_SUPPORTS_EGL_ON_LINUX=OFF"
 
 MATDBG_OPTION="-DFILAMENT_ENABLE_MATDBG=OFF"
 MATDBG_GRADLE_OPTION=""
+FGVIEWER_OPTION="-DFILAMENT_ENABLE_FGVIEWER=OFF"
+FGVIEWER_GRADLE_OPTION=""
 
 MATOPT_OPTION=""
 MATOPT_GRADLE_OPTION=""
 
 ASAN_UBSAN_OPTION=""
+
+BACKEND_DEBUG_FLAG_OPTION=""
+
+STEREOSCOPIC_OPTION=""
+
+OSMESA_OPTION=""
 
 IOS_BUILD_SIMULATOR=false
 BUILD_UNIVERSAL_LIBRARIES=false
@@ -226,11 +269,15 @@ function build_desktop_target {
             -DIMPORT_EXECUTABLES_DIR=out \
             -DCMAKE_BUILD_TYPE="$1" \
             -DCMAKE_INSTALL_PREFIX="../${lc_target}/filament" \
-            ${SWIFTSHADER_OPTION} \
             ${EGL_ON_LINUX_OPTION} \
+            ${FGVIEWER_OPTION} \
+            ${WEBGPU_OPTION} \
             ${MATDBG_OPTION} \
             ${MATOPT_OPTION} \
             ${ASAN_UBSAN_OPTION} \
+            ${BACKEND_DEBUG_FLAG_OPTION} \
+            ${STEREOSCOPIC_OPTION} \
+            ${OSMESA_OPTION} \
             ${architectures} \
             ../..
         ln -sf "out/cmake-${lc_target}/compile_commands.json" \
@@ -289,6 +336,8 @@ function build_webgl_with_target {
             -DCMAKE_BUILD_TYPE="$1" \
             -DCMAKE_INSTALL_PREFIX="../webgl-${lc_target}/filament" \
             -DWEBGL=1 \
+            ${WEBGPU_OPTION} \
+            ${BACKEND_DEBUG_FLAG_OPTION} \
             ../..
         ln -sf "out/cmake-webgl-${lc_target}/compile_commands.json" \
            ../../compile_commands.json
@@ -360,9 +409,13 @@ function build_android_target {
             -DFILAMENT_NDK_VERSION="${FILAMENT_NDK_VERSION}" \
             -DCMAKE_INSTALL_PREFIX="../android-${lc_target}/filament" \
             -DCMAKE_TOOLCHAIN_FILE="../../build/toolchain-${arch}-linux-android.cmake" \
+            ${FGVIEWER_OPTION} \
             ${MATDBG_OPTION} \
             ${MATOPT_OPTION} \
             ${VULKAN_ANDROID_OPTION} \
+            ${WEBGPU_OPTION} \
+            ${BACKEND_DEBUG_FLAG_OPTION} \
+            ${STEREOSCOPIC_OPTION} \
             ../..
         ln -sf "out/cmake-android-${lc_target}-${arch}/compile_commands.json" \
            ../../compile_commands.json
@@ -409,16 +462,6 @@ function ensure_android_build {
     if [[ -z $(ls "${ANDROID_HOME}/ndk/" | sort -V | grep "^${FILAMENT_NDK_VERSION}") ]]; then
         echo "Error: Android NDK side-by-side version ${FILAMENT_NDK_VERSION} or compatible must be installed, exiting"
         exit 1
-    fi
-
-    local cmake_version=$(cmake --version)
-    if [[ "${cmake_version}" =~ ([0-9]+)\.([0-9]+)\.[0-9]+ ]]; then
-        if [[ "${BASH_REMATCH[1]}" -lt "${CMAKE_MAJOR}" ]] || \
-           [[ "${BASH_REMATCH[2]}" -lt "${CMAKE_MINOR}" ]]; then
-            echo "Error: cmake version ${CMAKE_MAJOR}.${CMAKE_MINOR}+ is required," \
-                 "${BASH_REMATCH[1]}.${BASH_REMATCH[2]} installed, exiting"
-            exit 1
-        fi
     fi
 }
 
@@ -479,7 +522,9 @@ function build_android {
             -Pcom.google.android.filament.dist-dir=../out/android-debug/filament \
             -Pcom.google.android.filament.abis=${ABI_GRADLE_OPTION} \
             ${VULKAN_ANDROID_GRADLE_OPTION} \
+            ${WEBGPU_ANDROID_GRADLE_OPTION} \
             ${MATDBG_GRADLE_OPTION} \
+            ${FGVIEWER_GRADLE_OPTION} \
             ${MATOPT_GRADLE_OPTION} \
             :filament-android:assembleDebug \
             :gltfio-android:assembleDebug \
@@ -488,6 +533,7 @@ function build_android {
         ./gradlew \
             -Pcom.google.android.filament.dist-dir=../out/android-debug/filament \
             -Pcom.google.android.filament.abis=${ABI_GRADLE_OPTION} \
+            ${WEBGPU_ANDROID_GRADLE_OPTION} \
             :filamat-android:assembleDebug
 
         if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
@@ -528,7 +574,9 @@ function build_android {
             -Pcom.google.android.filament.dist-dir=../out/android-release/filament \
             -Pcom.google.android.filament.abis=${ABI_GRADLE_OPTION} \
             ${VULKAN_ANDROID_GRADLE_OPTION} \
+            ${WEBGPU_ANDROID_GRADLE_OPTION} \
             ${MATDBG_GRADLE_OPTION} \
+            ${FGVIEWER_GRADLE_OPTION} \
             ${MATOPT_GRADLE_OPTION} \
             :filament-android:assembleRelease \
             :gltfio-android:assembleRelease \
@@ -537,6 +585,7 @@ function build_android {
         ./gradlew \
             -Pcom.google.android.filament.dist-dir=../out/android-release/filament \
             -Pcom.google.android.filament.abis=${ABI_GRADLE_OPTION} \
+            ${WEBGPU_ANDROID_GRADLE_OPTION} \
             :filamat-android:assembleRelease
 
         if [[ "${BUILD_ANDROID_SAMPLES}" == "true" ]]; then
@@ -595,8 +644,11 @@ function build_ios_target {
             -DPLATFORM_NAME="${platform}" \
             -DIOS=1 \
             -DCMAKE_TOOLCHAIN_FILE=../../third_party/clang/iOS.cmake \
+            ${FGVIEWER_OPTION} \
+            ${WEBGPU_OPTION} \
             ${MATDBG_OPTION} \
             ${MATOPT_OPTION} \
+            ${STEREOSCOPIC_OPTION} \
             ../..
         ln -sf "out/cmake-ios-${lc_target}-${arch}/compile_commands.json" \
            ../../compile_commands.json
@@ -730,6 +782,13 @@ function validate_build_command {
             exit 1
         fi
     fi
+
+    # Make sure FILAMENT_BACKEND_DEBUG_FLAG is only meant for debug builds
+    if [[ "${ISSUE_DEBUG_BUILD}" != "true" ]] && [[ ! -z "${BACKEND_DEBUG_FLAG_OPTION}" ]]; then
+        echo "Error: cannot specify FILAMENT_BACKEND_DEBUG_FLAG in non-debug build"
+        exit 1
+    fi
+
     set -e
 }
 
@@ -776,7 +835,7 @@ function check_debug_release_build {
 
 pushd "$(dirname "$0")" > /dev/null
 
-while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
+while getopts ":hacCfgimp:q:uvWslwedtk:bx:S:X:" opt; do
     case ${opt} in
         h)
             print_help
@@ -796,6 +855,11 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
             PRINT_MATDBG_HELP=true
             MATDBG_OPTION="-DFILAMENT_ENABLE_MATDBG=ON, -DFILAMENT_BUILD_FILAMAT=ON"
             MATDBG_GRADLE_OPTION="-Pcom.google.android.filament.matdbg"
+            ;;
+        t)
+            PRINT_FGVIEWER_HELP=true
+            FGVIEWER_OPTION="-DFILAMENT_ENABLE_FGVIEWER=ON"
+            FGVIEWER_GRADLE_OPTION="-Pcom.google.android.filament.fgviewer"
             ;;
         f)
             ISSUE_CMAKE_ALWAYS=true
@@ -840,7 +904,7 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
                         echo "Platform must be one of [desktop|android|ios|webgl|all]"
                         echo ""
                         exit 1
-                    ;;    
+                    ;;
                 esac
             done
             ;;
@@ -891,13 +955,14 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
             echo "Disabling support for Vulkan in the core Filament library."
             echo "Consider using -c after changing this option to clear the Gradle cache."
             ;;
+        W)
+            WEBGPU_OPTION="-DFILAMENT_SUPPORTS_WEBGPU=ON"
+            WEBGPU_ANDROID_GRADLE_OPTION="-Pcom.google.android.filament.include-webgpu"
+            echo "Enable support for WebGPU(Experimental) in the core Filament library."
+            ;;
         s)
             IOS_BUILD_SIMULATOR=true
             echo "iOS simulator support enabled."
-            ;;
-        t)
-            SWIFTSHADER_OPTION="-DFILAMENT_USE_SWIFTSHADER=ON"
-            echo "SwiftShader support enabled."
             ;;
         e)
             EGL_ON_LINUX_OPTION="-DFILAMENT_SUPPORTS_EGL_ON_LINUX=ON -DFILAMENT_SKIP_SDL2=ON -DFILAMENT_SKIP_SAMPLES=ON"
@@ -917,6 +982,24 @@ while getopts ":hacCfgijmp:q:uvslwtedk:b" opt; do
             ;;
         b)  ASAN_UBSAN_OPTION="-DFILAMENT_ENABLE_ASAN_UBSAN=ON"
             echo "Enabled ASAN/UBSAN"
+            ;;
+        x)  BACKEND_DEBUG_FLAG_OPTION="-DFILAMENT_BACKEND_DEBUG_FLAG=${OPTARG}"
+            ;;
+        S)  case $(echo "${OPTARG}" | tr '[:upper:]' '[:lower:]') in
+                instanced)
+                    STEREOSCOPIC_OPTION="-DFILAMENT_SAMPLES_STEREO_TYPE=instanced"
+                    ;;
+                multiview)
+                    STEREOSCOPIC_OPTION="-DFILAMENT_SAMPLES_STEREO_TYPE=multiview"
+                    ;;
+                *)
+                    echo "Unknown stereoscopic type ${OPTARG}"
+                    echo "Type must be one of [instanced|multiview]"
+                    echo ""
+                    exit 1
+            esac
+            ;;
+        X)  OSMESA_OPTION="-DFILAMENT_OSMESA_PATH=${OPTARG}"
             ;;
         \?)
             echo "Invalid option: -${OPTARG}" >&2
@@ -986,4 +1069,8 @@ fi
 
 if [[ "${PRINT_MATDBG_HELP}" == "true" ]]; then
     print_matdbg_help
+fi
+
+if [[ "${PRINT_FGVIEWER_HELP}" == "true" ]]; then
+    print_fgviewer_help
 fi

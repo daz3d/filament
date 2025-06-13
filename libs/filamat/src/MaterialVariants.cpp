@@ -17,6 +17,13 @@
 #include "MaterialVariants.h"
 
 #include <private/filament/EngineEnums.h>
+#include <private/filament/Variant.h>
+
+#include <backend/DriverEnums.h>
+
+#include <filament/MaterialEnums.h>
+
+#include <vector>
 
 namespace filamat {
 
@@ -36,11 +43,13 @@ std::vector<Variant> determineSurfaceVariants(
         filteredVariant = filament::Variant::filterVariant(
                 filteredVariant, isLit || shadowMultiplier);
 
-        if (filament::Variant::filterVariantVertex(filteredVariant) == variant) {
+        auto const vertexVariant = filament::Variant::filterVariantVertex(filteredVariant);
+        if (vertexVariant == variant) {
             variants.emplace_back(variant, filament::backend::ShaderStage::VERTEX);
         }
 
-        if (filament::Variant::filterVariantFragment(filteredVariant) == variant) {
+        auto const fragmentVariant = filament::Variant::filterVariantFragment(filteredVariant);
+        if (fragmentVariant == variant) {
             variants.emplace_back(variant, filament::backend::ShaderStage::FRAGMENT);
         }
     }
@@ -62,7 +71,7 @@ std::vector<Variant> determinePostProcessVariants() {
 std::vector<Variant> determineComputeVariants() {
     // TODO: should we have variants for compute shaders?
     std::vector<Variant> variants;
-    filament::Variant variant(0);
+    filament::Variant const variant(0);
     variants.emplace_back(variant, filament::backend::ShaderStage::COMPUTE);
     return variants;
 }

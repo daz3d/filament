@@ -427,6 +427,16 @@ TEST_F(ValidateBitwise, OpBitFieldInsertNot32Vulkan) {
       HasSubstr("Expected 32-bit int type for Base operand: BitFieldInsert"));
 }
 
+TEST_F(ValidateBitwise, OpBitFieldInsertNot32Allow) {
+  const std::string body = R"(
+  %val1 = OpBitFieldInsert %u64 %u64_1 %u64_2 %s32_1 %s32_2
+  )";
+
+  CompileSuccessfully(GenerateShaderCode(body).c_str(), SPV_ENV_VULKAN_1_0);
+  spvValidatorOptionsSetAllowVulkan32BitBitwise(getValidatorOptions(), true);
+  ASSERT_EQ(SPV_SUCCESS, ValidateInstructions(SPV_ENV_VULKAN_1_0));
+}
+
 TEST_F(ValidateBitwise, OpBitFieldSExtractSuccess) {
   const std::string body = R"(
 %val1 = OpBitFieldSExtract %u64 %u64_1 %s32_1 %s32_2
@@ -607,10 +617,8 @@ TEST_F(ValidateBitwise, OpBitCountBaseNotInt) {
 %val1 = OpBitCount %u32 %f64_1
 )";
 
-  CompileSuccessfully(GenerateShaderCode(body).c_str(), SPV_ENV_VULKAN_1_0);
-  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions(SPV_ENV_VULKAN_1_0));
-  EXPECT_THAT(getDiagnosticString(),
-              AnyVUID("VUID-StandaloneSpirv-Base-04781"));
+  CompileSuccessfully(GenerateShaderCode(body).c_str());
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions());
   EXPECT_THAT(
       getDiagnosticString(),
       HasSubstr(
@@ -641,6 +649,32 @@ TEST_F(ValidateBitwise, OpBitCountNot32Vulkan) {
               AnyVUID("VUID-StandaloneSpirv-Base-04781"));
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("Expected 32-bit int type for Base operand: BitCount"));
+}
+
+TEST_F(ValidateBitwise, OpBitCountPointer) {
+  const std::string body = R"(
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main"
+OpExecutionMode %main LocalSize 1 1 1
+%void = OpTypeVoid
+%int = OpTypeInt 32 0
+%ptr_int = OpTypePointer Function %int
+%void_fn = OpTypeFunction %void
+%main = OpFunction %void None %void_fn
+%entry = OpLabel
+%var = OpVariable %ptr_int Function
+%count = OpBitCount %int %var
+OpReturn
+OpFunctionEnd
+)";
+
+  CompileSuccessfully(body);
+  ASSERT_EQ(SPV_ERROR_INVALID_DATA, ValidateInstructions());
+  EXPECT_THAT(
+      getDiagnosticString(),
+      HasSubstr(
+          "Expected int scalar or vector type for Base operand: BitCount"));
 }
 
 }  // namespace

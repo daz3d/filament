@@ -35,6 +35,10 @@ add_library(utils STATIC IMPORTED)
 set_target_properties(utils PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libutils.a)
 
+add_library(perfetto STATIC IMPORTED)
+set_target_properties(perfetto PROPERTIES IMPORTED_LOCATION
+        ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libperfetto.a)
+
 add_library(uberzlib STATIC IMPORTED)
 set_target_properties(uberzlib PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libuberzlib.a)
@@ -44,6 +48,7 @@ set_target_properties(uberarchive PROPERTIES IMPORTED_LOCATION
         ${FILAMENT_DIR}/lib/${ANDROID_ABI}/libuberarchive.a)
 
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libgltfio-jni.map")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 
 set(GLTFIO_SRCS
         ${GLTFIO_DIR}/include/gltfio/Animator.h
@@ -86,7 +91,10 @@ set(GLTFIO_SRCS
         ${GLTFIO_DIR}/src/Wireframe.cpp
         ${GLTFIO_DIR}/src/Wireframe.h
         ${GLTFIO_DIR}/src/downcast.h
+        ${GLTFIO_DIR}/src/extended/AssetLoaderExtended.cpp
         ${GLTFIO_DIR}/src/extended/AssetLoaderExtended.h
+        ${GLTFIO_DIR}/src/extended/ResourceLoaderExtended.cpp
+        ${GLTFIO_DIR}/src/extended/ResourceLoaderExtended.h
         ${GLTFIO_DIR}/src/extended/TangentsJobExtended.cpp
         ${GLTFIO_DIR}/src/extended/TangentsJobExtended.h
         ${GLTFIO_DIR}/src/extended/TangentSpaceMeshWrapper.cpp
@@ -116,8 +124,8 @@ set(GLTFIO_INCLUDE_DIRS
         ../../third_party/cgltf
         ../../third_party/meshoptimizer/src
         ../../third_party/robin-map
-        ../../third_party/hat-trie
         ../../third_party/stb
+        ../../third_party/perfetto
         ../../libs/utils/include
         ../../libs/ktxreader/include
 )
@@ -126,7 +134,7 @@ add_library(gltfio-jni SHARED ${GLTFIO_SRCS})
 target_include_directories(gltfio-jni PRIVATE ${GLTFIO_INCLUDE_DIRS})
 set_target_properties(gltfio-jni PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libgltfio-jni.symbols)
 set_target_properties(gltfio-jni PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libgltfio-jni.map)
-target_link_libraries(gltfio-jni filament-jni utils uberzlib log stb ktxreader basis_transcoder zstd uberarchive)
+target_link_libraries(gltfio-jni filament-jni utils perfetto uberzlib log stb ktxreader basis_transcoder zstd uberarchive)
 target_link_libraries(gltfio-jni dracodec meshoptimizer)
 target_compile_definitions(gltfio-jni PUBLIC GLTFIO_DRACO_SUPPORTED=1)
 target_include_directories(gltfio-jni PRIVATE ${DRACO_DIR}/src)

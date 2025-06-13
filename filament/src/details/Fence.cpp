@@ -20,8 +20,18 @@
 
 #include <filament/Fence.h>
 
+#include <backend/DriverEnums.h>
+
+#include <utils/compiler.h>
 #include <utils/Panic.h>
 #include <utils/debug.h>
+
+#include <condition_variable>
+#include <chrono>
+#include <memory>
+#include <mutex>
+
+#include <stdint.h>
 
 namespace filament {
 
@@ -30,7 +40,7 @@ using namespace backend;
 utils::Mutex FFence::sLock;
 utils::Condition FFence::sCondition;
 
-static const constexpr uint64_t PUMP_INTERVAL_MILLISECONDS = 1;
+static constexpr uint64_t PUMP_INTERVAL_MILLISECONDS = 1;
 
 using ms = std::chrono::milliseconds;
 using ns = std::chrono::nanoseconds;
@@ -52,7 +62,7 @@ void FFence::terminate(FEngine&) noexcept {
 }
 
 UTILS_NOINLINE
-FenceStatus FFence::waitAndDestroy(FFence* fence, Mode mode) noexcept {
+FenceStatus FFence::waitAndDestroy(FFence* fence, Mode const mode) noexcept {
     assert_invariant(fence);
     FenceStatus const status = fence->wait(mode, FENCE_WAIT_FOR_EVER);
     fence->mEngine.destroy(fence);
@@ -60,8 +70,9 @@ FenceStatus FFence::waitAndDestroy(FFence* fence, Mode mode) noexcept {
 }
 
 UTILS_NOINLINE
-FenceStatus FFence::wait(Mode mode, uint64_t timeout) noexcept {
-    ASSERT_PRECONDITION(UTILS_HAS_THREADING || timeout == 0, "Non-zero timeout requires threads.");
+FenceStatus FFence::wait(Mode const mode, uint64_t const timeout) {
+    FILAMENT_CHECK_PRECONDITION(UTILS_HAS_THREADING || timeout == 0)
+            << "Non-zero timeout requires threads.";
 
     FEngine& engine = mEngine;
 
@@ -101,27 +112,27 @@ FenceStatus FFence::wait(Mode mode, uint64_t timeout) noexcept {
 }
 
 UTILS_NOINLINE
-void FFence::FenceSignal::signal(State s) noexcept {
-    std::lock_guard<utils::Mutex> const lock(FFence::sLock);
+void FFence::FenceSignal::signal(State const s) noexcept {
+    std::lock_guard const lock(sLock);
     mState = s;
-    FFence::sCondition.notify_all();
+    sCondition.notify_all();
 }
 
 UTILS_NOINLINE
-Fence::FenceStatus FFence::FenceSignal::wait(uint64_t timeout) noexcept {
-    std::unique_lock<utils::Mutex> lock(FFence::sLock);
+Fence::FenceStatus FFence::FenceSignal::wait(uint64_t const timeout) noexcept {
+    std::unique_lock lock(sLock);
     while (mState == UNSIGNALED) {
-        if (mState == DESTROYED) {
-            return FenceStatus::ERROR;
-        }
         if (timeout == FENCE_WAIT_FOR_EVER) {
-            FFence::sCondition.wait(lock);
+            sCondition.wait(lock);
         } else {
             if (timeout == 0 ||
                     sCondition.wait_for(lock, ns(timeout)) == std::cv_status::timeout) {
                 return FenceStatus::TIMEOUT_EXPIRED;
             }
         }
+    }
+    if (mState == DESTROYED) {
+        return FenceStatus::ERROR;
     }
     return FenceStatus::CONDITION_SATISFIED;
 }

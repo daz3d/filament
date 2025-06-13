@@ -22,6 +22,7 @@
 #include "TangentsJob.h"
 #include "downcast.h"
 #include "Utility.h"
+#include "extended/ResourceLoaderExtended.h"
 
 #include <filament/BufferObject.h>
 #include <filament/Engine.h>
@@ -33,10 +34,11 @@
 
 #include <geometry/Transcoder.h>
 
+#include <private/utils/Tracing.h>
+
 #include <utils/compiler.h>
 #include <utils/JobSystem.h>
 #include <utils/Log.h>
-#include <utils/Systrace.h>
 #include <utils/Path.h>
 
 #include <cgltf.h>
@@ -229,8 +231,8 @@ inline void createSkins(cgltf_data const* gltf, bool normalize,
 inline void uploadBuffers(FFilamentAsset* asset, Engine& engine,
         UriDataCacheHandle uriDataCache) {
     // Upload VertexBuffer and IndexBuffer data to the GPU.
-    auto& slots = asset->mBufferSlots;
-    for (auto slot: slots) {
+    auto& slots = std::get<FFilamentAsset::ResourceInfo>(asset->mResourceInfo).mBufferSlots;
+    for (auto const& slot: slots) {
         const cgltf_accessor* accessor = slot.accessor;
         if (!accessor->buffer_view) {
             continue;
@@ -292,10 +294,13 @@ inline void uploadBuffers(FFilamentAsset* asset, Engine& engine,
             cgltf_accessor_unpack_floats(accessor, floatsData, floatsCount);
             if (accessor->type == cgltf_type_vec3) {
                 slot.morphTargetBuffer->setPositionsAt(engine, slot.bufferIndex,
-                        (const float3*) floatsData, slot.morphTargetBuffer->getVertexCount());
+                        (const float3*) floatsData,
+                        slot.morphTargetCount,
+                        slot.morphTargetOffset);
             } else {
                 slot.morphTargetBuffer->setPositionsAt(engine, slot.bufferIndex,
-                        (const float4*) data, slot.morphTargetBuffer->getVertexCount());
+                        (const float4*) data, slot.morphTargetBuffer->getVertexCount(),
+                        slot.morphTargetOffset);
             }
             free(floatsData);
             continue;
@@ -303,11 +308,13 @@ inline void uploadBuffers(FFilamentAsset* asset, Engine& engine,
 
         if (accessor->type == cgltf_type_vec3) {
             slot.morphTargetBuffer->setPositionsAt(engine, slot.bufferIndex, (const float3*) data,
-                    slot.morphTargetBuffer->getVertexCount());
+                    slot.morphTargetCount,
+                    slot.morphTargetOffset);
         } else {
             assert_invariant(accessor->type == cgltf_type_vec4);
             slot.morphTargetBuffer->setPositionsAt(engine, slot.bufferIndex, (const float4*) data,
-                    slot.morphTargetBuffer->getVertexCount());
+                    slot.morphTargetCount,
+                    slot.morphTargetOffset);
         }
     }
 }
@@ -359,8 +366,8 @@ void ResourceLoader::Impl::addResourceData(const char* uri, BufferDescriptor&& b
     // finalization begins. This marker provides a rough indicator of how long
     // the client is taking to load raw data blobs from storage.
     if (mUriDataCache->empty()) {
-        SYSTRACE_CONTEXT();
-        SYSTRACE_ASYNC_BEGIN("addResourceData", 1);
+        FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_GLTFIO);
+        FILAMENT_TRACING_ASYNC_BEGIN(FILAMENT_TRACING_CATEGORY_GLTFIO, "addResourceData", 1);
     }
     // NOTE: replacing an existing item in a robin map does not seem to behave as expected.
     // To work around this, we explicitly erase the old element if it already exists.
@@ -390,17 +397,24 @@ bool ResourceLoader::loadResources(FilamentAsset* asset) {
 
     // This is a workaround in case of using extended algo, please see description in
     // FFilamentAsset.h
+    if (fasset->isUsingExtendedAlgorithm()) {
+        pImpl->mUriDataCache =
+                std::get<FFilamentAsset::ResourceInfoExtended>(fasset->mResourceInfo).uriDataCache;
+    }
+
     return loadResources(fasset, false);
 }
 
 bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
-    SYSTRACE_CONTEXT();
-    SYSTRACE_ASYNC_END("addResourceData", 1);
+    FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_GLTFIO);
+    FILAMENT_TRACING_ASYNC_END(FILAMENT_TRACING_CATEGORY_GLTFIO, "addResourceData", 1);
 
     if (asset->mResourcesLoaded) {
         return false;
     }
     asset->mResourcesLoaded = true;
+
+    bool const isExtendedAlgo = asset->isUsingExtendedAlgorithm();
 
     // At this point, any entities that are created in the future (i.e. dynamically added instances)
     // will not need the progressive feature to be enabled. This simplifies the dependency graph and
@@ -414,30 +428,32 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
 
     cgltf_data const* gltf = asset->mSourceAsset->hierarchy;
 
-    utility::loadCgltfBuffers(gltf, pImpl->mGltfPath.c_str(), pImpl->mUriDataCache);
+    if (!isExtendedAlgo) {
+        utility::loadCgltfBuffers(gltf, pImpl->mGltfPath.c_str(), pImpl->mUriDataCache);
 
-    // Decompress Draco meshes early on, which allows us to exploit subsequent processing such
-    // as tangent generation.
-    DracoCache* dracoCache = &asset->mSourceAsset->dracoCache;
-    auto& primitives =  asset->mPrimitives;
-    // Go through every primitive and check if it has a Draco mesh.
-    for (auto& [prim, vertexBuffer]: primitives) {
-        if (!prim->has_draco_mesh_compression) {
-            continue;
+        // Decompress Draco meshes early on, which allows us to exploit subsequent processing such
+        // as tangent generation.
+        DracoCache* dracoCache = &asset->mSourceAsset->dracoCache;
+        auto& primitives = std::get<FFilamentAsset::ResourceInfo>(asset->mResourceInfo).mPrimitives;
+        // Go through every primitive and check if it has a Draco mesh.
+        for (auto& [prim, vertexBuffer]: primitives) {
+            if (!prim->has_draco_mesh_compression) {
+                continue;
+            }
+            utility::decodeDracoMeshes(gltf, prim, dracoCache);
         }
-        utility::decodeDracoMeshes(gltf, prim, dracoCache);
+        utility::decodeMeshoptCompression((cgltf_data*) gltf);
+
+        uploadBuffers(asset, *pImpl->mEngine, pImpl->mUriDataCache);
+
+        // Compute surface orientation quaternions if necessary. This is similar to sparse data in
+        // that we need to generate the contents of a GPU buffer by processing one or more CPU
+        // buffer(s).
+        pImpl->computeTangents(asset);
+    } else {
+        auto& slots = std::get<FFilamentAsset::ResourceInfoExtended>(asset->mResourceInfo).slots;
+        ResourceLoaderExtended::loadResources(slots, pImpl->mEngine, asset->mBufferObjects);
     }
-    utility::decodeMeshoptCompression((cgltf_data*) gltf);
-
-    uploadBuffers(asset, *pImpl->mEngine, pImpl->mUriDataCache);
-
-    // Compute surface orientation quaternions if necessary. This is similar to sparse data in
-    // that we need to generate the contents of a GPU buffer by processing one or more CPU
-    // buffer(s).
-    pImpl->computeTangents(asset);
-
-    asset->mBufferSlots.clear();
-    asset->mPrimitives.clear();
 
     createSkins(gltf, pImpl->mNormalizeSkinningWeights, asset->mSkins);
 
@@ -656,14 +672,16 @@ void ResourceLoader::Impl::createTextures(FFilamentAsset* asset, bool async) {
 }
 
 void ResourceLoader::Impl::computeTangents(FFilamentAsset* asset) {
-    SYSTRACE_CALL();
+    FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_GLTFIO);
 
     const cgltf_accessor* kGenerateTangents = &asset->mGenerateTangents;
     const cgltf_accessor* kGenerateNormals = &asset->mGenerateNormals;
 
     // Collect all TANGENT vertex attribute slots that need to be populated.
     tsl::robin_map<VertexBuffer*, uint8_t> baseTangents;
-    for (auto slot : asset->mBufferSlots) {
+    auto& slots = std::get<FFilamentAsset::ResourceInfo>(asset->mResourceInfo).mBufferSlots;
+    auto& primitives = std::get<FFilamentAsset::ResourceInfo>(asset->mResourceInfo).mPrimitives;
+    for (auto const& slot: slots) {
         if (slot.accessor != kGenerateTangents && slot.accessor != kGenerateNormals) {
             continue;
         }
@@ -673,13 +691,13 @@ void ResourceLoader::Impl::computeTangents(FFilamentAsset* asset) {
     // Create a job description for each triangle-based primitive.
     using Params = TangentsJob::Params;
     std::vector<Params> jobParams;
-    for (auto [prim, vb] : asset->mPrimitives) {
+    for (auto const& [prim, vb] : primitives) {
         if (UTILS_UNLIKELY(prim->type != cgltf_primitive_type_triangles)) {
             continue;
         }
         auto iter = baseTangents.find(vb);
         if (iter != baseTangents.end()) {
-            jobParams.emplace_back(Params {{ prim }, {vb, nullptr, iter->second }});
+            jobParams.emplace_back(Params {{ prim }, {vb, nullptr, 0, iter->second }});
         }
     }
 
@@ -692,7 +710,8 @@ void ResourceLoader::Impl::computeTangents(FFilamentAsset* asset) {
         }
         for (cgltf_size pindex = 0, pcount = mesh.primitives_count; pindex < pcount; ++pindex) {
             const cgltf_primitive& prim = mesh.primitives[pindex];
-            MorphTargetBuffer* tb = prims[pindex].targets;
+            MorphTargetBuffer* const tb = prims[pindex].morphTargetBuffer;
+            uint32_t const morphTargetOffset = prims[pindex].morphTargetOffset;
             for (cgltf_size tindex = 0, tcount = prim.targets_count; tindex < tcount; ++tindex) {
                 const cgltf_morph_target& target = prim.targets[tindex];
                 bool hasNormals = false;
@@ -704,13 +723,13 @@ void ResourceLoader::Impl::computeTangents(FFilamentAsset* asset) {
                     }
                     hasNormals = true;
                     jobParams.emplace_back(Params { { &prim, (int) tindex },
-                                                    { nullptr, tb, (uint8_t) pindex } });
+                                                    { nullptr, tb, morphTargetOffset, (uint8_t) pindex } });
                     break;
                 }
                 // Generate flat normals if necessary.
                 if (!hasNormals && prim.material && !prim.material->unlit) {
                     jobParams.emplace_back(Params { { &prim, (int) tindex },
-                                                    { nullptr, tb, (uint8_t) pindex } });
+                                                    { nullptr, tb, morphTargetOffset, (uint8_t) pindex } });
                 }
             }
         }
@@ -737,7 +756,7 @@ void ResourceLoader::Impl::computeTangents(FFilamentAsset* asset) {
         } else {
             assert_invariant(params.context.tb);
             params.context.tb->setTangentsAt(*mEngine, params.in.morphTargetIndex,
-                    params.out.results, params.out.vertexCount);
+                    params.out.results, params.out.vertexCount, params.context.offset);
             free(params.out.results);
         }
     }

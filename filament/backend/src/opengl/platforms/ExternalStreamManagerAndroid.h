@@ -21,13 +21,19 @@
 
 #include <backend/Platform.h>
 
+#include <utils/compiler.h>
+
 #if __has_include(<android/surface_texture.h>)
 #   include <android/surface_texture.h>
-#   include <android/surface_texture_jni.h>
 #else
 struct ASurfaceTexture;
 typedef struct ASurfaceTexture ASurfaceTexture;
 #endif
+
+#include <jni.h>
+
+#include <stdint.h>
+#include <math/mat3.h>
 
 namespace filament::backend {
 
@@ -58,6 +64,9 @@ public:
     // must be called on GLES context thread, updates the stream content
     void updateTexImage(Stream* stream, int64_t* timestamp) noexcept;
 
+    // must be called on GLES context thread, returns the transform matrix
+    math::mat3f getTransformMatrix(Stream* stream) noexcept;
+
 private:
     ExternalStreamManagerAndroid() noexcept;
     ~ExternalStreamManagerAndroid() noexcept;
@@ -70,7 +79,8 @@ private:
         ASurfaceTexture*    nSurfaceTexture = nullptr;
     };
 
-    inline JNIEnv* getEnvironment() noexcept {
+    // Must only be called from the backend thread
+    JNIEnv* getEnvironment() noexcept {
         JNIEnv* env = mJniEnv;
         if (UTILS_UNLIKELY(!env)) {
             return getEnvironmentSlow();
@@ -82,10 +92,10 @@ private:
 
     jmethodID mSurfaceTextureClass_updateTexImage{};
     jmethodID mSurfaceTextureClass_getTimestamp{};
+    jmethodID mSurfaceTextureClass_getTransformMatrix{};
     jmethodID mSurfaceTextureClass_attachToGLContext{};
     jmethodID mSurfaceTextureClass_detachFromGLContext{};
 };
-
 } // namespace filament::backend
 
 #endif //TNT_FILAMENT_BACKEND_OPENGL_ANDROID_EXTERNAL_STREAM_MANAGER_ANDROID_H

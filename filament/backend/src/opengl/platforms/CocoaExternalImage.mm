@@ -17,8 +17,10 @@
 #define COREVIDEO_SILENCE_GL_DEPRECATION
 
 #include "CocoaExternalImage.h"
-#include <utils/Panic.h>
 #include "../GLUtils.h"
+
+#include <utils/Panic.h>
+#include <utils/Log.h>
 
 namespace filament::backend {
 
@@ -111,8 +113,8 @@ bool CocoaExternalImage::set(CVPixelBufferRef image) noexcept {
     }
 
     OSType formatType = CVPixelBufferGetPixelFormatType(image);
-    ASSERT_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA,
-            "macOS external images must be 32BGRA format.");
+    FILAMENT_CHECK_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA)
+            << "macOS external images must be 32BGRA format.";
 
     // The pixel buffer must be locked whenever we do rendering with it. We'll unlock it before
     // releasing.

@@ -23,12 +23,13 @@
 #include <backend/platforms/OpenGLPlatform.h>
 #include <backend/DriverEnums.h>
 
+#include <private/utils/Tracing.h>
+
 #include <utils/compiler.h>
 #include <utils/debug.h>
 #include <utils/JobSystem.h>
 #include <utils/Log.h>
 #include <utils/Mutex.h>
-#include <utils/Systrace.h>
 
 #include <atomic>
 #include <memory>
@@ -143,21 +144,25 @@ void TimerQueryNativeFactory::endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQ
 
     driver.runEveryNowAndThen([&context = mContext, weak]() -> bool {
         auto state = weak.lock();
-        if (state) {
-            GLuint available = 0;
-            context.procs.getQueryObjectuiv(state->gl.query, GL_QUERY_RESULT_AVAILABLE, &available);
-            CHECK_GL_ERROR(utils::slog.e)
-            if (!available) {
-                // we need to try this one again later
-                return false;
-            }
-            GLuint64 elapsedTime = 0;
-            // we won't end-up here if we're on ES and don't have GL_EXT_disjoint_timer_query
-            context.procs.getQueryObjectui64v(state->gl.query, GL_QUERY_RESULT, &elapsedTime);
-            state->elapsed.store((int64_t)elapsedTime, std::memory_order_relaxed);
-        } else {
-            state->elapsed.store(int64_t(TimerQueryResult::ERROR), std::memory_order_relaxed);
+        if (!state) {
+            // The timer query state has been destroyed on the way, very likely due to the IBL
+            // prefilter context destruction. We still return true to get this element removed from
+            // the query list.
+            return true;
         }
+
+        GLuint available = 0;
+        context.procs.getQueryObjectuiv(state->gl.query, GL_QUERY_RESULT_AVAILABLE, &available);
+        CHECK_GL_ERROR(utils::slog.e)
+        if (!available) {
+            // we need to try this one again later
+            return false;
+        }
+        GLuint64 elapsedTime = 0;
+        // we won't end-up here if we're on ES and don't have GL_EXT_disjoint_timer_query
+        context.procs.getQueryObjectui64v(state->gl.query, GL_QUERY_RESULT, &elapsedTime);
+        state->elapsed.store((int64_t)elapsedTime, std::memory_order_relaxed);
+
         return true;
     });
 }
@@ -236,8 +241,8 @@ void TimerQueryFenceFactory::beginTimeElapsedQuery(GLTimerQuery* tq) {
         if (state) {
             platform.waitFence(fence, FENCE_WAIT_FOR_EVER);
             state->then = clock::now().time_since_epoch().count();
-            SYSTRACE_CONTEXT();
-            SYSTRACE_ASYNC_BEGIN("OpenGLTimerQueryFence", intptr_t(state.get()));
+            FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
+            FILAMENT_TRACING_ASYNC_BEGIN(FILAMENT_TRACING_CATEGORY_FILAMENT, "OpenGLTimerQueryFence", intptr_t(state.get()));
         }
         platform.destroyFence(fence);
     });
@@ -253,8 +258,8 @@ void TimerQueryFenceFactory::endTimeElapsedQuery(OpenGLDriver&, GLTimerQuery* tq
             platform.waitFence(fence, FENCE_WAIT_FOR_EVER);
             int64_t const now = clock::now().time_since_epoch().count();
             state->elapsed.store(now - state->then, std::memory_order_relaxed);
-            SYSTRACE_CONTEXT();
-            SYSTRACE_ASYNC_END("OpenGLTimerQueryFence", intptr_t(state.get()));
+            FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
+            FILAMENT_TRACING_ASYNC_END(FILAMENT_TRACING_CATEGORY_FILAMENT, "OpenGLTimerQueryFence", intptr_t(state.get()));
         }
         platform.destroyFence(fence);
     });

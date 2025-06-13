@@ -18,12 +18,12 @@
 #define TNT_FILAMENT_BACKEND_VULKANSWAPCHAIN_IMPL_H
 
 #include "vulkan/VulkanContext.h"
+#include "vulkan/VulkanConstants.h"
 
 #include <backend/platforms/VulkanPlatform.h>
 
 #include <bluevk/BlueVK.h>
 
-#include <tuple>
 #include <unordered_map>
 
 using namespace bluevk;
@@ -42,7 +42,7 @@ struct VulkanPlatformSwapChainImpl : public Platform::SwapChain {
     ~VulkanPlatformSwapChainImpl();
 
     // Non-virtual override-able method
-    VkResult acquire(VkSemaphore clientSignal, uint32_t* index) {
+    VkResult acquire(VulkanPlatform::ImageSyncData* outImageSyncData) {
         PANIC_PRECONDITION("Should not be called");
         return VK_ERROR_UNKNOWN;
     }
@@ -64,11 +64,16 @@ struct VulkanPlatformSwapChainImpl : public Platform::SwapChain {
         return false;
     }
 
+    // Non-virtual override-able method
+    bool isProtected() {
+        return false;
+    }
+
 protected:
     // Non-virtual override-able method
     void destroy();
 
-    VkImage createImage(VkExtent2D extent, VkFormat format);
+    VkImage createImage(VkExtent2D extent, VkFormat format, bool isProtected);
 
     VulkanContext const& mContext;
     VkDevice mDevice;
@@ -86,7 +91,7 @@ struct VulkanPlatformSurfaceSwapChain : public VulkanPlatformSwapChainImpl {
     ~VulkanPlatformSurfaceSwapChain();
 
     // Non-virtual override
-    VkResult acquire(VkSemaphore clientSignal, uint32_t* index);
+    VkResult acquire(VulkanPlatform::ImageSyncData* outImageSyncData);
 
     // Non-virtual override
     VkResult present(uint32_t index, VkSemaphore finished);
@@ -97,7 +102,16 @@ struct VulkanPlatformSurfaceSwapChain : public VulkanPlatformSwapChainImpl {
     // Non-virtual override-able method
     bool hasResized();
 
+    // Non-virtual override-able method
+    bool isProtected();
+
+protected:
+    // Non-virtual override-able method
+    void destroy();
+
 private:
+    static constexpr int IMAGE_READY_SEMAPHORE_COUNT = FVK_MAX_COMMAND_BUFFERS;
+    
     VkResult create();
 
     VkInstance mInstance;
@@ -106,9 +120,12 @@ private:
     VkSurfaceKHR mSurface;
     VkSwapchainKHR mSwapchain = VK_NULL_HANDLE;
     VkExtent2D const mFallbackExtent;
+    VkSemaphore mImageReady[IMAGE_READY_SEMAPHORE_COUNT];
+    uint32_t mCurrentImageReadyIndex;
 
     bool mUsesRGB = false;
     bool mHasStencil = false;
+    bool mIsProtected = false;
     bool mSuboptimal;
 };
 
@@ -121,7 +138,7 @@ struct VulkanPlatformHeadlessSwapChain : public VulkanPlatformSwapChainImpl {
     ~VulkanPlatformHeadlessSwapChain();
 
     // Non-virtual override
-    VkResult acquire(VkSemaphore clientSignal, uint32_t* index);
+    VkResult acquire(VulkanPlatform::ImageSyncData* outImageSyncData);
 
     // Non-virtual override
     VkResult present(uint32_t index, VkSemaphore finished);

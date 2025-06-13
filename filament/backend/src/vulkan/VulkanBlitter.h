@@ -17,18 +17,12 @@
 #ifndef TNT_FILAMENT_BACKEND_VULKANBLITTER_H
 #define TNT_FILAMENT_BACKEND_VULKANBLITTER_H
 
+#include "VulkanCommands.h"
 #include "VulkanContext.h"
 
 #include <utils/compiler.h>
 
 namespace filament::backend {
-
-class VulkanBuffer;
-class VulkanFboCache;
-class VulkanPipelineCache;
-class VulkanSamplerCache;
-
-struct VulkanProgram;
 
 class VulkanBlitter {
 public:

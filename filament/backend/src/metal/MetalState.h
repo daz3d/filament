@@ -20,22 +20,21 @@
 #include <Metal/Metal.h>
 
 #include "private/backend/Driver.h"
-#include "backend/Program.h"
 
 #include <backend/DriverEnums.h>
+#include <backend/Program.h>
 
+#include <utils/bitset.h>
 #include <utils/FixedCapacityVector.h>
+#include <utils/Hash.h>
+#include <utils/Invocable.h>
+
+#include <tsl/robin_map.h>
 
 #include <memory>
-#include <tsl/robin_map.h>
-#include <utils/Hash.h>
 
 namespace filament {
 namespace backend {
-
-inline bool operator==(const SamplerParams& lhs, const SamplerParams& rhs) {
-    return SamplerParams::EqualTo{}(lhs, rhs);
-}
 
 //   Rasterization Bindings
 //   ----------------------
@@ -43,20 +42,22 @@ inline bool operator==(const SamplerParams& lhs, const SamplerParams& rhs) {
 //   ------------------------------------------------------
 //   0           Zero buffer (placeholder vertex buffer)  1
 //   1-16        Filament vertex buffers                 16   limited by MAX_VERTEX_BUFFER_COUNT
-//   17-26       Uniform buffers                         10   Program::UNIFORM_BINDING_COUNT
-//   27-30       Sampler groups (argument buffers)        4   Program::SAMPLER_BINDING_COUNT
+//   20          Push constants                           1
+//   21-24       Descriptor sets (argument buffers)       4   limited by MAX_DESCRIPTOR_SET_COUNT
+//   25          Dynamic offset buffer                    1
 //
-//   Total                                               31
+//   Total                                               23
 
 //   Compute Bindings
 //   ----------------------
 //   Bindings    Buffer name                          Count
 //   ------------------------------------------------------
 //   0-3         SSBO buffers                             4   MAX_SSBO_COUNT
-//   17-26       Uniform buffers                         10   Program::UNIFORM_BINDING_COUNT
-//   27-30       Sampler groups (argument buffers)        4   Program::SAMPLER_BINDING_COUNT
+//   20          Push constants                           1
+//   21-24       Descriptor sets (argument buffers)       4   limited by MAX_DESCRIPTOR_SET_COUNT
+//   25          Dynamic offset buffer                    1
 //
-//   Total                                               18
+//   Total                                               10
 
 // The total number of vertex buffer "slots" that the Metal backend can bind.
 // + 1 to account for the zero buffer, a placeholder buffer used internally by the Metal backend.
@@ -69,10 +70,11 @@ static constexpr uint32_t ZERO_VERTEX_BUFFER_BINDING = 0u;
 
 static constexpr uint32_t USER_VERTEX_BUFFER_BINDING_START = 1u;
 
+
 // These constants must match the equivalent in CodeGenerator.h.
-static constexpr uint32_t UNIFORM_BUFFER_BINDING_START = 17u;
-static constexpr uint32_t SSBO_BINDING_START = 0u;
-static constexpr uint32_t SAMPLER_GROUP_BINDING_START = 27u;
+static constexpr uint32_t PUSH_CONSTANT_BUFFER_INDEX = 20u;
+static constexpr uint32_t DESCRIPTOR_SET_BINDING_START = 21u;
+static constexpr uint32_t DYNAMIC_OFFSET_BINDING = 25u;
 
 // Forward declarations necessary here, definitions at end of file.
 inline bool operator==(const MTLViewport& lhs, const MTLViewport& rhs);
@@ -161,6 +163,8 @@ template<typename StateType,
          typename HashFn = utils::hash::MurmurHashFn<StateType>>
 class StateCache {
 
+    using MapType = tsl::robin_map<StateType, MetalType, HashFn>;
+
 public:
 
     StateCache() = default;
@@ -169,6 +173,18 @@ public:
     StateCache& operator=(const StateCache&) = delete;
 
     void setDevice(id<MTLDevice> device) noexcept { mDevice = device; }
+
+    void removeIf(utils::Invocable<bool(const StateType&)> fn) noexcept {
+        typename MapType::const_iterator it = mStateCache.begin();
+        while (it != mStateCache.end()) {
+            const auto& [key, _] = *it;
+            if (UTILS_UNLIKELY(fn(key))) {
+                it = mStateCache.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
 
     MetalType getOrCreateState(const StateType& state) noexcept {
         assert_invariant(mDevice);
@@ -197,7 +213,7 @@ private:
     StateCreator creator;
     id<MTLDevice> mDevice = nil;
 
-    tsl::robin_map<StateType, MetalType, HashFn> mStateCache;
+    MapType mStateCache;
 
 };
 
@@ -205,9 +221,8 @@ private:
 // Different kinds of state, like pipeline state, uniform buffer state, etc., are passed to the
 // current Metal command encoder and persist throughout the lifetime of the encoder (a frame).
 // StateTracker is used to prevent calling redundant state change methods.
-template<typename StateType>
+template <typename StateType, typename StateEqual = std::equal_to<StateType>>
 class StateTracker {
-
 public:
 
     // Call to force the state to dirty at the beginning of each frame, as all state must be
@@ -215,7 +230,7 @@ public:
     void invalidate() noexcept { mStateDirty = true; }
 
     void updateState(const StateType& newState) noexcept {
-        if (mCurrentState != newState) {
+        if (!StateEqual()(mCurrentState, newState)) {
             mCurrentState = newState;
             mStateDirty = true;
         }
@@ -236,7 +251,6 @@ private:
 
     bool mStateDirty = true;
     StateType mCurrentState = {};
-
 };
 
 // Pipeline state
@@ -344,6 +358,16 @@ using DepthStencilStateTracker = StateTracker<DepthStencilState>;
 using DepthStencilStateCache = StateCache<DepthStencilState, id<MTLDepthStencilState>,
         DepthStateCreator>;
 
+struct MtlScissorRectEqual {
+    bool operator()(const MTLScissorRect& lhs, const MTLScissorRect& rhs) const {
+        return lhs.height == rhs.height &&
+            lhs.width == rhs.width &&
+            lhs.x == rhs.x &&
+            lhs.y == rhs.y;
+    }
+};
+using ScissorRectStateTracker = StateTracker<MTLScissorRect, MtlScissorRectEqual>;
+
 // Uniform buffers
 
 class MetalBufferObject;
@@ -380,18 +404,22 @@ using SamplerStateCache = StateCache<SamplerState, id<MTLSamplerState>, SamplerS
 
 using CullModeStateTracker = StateTracker<MTLCullMode>;
 using WindingStateTracker = StateTracker<MTLWinding>;
+using DepthClampStateTracker = StateTracker<MTLDepthClipMode>;
 
 // Argument encoder
 
 struct ArgumentEncoderState {
+    NSUInteger bufferCount;
     utils::FixedCapacityVector<MTLTextureType> textureTypes;
 
-    explicit ArgumentEncoderState(utils::FixedCapacityVector<MTLTextureType>&& types)
-        : textureTypes(std::move(types)) {}
+    explicit ArgumentEncoderState(
+            NSUInteger bufferCount, utils::FixedCapacityVector<MTLTextureType>&& types)
+        : bufferCount(bufferCount), textureTypes(std::move(types)) {}
 
     bool operator==(const ArgumentEncoderState& rhs) const noexcept {
         return std::equal(textureTypes.begin(), textureTypes.end(), rhs.textureTypes.begin(),
-                rhs.textureTypes.end());
+                       rhs.textureTypes.end()) &&
+                bufferCount == rhs.bufferCount;
     }
 
     bool operator!=(const ArgumentEncoderState& rhs) const noexcept {
@@ -412,6 +440,30 @@ struct ArgumentEncoderCreator {
 
 using ArgumentEncoderCache = StateCache<ArgumentEncoderState, id<MTLArgumentEncoder>,
         ArgumentEncoderCreator, ArgumentEncoderHasher>;
+
+template <NSUInteger N, ShaderStage stage>
+class MetalBufferBindings {
+public:
+    MetalBufferBindings() { invalidate(); }
+
+    void invalidate() {
+        mDirtyBuffers.reset();
+        mDirtyOffsets.reset();
+        for (int i = 0; i < int(N); i++) {
+            mDirtyBuffers.set(i, true);
+            mDirtyOffsets.set(i, true);
+        }
+    }
+    void setBuffer(const id<MTLBuffer> buffer, NSUInteger offset, NSUInteger index);
+    void bindBuffers(id<MTLCommandEncoder> encoder, NSUInteger startIndex);
+
+private:
+    static_assert(N <= 8);
+    std::array<__weak id<MTLBuffer>, N> mBuffers = { nil };
+    std::array<NSUInteger, N> mOffsets = { 0 };
+    utils::bitset8 mDirtyBuffers;
+    utils::bitset8 mDirtyOffsets;
+};
 
 } // namespace backend
 } // namespace filament

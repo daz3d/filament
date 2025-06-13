@@ -24,8 +24,10 @@
 
 #include <geometry/TangentSpaceMesh.h>
 #include <utils/Log.h>
+#include <utils/Panic.h>
 #include <utils/StructureOfArrays.h>
 
+#include <cstring>
 #include <memory>
 #include <unordered_map>
 

@@ -30,7 +30,7 @@ using namespace filament::backend;
 namespace filament {
 
 PassNode::PassNode(FrameGraph& fg) noexcept
-        : DependencyGraph::Node(fg.getGraph()),
+        : Node(fg.getGraph()),
           mFrameGraph(fg),
           devirtualize(fg.getArena()),
           destroy(fg.getArena()) {
@@ -44,7 +44,7 @@ utils::CString PassNode::graphvizifyEdgeColor() const noexcept {
     return utils::CString{"red"};
 }
 
-void PassNode::registerResource(FrameGraphHandle resourceHandle) noexcept {
+void PassNode::registerResource(FrameGraphHandle const resourceHandle) noexcept {
     VirtualResource* resource = mFrameGraph.getResource(resourceHandle);
     resource->neededByPass(this);
     mDeclaredHandles.insert(resourceHandle.index);
@@ -190,10 +190,10 @@ void RenderPassNode::resolve() noexcept {
                 minHeight = std::min(minHeight, h);
                 maxHeight = std::max(maxHeight, h);
             }
-            // additionally, clear implies discardStart
-            rt.backend.params.flags.discardStart |= (
-                    rt.descriptor.clearFlags & rt.targetBufferFlags);
         }
+        // additionally, clear implies discardStart
+        rt.backend.params.flags.discardStart |= (
+                rt.descriptor.clearFlags & rt.targetBufferFlags);
 
         assert_invariant(minWidth == maxWidth);
         assert_invariant(minHeight == maxHeight);
@@ -288,7 +288,7 @@ void RenderPassNode::RenderPassData::destroy(
     }
 }
 
-RenderPassNode::RenderPassData const* RenderPassNode::getRenderPassData(uint32_t id) const noexcept {
+RenderPassNode::RenderPassData const* RenderPassNode::getRenderPassData(uint32_t const id) const noexcept {
     return id < mRenderTargetData.size() ? &mRenderTargetData[id] : nullptr;
 }
 
