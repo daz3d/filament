@@ -539,10 +539,6 @@ private:
 
     int loop();
     void flushCommandBuffer(backend::CommandBufferQueue& commandBufferQueue) const;
-    
-public: //DAZ Add
-    backend::Driver& getDriver() const noexcept { return *mDriver; }
-private: //DAZ Add
 
     template<typename T>
     bool isValid(const T* ptr, ResourceList<T> const& list) const;
