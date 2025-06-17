@@ -79,11 +79,11 @@ namespace { // anonymous namespace for file-local functions and symbols
 
 // Total number of successful initializers of glslang: a refcount
 // Shared global; access should be protected by a global mutex/critical section.
-int NumberOfClients = 0;
+static int NumberOfClients = 0; //DAZ Add static
 
 // global initialization lock
 #ifndef DISABLE_THREAD_SUPPORT
-std::mutex init_lock;
+static std::mutex init_lock; //DAZ Add static
 #endif
 
 
