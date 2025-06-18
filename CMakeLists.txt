@@ -258,7 +258,10 @@ if (WIN32)
         option(FILAMENT_SHORTEN_MSVC_COMPILATION "Shorten compile-time in Visual Studio" ON)
     endif()
 
-    if (MSVC)
+    if (MSVC)		
+        # Daz Change: work around a crash when locking mutex
+        add_definitions(-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+		
         if (FILAMENT_SHORTEN_MSVC_COMPILATION)
             # enable multi-processor compilation
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
