@@ -27,6 +27,7 @@ template ResourceType getTypeEnum<VulkanProgram>() noexcept;
 template ResourceType getTypeEnum<VulkanRenderTarget>() noexcept;
 template ResourceType getTypeEnum<VulkanSwapChain>() noexcept;
 template ResourceType getTypeEnum<VulkanStage::Segment>() noexcept;
+template ResourceType getTypeEnum<VulkanStageImage::Resource>() noexcept;
 template ResourceType getTypeEnum<VulkanRenderPrimitive>() noexcept;
 template ResourceType getTypeEnum<VulkanTexture>() noexcept;
 template ResourceType getTypeEnum<VulkanTextureState>() noexcept;
@@ -37,6 +38,9 @@ template ResourceType getTypeEnum<VulkanDescriptorSetLayout>() noexcept;
 template ResourceType getTypeEnum<VulkanDescriptorSet>() noexcept;
 template ResourceType getTypeEnum<VulkanFence>() noexcept;
 template ResourceType getTypeEnum<VulkanBuffer>() noexcept;
+template ResourceType getTypeEnum<VulkanSync>() noexcept;
+template ResourceType getTypeEnum<VulkanMemoryMappedBuffer>() noexcept;
+template ResourceType getTypeEnum<VulkanSemaphore>() noexcept;
 
 template<typename D>
 ResourceType getTypeEnum() noexcept {
@@ -57,6 +61,9 @@ ResourceType getTypeEnum() noexcept {
     }
     if constexpr (std::is_same_v<D, VulkanStage::Segment>) {
         return ResourceType::STAGE_SEGMENT;
+    }
+    if constexpr (std::is_same_v<D, VulkanStageImage::Resource>) {
+        return ResourceType::STAGE_IMAGE;
     }
     if constexpr (std::is_same_v<D, VulkanRenderPrimitive>) {
         return ResourceType::RENDER_PRIMITIVE;
@@ -88,10 +95,19 @@ ResourceType getTypeEnum() noexcept {
     if constexpr (std::is_same_v<D, VulkanBuffer>) {
         return ResourceType::VULKAN_BUFFER;
     }
+    if constexpr (std::is_same_v<D, VulkanSync>) {
+        return ResourceType::SYNC;
+    }
+    if constexpr (std::is_same_v<D, VulkanMemoryMappedBuffer>) {
+        return ResourceType::MEMORY_MAPPED_BUFFER;
+    }
+    if constexpr (std::is_same_v<D, VulkanSemaphore>) {
+        return ResourceType::SEMAPHORE;
+    }
     return ResourceType::UNDEFINED_TYPE;
 }
 
-std::string getTypeStr(ResourceType type) {
+std::string_view getTypeStr(ResourceType type) {
     switch (type) {
         case ResourceType::BUFFER_OBJECT:
             return "BufferObject";
@@ -105,6 +121,8 @@ std::string getTypeStr(ResourceType type) {
             return "SwapChain";
         case ResourceType::STAGE_SEGMENT:
             return "Stage::Segment";
+        case ResourceType::STAGE_IMAGE:
+            return "Stage::Image";
         case ResourceType::RENDER_PRIMITIVE:
             return "RenderPrimitive";
         case ResourceType::TEXTURE:
@@ -125,6 +143,12 @@ std::string getTypeStr(ResourceType type) {
             return "Fence";
         case ResourceType::VULKAN_BUFFER:
             return "VulkanBuffer";
+        case ResourceType::SYNC:
+            return "Sync";
+        case ResourceType::MEMORY_MAPPED_BUFFER:
+            return "VulkanMemoryMappedBuffer";
+        case ResourceType::SEMAPHORE:
+            return "Semaphore";
         case ResourceType::UNDEFINED_TYPE:
             return "";
     }

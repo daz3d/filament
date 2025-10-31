@@ -239,8 +239,25 @@ public class Material {
         FRONT_AND_BACK
     }
 
+    /**
+     * Shader compiler priority queue
+     *
+     * On platforms which support parallel shader compilation, compilation requests will be
+     * processed in order of priority, then insertion order.
+     *
+     * See {@link #compile(CompilerPriorityQueue, int, Object, Runnable)}.
+     */
     public enum CompilerPriorityQueue {
+        /** We need this program NOW.
+         *
+         * When passed as an argument to {@link #compile(CompilerPriorityQueue, int, Object,
+         * Runnable)}, if the platform doesn't support parallel compilation, but does support
+         * amortized shader compilation, the given shader program will be synchronously compiled.
+         */
+        CRITICAL,
+        /** We will need this program soon. */
         HIGH,
+        /** We will need this program eventually. */
         LOW
     }
 
@@ -771,6 +788,21 @@ public class Material {
     }
 
     /**
+     * 
+     * Returns the name of the transform parameter associated with the given sampler parameter.
+     * In the case the parameter doesn't have a transform name field, it will return an empty string.
+     * 
+     * @param samplerName the name of the sampler parameter to query.
+     * 
+     * @see
+     * <a href="https://google.github.io/filament/Materials.html#materialdefinitions/materialblock/general:parameters">
+     * General: parameters</a>
+     */
+    public String getParameterTransformName(@NonNull String samplerName) {
+        return nGetParameterTransformName(getNativeObject(), samplerName);
+    }
+
+    /**
      * Sets the value of a bool parameter on this material's default instance.
      *
      * @param name the name of the material parameter
@@ -1094,4 +1126,5 @@ public class Material {
     private static native int nGetRequiredAttributes(long nativeMaterial);
 
     private static native boolean nHasParameter(long nativeMaterial, @NonNull String name);
+    private static native String nGetParameterTransformName(long nativeMaterial, @NonNull String samplerName);
 }

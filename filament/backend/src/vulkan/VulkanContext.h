@@ -106,6 +106,10 @@ public:
         return mPhysicalDeviceProperties.properties.vendorID;
     }
 
+    inline VkExternalFenceHandleTypeFlags getFenceExportFlags() const noexcept {
+        return mFenceExportFlags;
+    }
+
     inline bool isImageCubeArraySupported() const noexcept {
         return mPhysicalDeviceFeatures.features.imageCubeArray == VK_TRUE;
     }
@@ -146,6 +150,10 @@ public:
         return mIsUnifiedMemoryArchitecture;
     }
 
+    inline bool stagingBufferBypassEnabled() const noexcept {
+        return mStagingBufferBypassEnabled;
+    }
+
 private:
     VkPhysicalDeviceMemoryProperties mMemoryProperties = {};
     VkPhysicalDeviceProperties2 mPhysicalDeviceProperties = {
@@ -164,11 +172,15 @@ private:
         // non-conformant vulkan implementation).
         .imageView2DOn3DImage = VK_TRUE,
     };
+
+    VkExternalFenceHandleTypeFlags mFenceExportFlags = {};
+
     bool mDebugMarkersSupported = false;
     bool mDebugUtilsSupported = false;
     bool mLazilyAllocatedMemorySupported = false;
     bool mProtectedMemorySupported = false;
     bool mIsUnifiedMemoryArchitecture = false;
+    bool mStagingBufferBypassEnabled = false;
 
     fvkutils::VkFormatList mDepthStencilFormats;
     fvkutils::VkFormatList mBlittableDepthStencilFormats;

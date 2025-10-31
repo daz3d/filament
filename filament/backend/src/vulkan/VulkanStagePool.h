@@ -105,8 +105,11 @@ public:
     // Marks a region of the block as "in-use", and provides information about
     // the allocated region to the caller. Note: this assumes that numBytes
     // is aligned to the physical device's nonCoherentAtomSize.
+    // Takes the offset to use as the segment's start offset. It is assumed
+    // that this is greater than the segment's current offset, and it is
+    // undefined behavior if not.
     fvkmemory::resource_ptr<Segment> acquireSegment(fvkmemory::ResourceManager* resManager,
-            uint32_t numBytes);
+            uint32_t segmentOffset, uint32_t numBytes);
 
 private:
     const VmaAllocation mMemory;
@@ -123,13 +126,70 @@ private:
     std::unordered_map<uint32_t, Segment*> mSegments;
 };
 
-struct VulkanStageImage {
-    VkFormat format;
-    uint32_t width;
-    uint32_t height;
-    mutable uint64_t lastAccessed;
-    VmaAllocation memory;
-    VkImage image;
+class VulkanStageImage {
+  public:
+    class Resource : public fvkmemory::Resource {
+      public:
+        using RecycleFn = std::function<void(VulkanStageImage*)>;
+
+        Resource(VulkanStageImage* image, RecycleFn&& onRecycleFn)
+            : mImage(image),
+              mOnRecycleFn(onRecycleFn)
+        {}
+
+        ~Resource() {
+            if (mOnRecycleFn) {
+                mOnRecycleFn(mImage);
+            }
+        }
+
+        inline VkFormat format() const { return mImage->format(); }
+        inline uint32_t width() const { return mImage->width(); }
+        inline uint32_t height() const { return mImage->height(); }
+        inline VmaAllocation memory() const { return mImage->memory(); }
+        inline VkImage image() const { return mImage->image(); }
+
+      private:
+        Resource() = delete;
+        Resource(const Resource& other) = delete;
+        Resource(Resource&& other) = delete;
+        Resource& operator=(const Resource& other) = delete;
+        Resource& operator=(Resource&& other) = delete;
+
+        VulkanStageImage* const mImage;
+        RecycleFn mOnRecycleFn;
+    };
+
+    VulkanStageImage(VkFormat format, uint32_t width, uint32_t height, VmaAllocation memory,
+            VkImage image, uint64_t lastAccessed)
+        : mFormat(format),
+          mWidth(width),
+          mHeight(height),
+          mMemory(memory),
+          mImage(image),
+          mLastAccessed(lastAccessed) {}
+
+    VulkanStageImage(const VulkanStageImage& other) = delete;
+    VulkanStageImage(VulkanStageImage&& other) = delete;
+    VulkanStageImage& operator=(const VulkanStageImage& other) = delete;
+    VulkanStageImage& operator=(VulkanStageImage&& other) = delete;
+
+    inline VkFormat format() const { return mFormat; }
+    inline uint32_t width() const { return mWidth; }
+    inline uint32_t height() const { return mHeight; }
+    inline VmaAllocation memory() const { return mMemory; }
+    inline VkImage image() const { return mImage; }
+
+  private:
+    const VkFormat mFormat;
+    const uint32_t mWidth;
+    const uint32_t mHeight;
+    const VmaAllocation mMemory;
+    const VkImage mImage;
+
+    uint64_t mLastAccessed;
+    // Denote as a friend so that it can update mLastAccessed.
+    friend class VulkanStagePool;
 };
 
 // Manages a pool of stages, periodically releasing stages that have been unused for a while.
@@ -144,10 +204,13 @@ public:
     // buffers so that we have less objects around that we have to keep track
     // of.
     // This function is NOT thread-safe.
-    fvkmemory::resource_ptr<VulkanStage::Segment> acquireStage(uint32_t numBytes);
+    // numBytes - the number of bytes required by this segment.
+    // alignment - the multiple to align the buffer offset to
+    fvkmemory::resource_ptr<VulkanStage::Segment> acquireStage(uint32_t numBytes,
+            uint32_t alignment = 0);
 
     // Images have VK_IMAGE_LAYOUT_GENERAL and must not be transitioned to any other layout
-    VulkanStageImage const* acquireImage(PixelDataFormat format, PixelDataType type,
+    fvkmemory::resource_ptr<VulkanStageImage::Resource> acquireImage(PixelDataFormat format, PixelDataType type,
             uint32_t width, uint32_t height);
 
     // Evicts old unused stages and bumps the current frame number.
@@ -182,13 +245,12 @@ private:
     // unmapping memory, freeing the allocation, and deleting the VulkanStage
     // object. Note: takes an r-value because after this call, `stage` won't
     // exist.
-    void destroyStage(VulkanStage const*&& stage);
+    void destroyStage(VulkanStage const* stage);
 
     // Use an ordered multimap for quick (capacity => stage) lookups using lower_bound().
     std::multimap<uint32_t, VulkanStage*> mStages;
 
-    std::unordered_set<VulkanStageImage const*> mFreeImages;
-    std::vector<VulkanStageImage const*> mUsedImages;
+    std::unordered_set<VulkanStageImage*> mFreeImages;
 
     // Store the current "time" (really just a frame count) and LRU eviction parameters.
     uint64_t mCurrentFrame = 0;

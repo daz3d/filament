@@ -56,7 +56,6 @@ set(PRIVATE_HDRS
         src/MetalArgumentBuffer.h
         src/ShaderMinifier.h
         src/SpirvFixup.h
-        src/SpirvRemapWrapper.h
         src/sca/ASTHelpers.h
         src/sca/GLSLTools.h
         src/sca/builtinResource.h)
@@ -72,8 +71,7 @@ set(SRCS
         src/sca/GLSLTools.cpp
         src/GLSLPostProcessor.cpp
         src/ShaderMinifier.cpp
-        src/SpirvFixup.cpp
-        src/SpirvRemapWrapper.cpp)
+        src/SpirvFixup.cpp)
 
 # ==================================================================================================
 # Include and target definitions
@@ -148,7 +146,7 @@ install(DIRECTORY ${PUBLIC_HDR_DIR}/filamat DESTINATION include)
 
 # Need to install libtint for filamat on Android.
 # See libs/filamat/CMakeLists.txt and android/filamat-android/CMakeLists.txt.
-if (ANDROID)
+if (ANDROID AND FILAMENT_SUPPORTS_WEBGPU)
    target_link_libraries(${TARGET} libtint_combined)
 endif()
 
@@ -162,6 +160,7 @@ if (IS_HOST_PLATFORM)
             tests/test_filamat.cpp
             tests/test_argBufferFixup.cpp
             tests/test_clipDistanceFixup.cpp
+            tests/test_line_dictionary.cpp
             tests/test_includes.cpp)
 
     add_executable(${TARGET} ${SRCS})

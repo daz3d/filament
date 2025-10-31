@@ -82,8 +82,6 @@ RenderPassBuilder& RenderPassBuilder::customCommand(
 
 RenderPass RenderPassBuilder::build(FEngine const& engine, DriverApi& driver) const {
     assert_invariant(mRenderableSoa);
-    assert_invariant(mScissorViewport.width  <= std::numeric_limits<int32_t>::max());
-    assert_invariant(mScissorViewport.height <= std::numeric_limits<int32_t>::max());
     return RenderPass{ engine, driver, *this };
 }
 
@@ -107,8 +105,7 @@ void RenderPass::DescriptorSetHandleDeleter::operator()(
 RenderPass::RenderPass(FEngine const& engine, DriverApi& driver,
         RenderPassBuilder const& builder) noexcept
         : mRenderableSoa(*builder.mRenderableSoa),
-          mColorPassDescriptorSet(builder.mColorPassDescriptorSet),
-          mScissorViewport(builder.mScissorViewport) {
+          mColorPassDescriptorSet(builder.mColorPassDescriptorSet) {
 
     // compute the number of commands we need
     updateSummedPrimitiveCounts(
@@ -246,8 +243,7 @@ void RenderPass::appendCommands(FEngine const& engine,
     for (Command const* first = curr, *last = curr + commandCount ; first != last ; ++first) {
         if (UTILS_LIKELY((first->key & CUSTOM_MASK) == uint64_t(CustomCommand::PASS))) {
             auto ma = first->info.mi->getMaterial();
-            ma->prepareProgram(first->info.materialVariant,
-                    first->info.mi->getMutableSpecConstants());
+            ma->prepareProgram(first->info.materialVariant, CompilerPriorityQueue::CRITICAL);
         }
     }
 }
@@ -258,7 +254,7 @@ void RenderPass::appendCustomCommand(Command* commands,
 
     assert_invariant((uint64_t(order) << CUSTOM_ORDER_SHIFT) <=  CUSTOM_ORDER_MASK);
 
-    channel = std::min(channel, uint8_t(0x3));
+    channel = std::min(channel, uint8_t(CHANNEL_COUNT - 1));
 
     uint32_t const index = mCustomCommands.size();
     mCustomCommands.push_back(std::move(command));
@@ -674,8 +670,8 @@ RenderPass::Command* RenderPass::generateCommandsImpl(CommandTypeFlags extraFlag
 
         cmd.key |= makeField(soaVisibility[i].priority, PRIORITY_MASK, PRIORITY_SHIFT);
         cmd.key |= makeField(soaVisibility[i].channel, CHANNEL_MASK, CHANNEL_SHIFT);
-        cmd.info.index = i;
-        cmd.info.hasHybridInstancing = bool(soaInstanceInfo[i].handle);
+        cmd.info.index = soaInstanceInfo[i].buffer ? soaInstanceInfo[i].buffer->getIndex() : i;
+        cmd.info.hasHybridInstancing = bool(soaInstanceInfo[i].buffer);
         cmd.info.instanceCount = soaInstanceInfo[i].count;
         cmd.info.hasMorphing = bool(morphing.handle);
         cmd.info.hasSkinning = bool(skinning.handle);
@@ -697,7 +693,7 @@ RenderPass::Command* RenderPass::generateCommandsImpl(CommandTypeFlags extraFlag
         const bool shadowCaster = soaVisibility[i].castShadows & hasShadowing;
         const bool writeDepthForShadowCasters = depthContainsShadowCasters & shadowCaster;
 
-        const Slice<FRenderPrimitive>& primitives = soaPrimitives[i];
+        Slice<const FRenderPrimitive> primitives = soaPrimitives[i];
         /*
          * This is our hot loop. It's written to avoid branches.
          * When modifying this code, always ensure it stays efficient.
@@ -1071,7 +1067,8 @@ void RenderPass::Executor::execute(FEngine const& engine, DriverApi& driver,
                     // Each material has a per-material descriptor-set layout which encodes the
                     // material's parameters (ubo and samplers)
                     pipeline.pipelineLayout.setLayout[+DescriptorSetBindingPoints::PER_MATERIAL] =
-                            ma->getDescriptorSetLayout().getHandle();
+                            ma->getDescriptorSetLayout(info.materialVariant).getHandle();
+
 
                     if (UTILS_UNLIKELY(ma->getMaterialDomain() == MaterialDomain::POST_PROCESS)) {
                         // It is possible to get a post-process material here (even though it's
@@ -1095,12 +1092,11 @@ void RenderPass::Executor::execute(FEngine const& engine, DriverApi& driver,
                     }
 
                     // Each MaterialInstance has its own descriptor set. This binds it.
-                    mi->use(driver);
+                    mi->use(driver, info.materialVariant);
                 }
 
                 assert_invariant(ma);
-                pipeline.program = ma->getProgram(info.materialVariant,
-                        info.mi->getMutableSpecConstants());
+                pipeline.program = ma->getProgram(info.materialVariant);
 
                 if (UTILS_UNLIKELY(memcmp(&pipeline, &currentPipeline, sizeof(PipelineState)) != 0)) {
                     currentPipeline = pipeline;
@@ -1114,8 +1110,7 @@ void RenderPass::Executor::execute(FEngine const& engine, DriverApi& driver,
 
                 // Bind per-renderable uniform block. There is no need to attempt to skip this command
                 // because the backends already do this.
-                uint32_t const offset = info.hasHybridInstancing ?
-                                      0 : info.index * sizeof(PerRenderableData);
+                uint32_t const offset = info.index * sizeof(PerRenderableData);
 
                 assert_invariant(info.dsh);
                 driver.bindDescriptorSet(info.dsh,

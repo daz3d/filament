@@ -888,10 +888,10 @@ TEST_F(MaterialCompiler, ConstantParameter) {
         }
     )");
   filamat::MaterialBuilder builder;
-  builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
-  builder.constant("myIntConstant", ConstantType::INT, /*isMutable=*/false, 123);
-  builder.constant("myBoolConstant", ConstantType::BOOL, /*isMutable=*/false, true);
-  builder.constant<bool>("myOtherBoolConstant", ConstantType::BOOL, /*isMutable=*/false);
+  builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
+  builder.constant("myIntConstant", ConstantType::INT, 123);
+  builder.constant("myBoolConstant", ConstantType::BOOL, true);
+  builder.constant<bool>("myOtherBoolConstant", ConstantType::BOOL);
 
   builder.shading(filament::Shading::LIT);
   builder.material(shaderCode.c_str());
@@ -904,8 +904,8 @@ TEST_F(MaterialCompiler, ConstantParameterSameName) {
 #ifdef __EXCEPTIONS
     EXPECT_THROW({
         filamat::MaterialBuilder builder;
-        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
-        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 1.0f);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, 1.0f);
     }, utils::PostconditionPanic);
 #endif
 }
@@ -914,7 +914,7 @@ TEST_F(MaterialCompiler, ConstantParameterWrongType) {
 #ifdef __EXCEPTIONS
     EXPECT_THROW({
         filamat::MaterialBuilder builder;
-        builder.constant("myFloatConstant", ConstantType::FLOAT, /*isMutable=*/false, 10);
+        builder.constant("myFloatConstant", ConstantType::FLOAT, 10);
     }, utils::PostconditionPanic);
 #endif
 }
@@ -934,6 +934,43 @@ TEST_F(MaterialCompiler, FeatureLevel0Sampler2D) {
   builder.material(shaderCode.c_str());
   filamat::Package result = builder.build(*jobSystem);
   EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, SamplerTransformName) {
+  std::string shaderCode(R"(
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            vec3 uvw = materialParams.sampler_transform * vec3(0.0, 0.0, 0.0);
+            material.baseColor = texture2D(materialParams_sampler, uvw.xy);
+        }
+    )");
+  filamat::MaterialBuilder builder;
+  builder.parameter("sampler", SamplerType::SAMPLER_2D, SamplerFormat::FLOAT,
+          ParameterPrecision::DEFAULT, true, false, "sampler_transform");
+
+  builder.featureLevel(FeatureLevel::FEATURE_LEVEL_0);
+  builder.shading(filament::Shading::UNLIT);
+  builder.material(shaderCode.c_str());
+  filamat::Package result = builder.build(*jobSystem);
+  EXPECT_TRUE(result.isValid());
+}
+
+TEST_F(MaterialCompiler, SamplerMissingTransformName) {
+  std::string shaderCode(R"(
+        void material(inout MaterialInputs material) {
+            prepareMaterial(material);
+            vec3 uvw = materialParams.sampler_transform * vec3(0.0, 0.0, 0.0);
+            material.baseColor = texture2D(materialParams_sampler, uvw.xy);
+        }
+    )");
+  filamat::MaterialBuilder builder;
+  builder.parameter("sampler", SamplerType::SAMPLER_2D);
+
+  builder.featureLevel(FeatureLevel::FEATURE_LEVEL_0);
+  builder.shading(filament::Shading::UNLIT);
+  builder.material(shaderCode.c_str());
+  filamat::Package result = builder.build(*jobSystem);
+  EXPECT_FALSE(result.isValid());
 }
 
 TEST_F(MaterialCompiler, FeatureLevel0Ess3CallFails) {

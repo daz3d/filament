@@ -26,15 +26,14 @@
 #include <utils/FixedCapacityVector.h>
 #include <utils/Panic.h>
 #include <utils/debug.h>
-#include <utils/ostream.h>
 
 #include <webgpu/webgpu_cpp.h>
-#include <dawn/webgpu_cpp_print.h>
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -58,8 +57,7 @@ namespace {
  */
 [[nodiscard]] std::string replaceSpecConstants(std::string_view shaderLabel,
         std::string_view shaderSource,
-        std::unordered_map<uint32_t, std::variant<int32_t, float, bool>> const&
-                specConstants) {
+        utils::FixedCapacityVector<Program::SpecializationConstant> const& specConstants) {
     // this function is not expected to be called at all if no spec constants are to be replaced
     assert_invariant(!specConstants.empty());
     static constexpr std::string_view specConstantPrefix = "FILAMENT_SPEC_CONST_";
@@ -90,7 +88,7 @@ namespace {
                 std::string_view(sourceData + posAfterId, posEndOfStatement - posAfterId);
         size_t posOfEqual = statementSegment.find('=');
         if (posOfEqual == std::string::npos) {
-            // not an assignment statement, so stream to the end of the statement and continue...
+            // Not an assignment, so we don't need to replace it.
             processedShaderSource << std::string_view(sourceData + pos,
                     posEndOfStatement + 1 - pos);
             pos = posEndOfStatement + 1;
@@ -98,29 +96,30 @@ namespace {
         }
         posOfEqual += posAfterId; // position in original source overall, not just the segment
         int constantId = 0;
-        try {
-            constantId = std::stoi(idStr.data());
-        } catch (const std::invalid_argument& e) {
-            PANIC_POSTCONDITION("Invalid spec constant id '%s' in %s (not a valid integer?): %s",
-                    idStr.data(), shaderLabel.data(), e.what());
-        } catch (const std::out_of_range& e) {
-            PANIC_POSTCONDITION(
-                    "Invalid spec constant id '%s' in %s (not an integer? out of range?): %s",
-                    idStr.data(), shaderLabel.data(), e.what());
+        char* endPtr;
+        errno = 0; // Clear errno before the call
+
+        long tempConstantId = std::strtol(idStr.data(), &endPtr, 10);
+
+        // Check for conversion errors
+        if (endPtr == idStr.data() || *endPtr != '\0' || errno == ERANGE) {
+            // Parsing failed, or conversion was out of range for 'long'
+            // or the string contained non-numeric characters after the number.
+            PANIC_POSTCONDITION("Invalid spec constant id '%s' in %s (not a valid integer or out "
+                                "of range for 'long'?)",
+                    idStr.data(), shaderLabel.data());
+        } else {
+            // Check if the parsed long value fits into an int
+            if (tempConstantId > std::numeric_limits<int>::max() ||
+                    tempConstantId < std::numeric_limits<int>::min()) {
+                PANIC_POSTCONDITION(
+                        "Invalid spec constant id '%s' in %s (value out of range for 'int')",
+                        idStr.data(), shaderLabel.data());
+            } else {
+                constantId = static_cast<int>(tempConstantId);
+            }
         }
-        const auto newValueItr = specConstants.find(static_cast<uint32_t>(constantId));
-        if (newValueItr == specConstants.end()) {
-            // not going to override the constant,
-            // as the specConstants parameter doesn't specify it. So, we will keep the default
-            // already in the source text
-            // (stream to the end of the statement)...
-            processedShaderSource << std::string_view(sourceData + pos,
-                    posEndOfStatement + 1 - pos);
-            pos = posEndOfStatement + 1;
-            continue;
-        }
-        // need to override the constant...
-        const std::variant<int32_t, float, bool> newValue = newValueItr->second;
+        const std::variant<int32_t, float, bool> newValue = specConstants[constantId];
         // stream up to the equal sign...
         processedShaderSource << std::string_view(sourceData + pos, posOfEqual + 1 - pos);
         // stream the new value...
@@ -147,22 +146,20 @@ namespace {
  * @param program The "program" to compile/create the shader, which includes the shader source
  * @param stage The stage (e.g. vertex, fragment, etc.) to create the shader module
  * @param specConstants Override constants to apply when creating/compiling the shader module.
- * The expectation is that this is consistent with the program's spec constants, just in a map
- * format for quick access
  * @return the proper WebGPU shader module compiled/created from the input parameters. This might
  * wrap a null handle if the shader is not present (if the shader source is empty), such as
  * a missing fragment or compute shader.
  */
 [[nodiscard]] wgpu::ShaderModule createShaderModule(wgpu::Device const& device,
         Program const& program, const ShaderStage stage,
-        std::unordered_map<uint32_t, std::variant<int32_t, float, bool>> const& specConstants) {
+        utils::FixedCapacityVector<Program::SpecializationConstant> const& specConstants) {
     const char* const programName = program.getName().c_str_safe();
     std::array<utils::FixedCapacityVector<uint8_t>, Program::SHADER_TYPE_COUNT> const&
             shaderSource = program.getShadersSource();
     utils::FixedCapacityVector<uint8_t> const& sourceBytes =
             shaderSource[static_cast<size_t>(stage)];
     if (sourceBytes.empty()) {
-        return nullptr;// nothing to compile/create, the shader was not provided
+        return nullptr; // No shader source to compile.
     }
     std::stringstream labelStream;
     labelStream << programName << " " << filamentShaderStageToString(stage) << " shader";
@@ -180,7 +177,8 @@ namespace {
     };
     const wgpu::ShaderModule shaderModule = device.CreateShaderModule(&descriptor);
     const wgpu::Instance instance = device.GetAdapter().GetInstance();
-    // synchronously creates the shader module...
+
+    // Synchronously compile the shader module.
     const wgpu::WaitStatus waitResult = instance.WaitAny(
             shaderModule.GetCompilationInfo(wgpu::CallbackMode::WaitAnyOnly,
                     [&descriptor](auto const& status,
@@ -234,7 +232,7 @@ namespace {
                         FWGPU_LOGD << descriptor.label << " compiled successfully";
 #endif
                     }),
-            SHADER_COMPILATION_TIMEOUT_NANOSECONDS);
+            FILAMENT_WEBGPU_SHADER_COMPILATION_TIMEOUT_NANOSECONDS);
     switch (waitResult) {
         case wgpu::WaitStatus::Success:
             break;
@@ -250,27 +248,13 @@ namespace {
     return shaderModule;
 }
 
-/**
- * Convenience function to convert the array structure of constants to a map indexed by constant
- * id.
- * @param specConstants Original spec constant structure (immutable)
- * @param outConstantById Output map of spec constants indexed by constant id
- */
-void toMap(utils::FixedCapacityVector<Program::SpecializationConstant> const& specConstants,
-        std::unordered_map<uint32_t, std::variant<int32_t, float, bool>>& outConstantById) {
-    outConstantById.reserve(specConstants.size());
-    for (auto const& specConstant: specConstants) {
-        outConstantById.emplace(specConstant.id, specConstant.value);
-    }
-}
-
 }// namespace
 
 WebGPUProgram::WebGPUProgram(wgpu::Device const& device, Program const& program)
     : HwProgram{ program.getName() } {
-    std::unordered_map<uint32_t, std::variant<int32_t, float, bool>> specConstants;
-    toMap(program.getSpecializationConstants(), specConstants);
-    // TODO consider creating/compiling these shaders in parallel
+    utils::FixedCapacityVector<Program::SpecializationConstant> const& specConstants =
+            program.getSpecializationConstants();
+    // TODO: Consider creating/compiling these shaders in parallel.
     vertexShaderModule = createShaderModule(device, program, ShaderStage::VERTEX, specConstants);
     fragmentShaderModule =
             createShaderModule(device, program, ShaderStage::FRAGMENT, specConstants);

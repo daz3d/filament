@@ -19,12 +19,17 @@
 
 #include <filament/Renderer.h>
 
+#include <details/SwapChain.h>
+
+#include <backend/Platform.h>
+#include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 
 #include <private/backend/DriverApi.h>
 
 #include <utils/compiler.h>
 #include <utils/debug.h>
+#include <utils/AsyncJobQueue.h>
 #include <utils/FixedCapacityVector.h>
 
 #include <array>
@@ -49,16 +54,69 @@ struct FrameInfo {
 } // namespace details
 
 struct FrameInfoImpl : public details::FrameInfo {
+    using FrameTimestamps = backend::FrameTimestamps;
+    using CompositorTiming = backend::CompositorTiming;
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
-    uint32_t const frameId;
-    time_point beginFrame;           // main thread beginFrame time
-    time_point endFrame;             // main thread endFrame time
-    time_point backendBeginFrame;    // backend thread beginFrame time (makeCurrent time)
-    time_point backendEndFrame;      // backend thread endFrame time (present time)
-    std::atomic_bool ready{};        // true once backend thread has populated its data
-    explicit FrameInfoImpl(uint32_t const frameId) noexcept
-        : frameId(frameId) {
+    uint32_t frameId;
+    // main thread beginFrame time
+    time_point beginFrame{};
+    // main thread endFrame time
+    time_point endFrame{};
+    // backend thread beginFrame time (makeCurrent time)
+    time_point backendBeginFrame{};
+    // backend thread endFrame time (present time)
+    time_point backendEndFrame{};
+    // the frame is done rendering on the gpu
+    time_point gpuFrameComplete{};
+    // vsync time
+    time_point vsync{};
+    // Actual presentation time of this frame
+    FrameTimestamps::time_point_ns displayPresent{ FrameTimestamps::PENDING };
+    // deadline for queuing a frame [ns]
+    CompositorTiming::time_point_ns presentDeadline{ FrameTimestamps::INVALID };
+    // display refresh rate [ns]
+    CompositorTiming::duration_ns displayPresentInterval{ FrameTimestamps::INVALID };
+    // time between the start of composition and the expected present time [ns]
+    CompositorTiming::duration_ns compositionToPresentLatency{ FrameTimestamps::INVALID };
+    // the fence used for gpuFrameComplete
+    backend::FenceHandle fence{};
+    // true once backend thread has populated its data
+    std::atomic_bool ready{};
+    explicit FrameInfoImpl(uint32_t const id) noexcept
+        : frameId(id) {
+    }
+
+    ~FrameInfoImpl() noexcept {
+        assert_invariant(!fence);
+    }
+
+    FrameInfoImpl(FrameInfoImpl&& rhs) noexcept : 
+        details::FrameInfo(rhs),
+        frameId(rhs.frameId),
+        beginFrame(rhs.beginFrame),
+        endFrame(rhs.endFrame),
+        backendBeginFrame(rhs.backendBeginFrame),
+        backendEndFrame(rhs.backendEndFrame),
+        gpuFrameComplete(rhs.gpuFrameComplete),
+        vsync(rhs.vsync),
+        fence(rhs.fence),
+        ready(rhs.ready.load())
+    {
+    }
+
+    FrameInfoImpl& operator=(FrameInfoImpl&& rhs) noexcept {
+        details::FrameInfo::operator=(rhs);
+        frameId = rhs.frameId;
+        beginFrame = rhs.beginFrame;
+        endFrame = rhs.endFrame;
+        backendBeginFrame = rhs.backendBeginFrame;
+        backendEndFrame = rhs.backendEndFrame;
+        gpuFrameComplete = rhs.gpuFrameComplete;
+        vsync = rhs.vsync;
+        fence = rhs.fence;
+        ready.store(rhs.ready.load());
+        return *this;
     }
 };
 
@@ -69,11 +127,43 @@ public:
     using reference = value_type&;
     using const_reference = value_type const&;
 
-    size_t capacity() const {
+    CircularQueue() = default;
+
+    ~CircularQueue() {
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            for (size_t i = 0, c = mSize; i < c; ++i) {
+                size_t const index = (mFront + CAPACITY - i) % CAPACITY;
+                std::destroy_at(std::launder(reinterpret_cast<T*>(&mStorage[index])));
+            }
+        }
+    }
+
+    CircularQueue(const CircularQueue&) = delete;
+    CircularQueue& operator=(const CircularQueue&) = delete;
+
+    CircularQueue(CircularQueue&& other) noexcept {
+        for (size_t i = 0; i < other.mSize; i++) {
+            size_t const index = (other.mFront + CAPACITY - i) % CAPACITY;
+            new(&mStorage[index]) T(std::move(*std::launder(reinterpret_cast<T*>(&other.mStorage[index]))));
+        }
+        mFront = other.mFront;
+        mSize = other.mSize;
+        other.mSize = 0;
+    }
+
+    CircularQueue& operator=(CircularQueue&& other) noexcept {
+        if (this != &other) {
+            this->~CircularQueue();
+            new(this) CircularQueue(std::move(other));
+        }
+        return *this;
+    }
+
+    size_t capacity() const noexcept {
         return CAPACITY;
     }
 
-    size_t size() const {
+    size_t size() const noexcept {
         return mSize;
     }
 
@@ -84,7 +174,8 @@ public:
     void pop_back() noexcept {
         assert_invariant(!empty());
         --mSize;
-        std::destroy_at(&mStorage[(mFront - mSize) % CAPACITY]);
+        size_t const index = (mFront + CAPACITY - mSize) % CAPACITY;
+        std::destroy_at(std::launder(reinterpret_cast<T*>(&mStorage[index])));
     }
 
     void push_front(T const& v) noexcept {
@@ -130,12 +221,22 @@ public:
         return operator[](0);
     }
 
+    T const& back() const noexcept {
+        assert_invariant(!empty());
+        return operator[](size() - 1);
+    }
+
+    T& back() noexcept {
+        assert_invariant(!empty());
+        return operator[](size() - 1);
+    }
+
 private:
     using Storage = std::aligned_storage_t<sizeof(T), alignof(T)>;
     Storage mStorage[CAPACITY];
-    uint32_t mFront = 0;    // always index 0
+    uint32_t mFront = 0;
     uint32_t mSize = 0;
-    [[nodiscard]] inline uint32_t advance(uint32_t const v) noexcept {
+    [[nodiscard]] uint32_t advance(uint32_t const v) noexcept {
         return (v + 1) % CAPACITY;
     }
 };
@@ -155,10 +256,13 @@ public:
     explicit FrameInfoManager(backend::DriverApi& driver) noexcept;
 
     ~FrameInfoManager() noexcept;
-    void terminate(backend::DriverApi& driver) noexcept;
+
+    // The command queue must be empty before calling terminate()
+    void terminate(FEngine& engine) noexcept;
 
     // call this immediately after "make current"
-    void beginFrame(backend::DriverApi& driver, Config const& config, uint32_t frameId) noexcept;
+    void beginFrame(FSwapChain* swapChain, backend::DriverApi& driver,
+            Config const& config, uint32_t frameId, std::chrono::steady_clock::time_point vsync) noexcept;
 
     // call this immediately before "swap buffers"
     void endFrame(backend::DriverApi& driver) noexcept;
@@ -168,7 +272,9 @@ public:
         return pFront ? *pFront : details::FrameInfo{};
     }
 
-    utils::FixedCapacityVector<Renderer::FrameInfo> getFrameInfoHistory(size_t historySize) const noexcept;
+    void updateUserHistory(FSwapChain* swapChain, backend::DriverApi& driver);
+
+    utils::FixedCapacityVector<Renderer::FrameInfo> getFrameInfoHistory(size_t historySize) const;
 
 private:
     using FrameHistoryQueue = CircularQueue<FrameInfoImpl, MAX_FRAMETIME_HISTORY>;
@@ -177,11 +283,15 @@ private:
         backend::Handle<backend::HwTimerQuery> handle{};
         FrameInfoImpl* pInfo = nullptr;
     };
-    std::array<Query, POOL_COUNT> mQueries;
+    utils::FixedCapacityVector<Renderer::FrameInfo> mUserFrameHistory;
+    std::array<Query, POOL_COUNT> mQueries{};
     uint32_t mIndex = 0;                // index of current query
     uint32_t mLast = 0;                 // index of oldest query still active
     FrameInfoImpl* pFront = nullptr;    // the most recent slot with a valid frame time
-    FrameHistoryQueue mFrameTimeHistory;
+    FrameHistoryQueue mFrameTimeHistory{};
+    utils::AsyncJobQueue mJobQueue;
+    FSwapChain* mLastSeenSwapChain = nullptr;
+    bool const mHasTimerQueries = false;
 };
 
 

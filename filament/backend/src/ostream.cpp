@@ -95,11 +95,7 @@ io::ostream& operator<<(io::ostream& out, ElementType type) {
 }
 
 io::ostream& operator<<(io::ostream& out, BufferUsage usage) {
-    switch (usage) {
-        CASE(BufferUsage, STATIC)
-        CASE(BufferUsage, DYNAMIC)
-    }
-    return out;
+    return out << io::hex << uint32_t(usage) << io::dec;
 }
 
 io::ostream& operator<<(io::ostream& out, CullingMode mode) {
@@ -499,6 +495,7 @@ io::ostream& operator<<(io::ostream& out, ShaderStage shaderStage) {
 
 io::ostream& operator<<(io::ostream& out, CompilerPriorityQueue compilerPriorityQueue) {
     switch (compilerPriorityQueue) {
+        CASE(CompilerPriorityQueue, CRITICAL)
         CASE(CompilerPriorityQueue, HIGH)
         CASE(CompilerPriorityQueue, LOW)
     }

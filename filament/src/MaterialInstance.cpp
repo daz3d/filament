@@ -228,47 +228,8 @@ template UTILS_PUBLIC uint4 MaterialInstance::getParameter<uint4>      (const ch
 template UTILS_PUBLIC float2 MaterialInstance::getParameter<float2>      (const char* name, size_t nameLength) const;
 template UTILS_PUBLIC float3 MaterialInstance::getParameter<float3>      (const char* name, size_t nameLength) const;
 template UTILS_PUBLIC float4 MaterialInstance::getParameter<float4>      (const char* name, size_t nameLength) const;
+template UTILS_PUBLIC mat4f MaterialInstance::getParameter<mat4f>      (const char* name, size_t nameLength) const;
 template UTILS_PUBLIC mat3f MaterialInstance::getParameter<mat3f>      (const char* name, size_t nameLength) const;
-
-// ------------------------------------------------------------------------------------------------
-
-template<>
-inline void FMaterialInstance::setConstantImpl<bool>(std::string_view const name, bool const& value) {
-    std::optional<uint32_t> id = mMaterial->getMutableConstantId(name);
-    FILAMENT_CHECK_PRECONDITION(id.has_value()) << "No mutable constant with name " << name;
-    mConstants.set(*id, value);
-}
-
-template<typename T, typename>
-void MaterialInstance::setConstant(const char* name, size_t nameLength, T const& value) {
-    downcast(this)->setConstantImpl({ name, nameLength }, value);
-}
-
-// Explicit template instantiation of our supported types.
-//
-// Mutable spec constants will probably only ever allow bools, but it's nice to keep the API
-// forwards-compatible.
-template UTILS_PUBLIC void MaterialInstance::setConstant<bool>(const char* name, size_t nameLength, bool const& v);
-
-// ------------------------------------------------------------------------------------------------
-
-template<>
-inline bool FMaterialInstance::getConstantImpl<bool>(std::string_view const name) const {
-    std::optional<uint32_t> id = mMaterial->getMutableConstantId(name);
-    FILAMENT_CHECK_PRECONDITION(id.has_value()) << "No mutable constant with name " << name;
-    return mConstants[*id];
-}
-
-template<typename T, typename>
-T MaterialInstance::getConstant(const char* name, size_t nameLength) const {
-    return downcast(this)->getConstantImpl<T>({ name, nameLength });
-}
-
-// Explicit template instantiation of our supported types.
-//
-// Mutable spec constants will probably only ever allow bools, but it's nice to keep the API
-// forwards-compatible.
-template UTILS_PUBLIC bool MaterialInstance::getConstant<bool>(const char* name, size_t nameLength) const;
 
 // ------------------------------------------------------------------------------------------------
 

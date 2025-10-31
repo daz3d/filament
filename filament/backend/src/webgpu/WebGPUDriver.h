@@ -18,7 +18,14 @@
 #define TNT_FILAMENT_BACKEND_WEBGPUDRIVER_H
 
 #include "WebGPURenderTarget.h"
+#include "webgpu/WebGPUBlitter.h"
 #include "webgpu/WebGPUConstants.h"
+#include "webgpu/WebGPUMsaaTextureResolver.h"
+#include "webgpu/WebGPUPipelineCache.h"
+#include "webgpu/WebGPUPipelineLayoutCache.h"
+#include "webgpu/WebGPURenderPassMipmapGenerator.h"
+#include "webgpu/WebGPUQueueManager.h"
+#include "webgpu/utils/AsyncTaskCounter.h"
 #include <backend/platforms/WebGPUPlatform.h>
 
 #include "DriverBase.h"
@@ -27,9 +34,10 @@
 #include "private/backend/HandleAllocator.h"
 #include <backend/DriverEnums.h>
 
+#include <utils/FixedCapacityVector.h>
 #include <utils/compiler.h>
 
-#include <tsl/robin_map.h>
+#include "SpdMipmapGenerator/SpdMipmapGenerator.h"
 #include <webgpu/webgpu_cpp.h>
 
 #include <cstdint>
@@ -42,9 +50,13 @@
 namespace filament::backend {
 
 class WebGPUSwapChain;
+class WebGPUQueueManager;
 
 /**
- * WebGPU backend (driver) implementation
+ * Implements the private backend driver API for WebGPU specifically (that API is essentially
+ * expressed in private/backend/DriverAPI.inc)
+ *
+ * It manages all the WebGPU resources necessary to accomplish this.
  */
 class WebGPUDriver final : public DriverBase {
 public:
@@ -54,31 +66,35 @@ public:
     [[nodiscard]] static Driver* create(WebGPUPlatform& platform, const Platform::DriverConfig& driverConfig) noexcept;
 
 private:
-    explicit WebGPUDriver(WebGPUPlatform& platform, const Platform::DriverConfig& driverConfig) noexcept;
+    WebGPUDriver(WebGPUPlatform& platform, const Platform::DriverConfig& driverConfig) noexcept;
     [[nodiscard]] ShaderModel getShaderModel() const noexcept final;
-    [[nodiscard]] ShaderLanguage getShaderLanguage() const noexcept final;
+    [[nodiscard]] utils::FixedCapacityVector<ShaderLanguage> getShaderLanguages(
+            ShaderLanguage preferredLanguage) const noexcept final;
     [[nodiscard]] wgpu::Sampler makeSampler(SamplerParams const& params);
     [[nodiscard]] static wgpu::AddressMode fWrapModeToWAddressMode(const filament::backend::SamplerWrapMode& fUsage);
+    void setDebugTag(HandleBase::HandleId handleId, utils::ImmutableCString&& tag);
 
-    // the platform (e.g. OS) specific aspects of the WebGPU backend are strictly only
-    // handled in the WebGPUPlatform
+    // The platform (e.g. OS) specific aspects of the WebGPU backend are strictly only
+    // handled in the WebGPUPlatform.
     WebGPUPlatform& mPlatform;
     wgpu::Adapter mAdapter = nullptr;
     wgpu::Device mDevice = nullptr;
     wgpu::Limits mDeviceLimits = {};
-    wgpu::Queue mQueue = nullptr;
+    WebGPUQueueManager mQueueManager;
     void* mNativeWindow = nullptr;
     WebGPUSwapChain* mSwapChain = nullptr;
     uint64_t mNextFakeHandle = 1;
-    wgpu::CommandEncoder mCommandEncoder = nullptr;
-    std::vector<Handle<HwTexture>> mMipQueue;
     wgpu::TextureView mTextureView = nullptr;
     wgpu::RenderPassEncoder mRenderPassEncoder = nullptr;
-    wgpu::CommandBuffer mCommandBuffer = nullptr;
     WebGPURenderTarget* mDefaultRenderTarget = nullptr;
     WebGPURenderTarget* mCurrentRenderTarget = nullptr;
-
-    tsl::robin_map<uint32_t, wgpu::RenderPipeline> mPipelineMap;
+    WebGPUPipelineLayoutCache mPipelineLayoutCache;
+    WebGPUPipelineCache mPipelineCache;
+    WebGPURenderPassMipmapGenerator mRenderPassMipmapGenerator;
+    spd::MipmapGenerator mSpdComputePassMipmapGenerator;
+    WebGPUMsaaTextureResolver mMsaaTextureResolver{};
+    WebGPUBlitter mBlitter;
+    webgpuutils::AsyncTaskCounter mReadPixelMapsCounter{};
 
     struct DescriptorSetBindingInfo{
         wgpu::BindGroup bindGroup;
@@ -86,6 +102,7 @@ private:
         backend::DescriptorSetOffsetArray offsets;
     };
     std::array<DescriptorSetBindingInfo,MAX_DESCRIPTOR_SET_COUNT> mCurrentDescriptorSets;
+
     /*
      * Driver interface
      */
@@ -118,6 +135,11 @@ private:
     template<typename D, typename B, typename... ARGS>
     D* constructHandle(Handle<B>& handle, ARGS&&... args) noexcept {
         return mHandleAllocator.construct<D>(handle, std::forward<ARGS>(args)...);
+    }
+
+    template<typename D, typename B, typename... ARGS>
+    Handle<B> allocAndConstructHandle(ARGS&&... args) {
+        return mHandleAllocator.allocateAndConstruct<D>(std::forward<ARGS>(args)...);
     }
 
     template<typename D, typename B>

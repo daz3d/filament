@@ -19,7 +19,6 @@ set(RESOURCE_BINS)
 set(MATERIAL_SRCS
         materials/aiDefaultMat.mat
         materials/bakedColor.mat
-        materials/bakedColorWithMutableConstants.mat
         materials/bakedTexture.mat
         materials/aoPreview.mat
         materials/arrayTexture.mat
@@ -38,6 +37,7 @@ set(MATERIAL_SRCS
         materials/sandboxLitSolidRefractionSsr.mat
         materials/sandboxSpecGloss.mat
         materials/sandboxSubsurface.mat
+        materials/sandboxTransformName.mat
         materials/sandboxUnlit.mat
         materials/texturedLit.mat
 )
@@ -223,6 +223,8 @@ target_sources(gltf-demo-resources PRIVATE ${RESGEN_SOURCE})
 
 add_library(samples-common STATIC
     common/arguments.cpp
+    common/configuration.h
+    common/configuration.cpp
 )
 
 target_include_directories(samples-common PRIVATE
@@ -275,11 +277,12 @@ if (NOT ANDROID)
     add_demo(helloskinningbuffer)
     add_demo(helloskinningbuffer_morebones)
     add_demo(hellostereo)
+    add_demo(hybrid_instancing)
     add_demo(image_viewer)
     add_demo(lightbulb)
     add_demo(material_sandbox)
+    add_demo(materialinstancestress)
     add_demo(multiple_windows)
-    add_demo(mutable_constants)
     # Tint does not support setting gl_PointSize, disable the relevant sample if using WebGPU
     # https://github.com/gpuweb/gpuweb/issues/1190
     if (NOT FILAMENT_SUPPORTS_WEBGPU)
@@ -290,7 +293,6 @@ if (NOT ANDROID)
     add_demo(sample_full_pbr)
     add_demo(sample_normal_map)
     add_demo(shadowtest)
-    add_demo(simple_gltf_test)
     add_demo(skinningtest)
     add_demo(strobecolor)
     add_demo(suzanne)
@@ -305,11 +307,11 @@ if (NOT ANDROID)
     target_link_libraries(hellopbr PRIVATE filameshio suzanne-resources)
     target_link_libraries(hellostereo PRIVATE filameshio suzanne-resources)
     target_link_libraries(image_viewer PRIVATE viewer imageio)
+    target_link_libraries(materialinstancestress PRIVATE geometry filameshio suzanne-resources)
     target_link_libraries(multiple_windows PRIVATE filameshio suzanne-resources)
     target_link_libraries(rendertarget PRIVATE filameshio suzanne-resources)
     target_link_libraries(sample_cloth PRIVATE filameshio)
     target_link_libraries(sample_normal_map PRIVATE filameshio)
-    target_link_libraries(simple_gltf_test PRIVATE gltf-demo-resources uberarchive gltfio viewer)
     target_link_libraries(suzanne PRIVATE filameshio suzanne-resources)
 
     if (FILAMENT_DISABLE_MATOPT)

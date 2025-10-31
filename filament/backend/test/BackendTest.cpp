@@ -40,24 +40,31 @@ using namespace filament::math;
 
 using namespace image;
 #endif
+#include <iostream>
 
 namespace test {
 
 Backend BackendTest::sBackend = Backend::NOOP;
 OperatingSystem BackendTest::sOperatingSystem = OperatingSystem::OTHER;
 bool BackendTest::sIsMobilePlatform = false;
+int BackendTest::sArgc = 0;
+char** BackendTest::sArgv = nullptr;
 std::vector<std::string> BackendTest::sFailedImages;
 
-void BackendTest::init(Backend backend, OperatingSystem operatingSystem, bool isMobilePlatform) {
+void BackendTest::init(Backend backend, OperatingSystem operatingSystem, bool isMobilePlatform,
+        int argc, char** argv) {
     sBackend = backend;
     sOperatingSystem = operatingSystem;
     sIsMobilePlatform = isMobilePlatform;
+    sArgc = argc;
+    sArgv = argv;
 }
 
 BackendTest::BackendTest() : commandBufferQueue(CONFIG_MIN_COMMAND_BUFFERS_SIZE,
         CONFIG_COMMAND_BUFFERS_SIZE, /*mPaused=*/false) {
     initializeDriver();
     mImageExpectations.emplace(getDriverApi());
+    mCleanup = std::make_unique<Cleanup>(getDriverApi());
     NativeView nativeView = getNativeView();
     mScreenSize = {nativeView.width, nativeView.height};
 }
@@ -66,12 +73,15 @@ BackendTest::~BackendTest() {
     // Ensure all graphics commands and callbacks are finished.
     flushAndWait();
     mImageExpectations->evaluate();
-    // Note: Don't terminate the driver for OpenGL, as it wipes away the context and removes the buffer from the screen.
-    if (sBackend != Backend::OPENGL) {
-        driver->terminate();
-        delete driver;
-    }
 
+    // We need to clean up all the handles before the driver terminates. Note that this should
+    // happen before the above flushAndWait, which will complete readPixels.
+    mCleanup.reset();
+    // This flush and wait will execute all the destroy commands.
+    flushAndWait();
+
+    driver->terminate();
+    delete driver;
     recordFailedImages();
 }
 
@@ -101,12 +111,12 @@ void BackendTest::flushAndWait() {
     getDriver().purge();
 }
 
-Handle<HwSwapChain> BackendTest::createSwapChain() {
+Handle<HwSwapChain> BackendTest::createSwapChain(uint64_t flags) {
     const NativeView& view = getNativeView();
     if (!view.ptr) {
-        return getDriverApi().createSwapChainHeadless(view.width, view.height, 0);
+        return getDriverApi().createSwapChainHeadless(view.width, view.height, flags);
     }
-    return getDriverApi().createSwapChain(view.ptr, 0);
+    return getDriverApi().createSwapChain(view.ptr, flags);
 }
 
 PipelineState BackendTest::getColorWritePipelineState() {
@@ -160,6 +170,11 @@ void BackendTest::markImageAsFailure(std::string failedImageName) {
     sFailedImages.emplace_back(std::move(failedImageName));
 }
 
+std::filesystem::path BackendTest::binaryDirectory() {
+    assert(sArgc >= 1);
+    return std::filesystem::path(sArgv[0]).remove_filename().string();
+}
+
 void BackendTest::recordFailedImages() {
     if (!sFailedImages.empty()) {
         std::string failedImages;
@@ -187,8 +202,9 @@ public:
     }
 };
 
-void initTests(Backend backend, OperatingSystem operatingSystem, bool isMobile, int& argc, char* argv[]) {
-    BackendTest::init(backend, operatingSystem, isMobile);
+void initTests(Backend backend, OperatingSystem operatingSystem, bool isMobile, int& argc,
+        char* argv[]) {
+    BackendTest::init(backend, operatingSystem, isMobile, argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     ::testing::AddGlobalTestEnvironment(new Environment);
 }

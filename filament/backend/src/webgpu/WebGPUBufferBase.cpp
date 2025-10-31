@@ -33,12 +33,15 @@ namespace filament::backend {
 
 namespace {
 
+// Creates a wgpu::Buffer, ensuring its size is a multiple of FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS.
+// WebGPU's WriteBuffer requires the write size to be a multiple of 4. By ensuring the buffer
+// size is also a multiple of 4, we simplify the update logic.
 [[nodiscard]] wgpu::Buffer createBuffer(wgpu::Device const& device, const wgpu::BufferUsage usage,
         uint32_t size, const char* const label) {
     // Write size must be divisible by WEBGPU_BUFFER_SIZE_MODULUS (e.g. 4).
     // If the whole buffer is written to as is common, so must the buffer size.
-    size += (WEBGPU_BUFFER_SIZE_MODULUS - (size % WEBGPU_BUFFER_SIZE_MODULUS)) %
-            WEBGPU_BUFFER_SIZE_MODULUS;
+    size += (FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS - (size % FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS)) %
+            FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS;
     wgpu::BufferDescriptor descriptor{
         .label = label,
         .usage = usage,
@@ -55,6 +58,11 @@ WebGPUBufferBase::WebGPUBufferBase(wgpu::Device const& device, const wgpu::Buffe
         const uint32_t size, char const* const label)
     : mBuffer{ createBuffer(device, usage, size, label) } {}
 
+// Updates the GPU buffer with data from a BufferDescriptor.
+// WebGPU requires that the size of the data written to a buffer is a multiple of 4.
+// This function handles cases where the buffer descriptor's size is not a multiple of 4
+// by writing the bulk of the data first, and then copying the remaining bytes into a
+// padded temporary chunk which is then written to the buffer.
 void WebGPUBufferBase::updateGPUBuffer(BufferDescriptor const& bufferDescriptor,
         const uint32_t byteOffset, wgpu::Queue const& queue) {
     FILAMENT_CHECK_PRECONDITION(bufferDescriptor.buffer)
@@ -62,15 +70,15 @@ void WebGPUBufferBase::updateGPUBuffer(BufferDescriptor const& bufferDescriptor,
     FILAMENT_CHECK_PRECONDITION(bufferDescriptor.size + byteOffset <= mBuffer.GetSize())
             << "Attempting to copy " << bufferDescriptor.size << " bytes into a buffer of size "
             << mBuffer.GetSize() << " at offset " << byteOffset;
-    FILAMENT_CHECK_PRECONDITION(byteOffset % WEBGPU_BUFFER_SIZE_MODULUS == 0)
-            << "Byte offset must be a multiple of " << WEBGPU_BUFFER_SIZE_MODULUS << " but is "
-            << byteOffset;
+    FILAMENT_CHECK_PRECONDITION(byteOffset % FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS == 0)
+            << "Byte offset must be a multiple of " << FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS
+            << " but is " << byteOffset;
 
     // TODO: All buffer objects are created with CopyDst usage.
     // This may have some performance implications. That should be investigated later.
     assert_invariant(mBuffer.GetUsage() & wgpu::BufferUsage::CopyDst);
 
-    const size_t remainder = bufferDescriptor.size % WEBGPU_BUFFER_SIZE_MODULUS;
+    const size_t remainder = bufferDescriptor.size % FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS;
 
     // WriteBuffer is an async call. But cpu buffer data is already written to the staging
     // buffer on return from the WriteBuffer.
@@ -82,10 +90,11 @@ void WebGPUBufferBase::updateGPUBuffer(BufferDescriptor const& bufferDescriptor,
         memcpy(mRemainderChunk.data(), remainderStart, remainder);
         // Pad the remainder with zeros to ensure deterministic behavior, though GPU shouldn't
         // access this
-        std::memset(mRemainderChunk.data() + remainder, 0, WEBGPU_BUFFER_SIZE_MODULUS - remainder);
+        std::memset(mRemainderChunk.data() + remainder, 0,
+                FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS - remainder);
 
         queue.WriteBuffer(mBuffer, byteOffset + legalSize, &mRemainderChunk,
-                WEBGPU_BUFFER_SIZE_MODULUS);
+                FILAMENT_WEBGPU_BUFFER_SIZE_MODULUS);
     }
 }
 

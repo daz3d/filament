@@ -52,8 +52,8 @@ using namespace backend;
 struct OpenGLProgram::LazyInitializationData {
     Program::DescriptorSetInfo descriptorBindings;
     Program::BindingUniformsInfo bindingUniformInfo;
-    utils::FixedCapacityVector<Program::PushConstant> vertexPushConstants;
-    utils::FixedCapacityVector<Program::PushConstant> fragmentPushConstants;
+    FixedCapacityVector<Program::PushConstant> vertexPushConstants;
+    FixedCapacityVector<Program::PushConstant> fragmentPushConstants;
 };
 
 
@@ -121,7 +121,7 @@ void OpenGLProgram::initialize(OpenGLDriver& gld) {
  * checkProgramStatus() has been successfully called.
  */
 void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint program,
-        LazyInitializationData& lazyInitializationData) noexcept {
+        LazyInitializationData& lazyInitializationData) {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     // from the pipeline layout we compute a mapping from {set, binding} to {binding}
@@ -141,7 +141,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
     context.useProgram(program);
 
     UTILS_NOUNROLL
-    for (backend::descriptor_set_t set = 0; set < MAX_DESCRIPTOR_SET_COUNT; set++) {
+    for (descriptor_set_t set = 0; set < MAX_DESCRIPTOR_SET_COUNT; set++) {
         for (Program::Descriptor const& entry: lazyInitializationData.descriptorBindings[set]) {
             switch (entry.type) {
                 case DescriptorType::UNIFORM_BUFFER:
@@ -214,8 +214,8 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
                 case DescriptorType::INPUT_ATTACHMENT:
                     break;
             }
-            CHECK_GL_ERROR()
         }
+        CHECK_GL_ERROR()
     }
 
     if (context.isES2()) {

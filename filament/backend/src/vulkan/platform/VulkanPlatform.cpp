@@ -29,16 +29,6 @@
 #include <utils/Panic.h>
 #include <utils/PrivateImplementation-impl.h>
 
-#define SWAPCHAIN_RET_FUNC(func, handle, ...)                                                      \
-    if (mImpl->mSurfaceSwapChains.find(handle) != mImpl->mSurfaceSwapChains.end()) {               \
-        return static_cast<VulkanPlatformSurfaceSwapChain*>(handle)->func(__VA_ARGS__);            \
-    } else if (mImpl->mHeadlessSwapChains.find(handle) != mImpl->mHeadlessSwapChains.end()) {      \
-        return static_cast<VulkanPlatformHeadlessSwapChain*>(handle)->func(__VA_ARGS__);           \
-    } else {                                                                                       \
-        PANIC_PRECONDITION("Bad handle for swapchain");                                            \
-        return {};                                                                                 \
-    }
-
 using namespace utils;
 using namespace bluevk;
 
@@ -183,7 +173,6 @@ ExtensionSet getInstanceExtensions(ExtensionSet const& externallyRequiredExts = 
     ExtensionSet const TARGET_EXTS = {
         // Request all cross-platform extensions.
         VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 
         // Request these if available.
 #if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
@@ -202,7 +191,9 @@ ExtensionSet getInstanceExtensions(ExtensionSet const& externallyRequiredExts = 
             fvkutils::enumerate(vkEnumerateInstanceExtensionProperties,
                     static_cast<char const*>(nullptr) /* pLayerName */);
     for (auto const& extension: availableExts) {
-        utils::CString name { extension.extensionName };
+        // The cast is to force the non-literal constructor of CString, which assumes
+        // null-terminated strings.
+        utils::CString name{ (char const*) extension.extensionName };
 
         // To workaround an Adreno bug where the extension name could be of 0 length.
         if (name.size() == 0) {
@@ -236,9 +227,6 @@ ExtensionSet getDeviceExtensions(VkPhysicalDevice device) {
 #if defined(__APPLE__)
         VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
 #endif
-        VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-        VK_KHR_MAINTENANCE2_EXTENSION_NAME,
-        VK_KHR_MAINTENANCE3_EXTENSION_NAME,
         VK_KHR_MULTIVIEW_EXTENSION_NAME,
     };
     ExtensionSet exts;
@@ -247,7 +235,9 @@ ExtensionSet getDeviceExtensions(VkPhysicalDevice device) {
             = fvkutils::enumerate(vkEnumerateDeviceExtensionProperties, device,
                     static_cast<const char*>(nullptr) /* pLayerName */);
     for (auto const& extension: extensions) {
-        utils::CString name { extension.extensionName };
+        // The cast is to force the non-literal constructor of CString, which assumes
+        // null-terminated strings.
+        utils::CString name { (char const*) extension.extensionName };
 
         // To workaround an Adreno bug where the extension name could be of 0 length.
         if (name.size() == 0) {
@@ -685,26 +675,11 @@ struct VulkanPlatformPrivate {
     VkQueue mProtectedGraphicsQueue = VK_NULL_HANDLE;
     VulkanContext mContext = {};
 
-    // We use a map to both map a handle (i.e. SwapChainPtr) to the concrete type and also to
-    // store the actual swapchain struct, which is either backed-by-surface or headless.
-    std::unordered_set<SwapChainPtr> mSurfaceSwapChains;
-    std::unordered_set<SwapChainPtr> mHeadlessSwapChains;
-
     bool mSharedContext = false;
     bool mForceXCBSwapchain = false;
 };
 
 void VulkanPlatform::terminate() {
-    for (auto swapchain: mImpl->mHeadlessSwapChains) {
-        delete static_cast<VulkanPlatformHeadlessSwapChain*>(swapchain);
-    }
-    mImpl->mHeadlessSwapChains.clear();
-
-    for (auto swapchain: mImpl->mSurfaceSwapChains) {
-        delete static_cast<VulkanPlatformSurfaceSwapChain*>(swapchain);
-    }
-    mImpl->mSurfaceSwapChains.clear();
-
     if (!mImpl->mSharedContext) {
         vkDestroyDevice(mImpl->mDevice, VKALLOC);
         vkDestroyInstance(mImpl->mInstance, VKALLOC);
@@ -713,7 +688,7 @@ void VulkanPlatform::terminate() {
 
 // This is the main entry point for context creation.
 Driver* VulkanPlatform::createDriver(void* sharedContext,
-        Platform::DriverConfig const& driverConfig) noexcept {
+        Platform::DriverConfig const& driverConfig) {
     // Load Vulkan entry points.
     FILAMENT_CHECK_POSTCONDITION(bluevk::initialize()) << "BlueVK is unable to load entry points.";
 
@@ -740,7 +715,11 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
         mImpl->mSharedContext = true;
     }
 
-    VulkanContext context;
+    VulkanContext& context = mImpl->mContext;
+
+    // Pass along relevant driver config (feature flags)
+    context.mStagingBufferBypassEnabled = driverConfig.vulkanEnableStagingBufferBypass;
+
     ExtensionSet instExts;
     // If using a shared context, we do not assume any extensions.
     if (!mImpl->mSharedContext) {
@@ -787,12 +766,11 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
     VkPhysicalDeviceProtectedMemoryFeatures queryProtectedMemoryFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
     };
-    VkPhysicalDeviceProtectedMemoryProperties protectedMemoryProperties = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_PROPERTIES,
-    };
+    // Note that we're chaining a struct on the stack into a struct in context, which will then be
+    // passed to the driver. However, this should be ok since the use of
+    // queryProtectedMemoryFeatures is only in this function.
     chainStruct(&context.mPhysicalDeviceFeatures, &queryProtectedMemoryFeatures);
     chainStruct(&context.mPhysicalDeviceFeatures, &context.mPhysicalDeviceVk11Features);
-    chainStruct(&context.mPhysicalDeviceProperties, &protectedMemoryProperties);
 
     // Initialize the following fields: physicalDeviceProperties, memoryProperties,
     // physicalDeviceFeatures, graphicsQueueFamilyIndex.
@@ -831,6 +809,9 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
     if (driverConfig.stereoscopicType != StereoscopicType::INSTANCED) {
         context.mPhysicalDeviceFeatures.features.shaderClipDistance = VK_FALSE;
     }
+
+    // TODO: Add support of VK_KHR_global_priority with `driverConfig.gpuContextPriority`
+    // in VulkanPlatform::createDriver.
 
     ExtensionSet deviceExts;
     // If using a shared context, we do not assume any extensions.
@@ -914,15 +895,15 @@ Driver* VulkanPlatform::createDriver(void* sharedContext,
     context.mBlittableDepthStencilFormats =
             findBlittableDepthStencilFormats(mImpl->mPhysicalDevice);
 
+    context.mFenceExportFlags = getFenceExportFlags();
+
     assert_invariant(context.mDepthStencilFormats.size() > 0);
 
 #if FVK_ENABLED(FVK_DEBUG_VALIDATION)
     printDepthFormats(mImpl->mPhysicalDevice);
 #endif
 
-    // Keep a copy of context for swapchains.
-    mImpl->mContext = context;
-
+    // Note that `context` is an alias of mImpl->mContext.
     return VulkanDriver::create(this, context, driverConfig);
 }
 
@@ -934,38 +915,31 @@ VulkanPlatform::VulkanPlatform() = default;
 VulkanPlatform::~VulkanPlatform() = default;
 
 VulkanPlatform::SwapChainBundle VulkanPlatform::getSwapChainBundle(SwapChainPtr handle) {
-    SWAPCHAIN_RET_FUNC(getSwapChainBundle, handle, )
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->getSwapChainBundle();
 }
 
 VkResult VulkanPlatform::acquire(SwapChainPtr handle, ImageSyncData* outImageSyncData) {
-    SWAPCHAIN_RET_FUNC(acquire, handle, outImageSyncData)
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->acquire(outImageSyncData);
 }
 
-VkResult VulkanPlatform::present(SwapChainPtr handle, uint32_t index,
-        VkSemaphore finishedDrawing) {
-    SWAPCHAIN_RET_FUNC(present, handle, index, finishedDrawing)
+VkResult VulkanPlatform::present(SwapChainPtr handle, uint32_t index, VkSemaphore finishedDrawing) {
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->present(index, finishedDrawing);
 }
 
 bool VulkanPlatform::hasResized(SwapChainPtr handle) {
-    SWAPCHAIN_RET_FUNC(hasResized, handle, )
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->hasResized();
 }
 
 bool VulkanPlatform::isProtected(SwapChainPtr handle) {
-    SWAPCHAIN_RET_FUNC(isProtected, handle, )
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->isProtected();
 }
 
 VkResult VulkanPlatform::recreate(SwapChainPtr handle) {
-    SWAPCHAIN_RET_FUNC(recreate, handle, )
+    return static_cast<VulkanPlatformSwapChainBase*>(handle)->recreate();
 }
 
 void VulkanPlatform::destroy(SwapChainPtr handle) {
-    if (mImpl->mSurfaceSwapChains.erase(handle)) {
-        delete static_cast<VulkanPlatformSurfaceSwapChain*>(handle);
-    } else if (mImpl->mHeadlessSwapChains.erase(handle)) {
-        delete static_cast<VulkanPlatformHeadlessSwapChain*>(handle);
-    } else {
-        PANIC_PRECONDITION("Bad handle for swapchain");
-    }
+    delete static_cast<VulkanPlatformSwapChainBase*>(handle);
 }
 
 SwapChainPtr VulkanPlatform::createSwapChain(void* nativeWindow, uint64_t flags,
@@ -975,7 +949,6 @@ SwapChainPtr VulkanPlatform::createSwapChain(void* nativeWindow, uint64_t flags,
     if (headless) {
         VulkanPlatformHeadlessSwapChain* swapchain = new VulkanPlatformHeadlessSwapChain(
                 mImpl->mContext, mImpl->mDevice, mImpl->mGraphicsQueue, extent, flags);
-        mImpl->mHeadlessSwapChains.insert(swapchain);
         return swapchain;
     }
 
@@ -994,8 +967,18 @@ SwapChainPtr VulkanPlatform::createSwapChain(void* nativeWindow, uint64_t flags,
     VulkanPlatformSurfaceSwapChain* swapchain = new VulkanPlatformSurfaceSwapChain(mImpl->mContext,
             mImpl->mPhysicalDevice, mImpl->mDevice, mImpl->mGraphicsQueue, mImpl->mInstance,
             surface, fallbackExtent, flags);
-    mImpl->mSurfaceSwapChains.insert(swapchain);
     return swapchain;
+}
+
+Platform::Sync* VulkanPlatform::createSync(VkFence fence,
+        std::shared_ptr<VulkanCmdFence> fenceStatus) noexcept {
+    return new VulkanSync{.fence = fence, .fenceStatus = fenceStatus};
+}
+
+void VulkanPlatform::destroySync(Platform::Sync* sync) noexcept {
+    // Sync must be a VulkanSync*, since it was created by VulkanPlatform's
+    // createSync object.
+    delete sync;
 }
 
 VkInstance VulkanPlatform::getInstance() const noexcept {
@@ -1034,6 +1017,11 @@ VkQueue VulkanPlatform::getProtectedGraphicsQueue() const noexcept {
     return mImpl->mProtectedGraphicsQueue;
 }
 
+VkExternalFenceHandleTypeFlagBits VulkanPlatform::getFenceExportFlags() const noexcept {
+    // By default, fences should not be exportable.
+    return static_cast<VkExternalFenceHandleTypeFlagBits>(0);
+}
+
 ExtensionSet VulkanPlatform::getSwapchainInstanceExtensions() const {
     return getSwapchainInstanceExtensionsImpl();
 }
@@ -1042,6 +1030,5 @@ VulkanPlatform::SurfaceBundle VulkanPlatform::createVkSurfaceKHR(void* nativeWin
         VkInstance instance, uint64_t flags) const noexcept {
     return createVkSurfaceKHRImpl(nativeWindow, instance, flags);
 }
-#undef SWAPCHAIN_RET_FUNC
 
 }// namespace filament::backend

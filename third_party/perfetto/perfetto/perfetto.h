@@ -59,7 +59,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TP_LINENOISE() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TP_HTTPD() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TP_JSON() (1)
-#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TP_INSTRUMENTS() (1)
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TP_INSTRUMENTS() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_LOCAL_SYMBOLIZER() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_ZLIB() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_TRACED_PERF() (0)
@@ -69,6 +69,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_LLVM_DEMANGLE() (0)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_SYSTEM_CONSUMER() (1)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_THREAD_SAFETY_ANNOTATIONS() (0)
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_ENABLE_WINSCOPE() (1)
 
 // clang-format on
 #endif  // GEN_BUILD_CONFIG_PERFETTO_BUILD_FLAGS_H_
@@ -110,6 +111,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(__APPLE__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE() 1
@@ -125,9 +127,15 @@
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_MAC() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_IOS() 1
+#if defined(TARGET_OS_TV) && TARGET_OS_TV
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 1
+#else
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
+#endif
 #else
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_MAC() 1
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_IOS() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #endif
 #elif defined(__linux__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
@@ -141,6 +149,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(__QNXNTO__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() 1
@@ -153,6 +162,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 1
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(_WIN32)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() 0
@@ -165,6 +175,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(__EMSCRIPTEN__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() 0
@@ -177,6 +188,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(__Fuchsia__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE() 0
@@ -189,6 +201,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 1
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #elif defined(__native_client__)
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() 0
@@ -201,6 +214,7 @@
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_FUCHSIA() 0
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_NACL() 1
 #define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_QNX() 0
+#define PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_APPLE_TVOS() 0
 #else
 #error OS not supported (see build_config.h)
 #endif
@@ -290,11 +304,11 @@
 #include <stddef.h>
 
 #if defined(__GNUC__) || defined(__clang__)
-#define PERFETTO_LIKELY(_x) __builtin_expect(!!(_x), 1)
-#define PERFETTO_UNLIKELY(_x) __builtin_expect(!!(_x), 0)
+#define PERFETTO_LIKELY(...) __builtin_expect(!!(__VA_ARGS__), 1)
+#define PERFETTO_UNLIKELY(...) __builtin_expect(!!(__VA_ARGS__), 0)
 #else
-#define PERFETTO_LIKELY(_x) (_x)
-#define PERFETTO_UNLIKELY(_x) (_x)
+#define PERFETTO_LIKELY(...) (__VA_ARGS__)
+#define PERFETTO_UNLIKELY(...) (__VA_ARGS__)
 #endif
 
 // PERFETTO_STATIC_CAST(TYPE, VAL): avoids the -Wold-style-cast warning when
@@ -356,6 +370,18 @@
 #include <variant>
 
 // gen_amalgamated expanded: #include "perfetto/public/compiler.h"
+
+#if defined(_MSC_VER)
+#define PERFETTO_ASSUME(x) __assume(x)
+#elif defined(__clang__)
+#define PERFETTO_ASSUME(x) __builtin_assume(x)
+#else
+#define PERFETTO_ASSUME(x)     \
+  do {                         \
+    if (!(x))                  \
+      __builtin_unreachable(); \
+  } while (0)
+#endif
 
 // __has_attribute is supported only by clang and recent versions of GCC.
 // Add a layer to wrap the __has_attribute macro.
@@ -478,18 +504,6 @@ namespace perfetto::base {
 template <typename... T>
 inline void ignore_result(const T&...) {}
 
-// Given a std::variant and a type T, returns the index of the T in the variant.
-template <typename VariantType, typename T, size_t i = 0>
-constexpr size_t variant_index() {
-  static_assert(i < std::variant_size_v<VariantType>,
-                "Type not found in variant");
-  if constexpr (std::is_same_v<std::variant_alternative_t<i, VariantType>, T>) {
-    return i;
-  } else {
-    return variant_index<VariantType, T, i + 1>();
-  }
-}
-
 }  // namespace perfetto::base
 
 #endif  // INCLUDE_PERFETTO_BASE_COMPILER_H_
@@ -611,8 +625,18 @@ constexpr size_t variant_index() {
 // gen_amalgamated expanded: #include "perfetto/base/export.h"
 
 #if defined(__GNUC__) || defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+// Fix 'error: #pragma system_header ignored in main file' for clang in Google3.
+#pragma clang diagnostic ignored "-Wpragma-system-header-outside-header"
+#endif
+
 // Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #endif
 
 #if PERFETTO_BUILDFLAG(PERFETTO_FORCE_DCHECK_ON)
@@ -1100,7 +1124,7 @@ inline TimeSeconds GetWallTimeS() {
 }
 
 inline struct timespec ToPosixTimespec(TimeMillis time) {
-  struct timespec ts {};
+  struct timespec ts{};
   const long time_s = static_cast<long>(time.count() / 1000);
   ts.tv_sec = time_s;
   ts.tv_nsec = (static_cast<long>(time.count()) - time_s * 1000L) * 1000000L;
@@ -1130,7 +1154,7 @@ inline int64_t MkTime(int year, int month, int day, int h, int m, int s) {
   PERFETTO_DCHECK(year >= 1900);
   PERFETTO_DCHECK(month > 0 && month <= 12);
   PERFETTO_DCHECK(day > 0 && day <= 31);
-  struct tm tms {};
+  struct tm tms{};
   tms.tm_year = year - 1900;
   tms.tm_mon = month - 1;
   tms.tm_mday = day;
@@ -1189,7 +1213,8 @@ enum class BufferExhaustedPolicy {
   // available and wait for the tracing service to free one. Note that this
   // requires that messages the arbiter sends to the tracing service (from any
   // TraceWriter thread) will be received by it, even if all TraceWriter threads
-  // are stalled.
+  // are stalled. If no free SMB chunk becomes available after a few seconds,
+  // the process will be aborted.
   kStall,
 
   // SharedMemoryArbiterImpl::GetNewChunk() will return an invalid chunk if no
@@ -1198,8 +1223,16 @@ enum class BufferExhaustedPolicy {
   // succeeds again.
   kDrop,
 
-  // TODO(eseckler): Switch to kDrop by default and change the Android code to
-  // explicitly request kStall instead.
+  // SharedMemoryArbiterImpl::GetNewChunk() will stall if no free SMB chunk is
+  // available and wait for the tracing service to free one. Note that this
+  // requires that messages the arbiter sends to the tracing service (from any
+  // TraceWriter thread) will be received by it, even if all TraceWriter threads
+  // are stalled. If no free SMB chunk becomes available after a few seconds,
+  // SharedMemoryArbiterImpl::GetNewChunk() will return an invalid chunk and
+  // data will be lost.
+  kStallThenDrop,
+
+  // Deprecated alias. Do not use.
   kDefault = kStall
 };
 
@@ -2002,6 +2035,8 @@ class TraceConfig;
 class TraceStats;
 class TracingServiceCapabilities;
 class TracingServiceState;
+class InitRelayRequest;
+class InitRelayResponse;
 class SyncClockRequest;
 class SyncClockResponse;
 
@@ -2018,6 +2053,8 @@ using TraceStats = ::perfetto::protos::gen::TraceStats;
 using TracingServiceCapabilities =
     ::perfetto::protos::gen::TracingServiceCapabilities;
 using TracingServiceState = ::perfetto::protos::gen::TracingServiceState;
+using InitRelayRequest = ::perfetto::protos::gen::InitRelayRequest;
+using InitRelayResponse = ::perfetto::protos::gen::InitRelayResponse;
 using SyncClockRequest = ::perfetto::protos::gen::SyncClockRequest;
 using SyncClockResponse = ::perfetto::protos::gen::SyncClockResponse;
 
@@ -2235,6 +2272,7 @@ class ConsoleConfig;
 class ChromeConfig;
 class SystemInfoConfig;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 }  // namespace perfetto
@@ -2252,6 +2290,12 @@ enum DataSourceConfig_SessionInitiator : int {
   DataSourceConfig_SessionInitiator_SESSION_INITIATOR_UNSPECIFIED = 0,
   DataSourceConfig_SessionInitiator_SESSION_INITIATOR_TRUSTED_SYSTEM = 1,
 };
+enum DataSourceConfig_BufferExhaustedPolicy : int {
+  DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_UNSPECIFIED = 0,
+  DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_DROP = 1,
+  DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_STALL_THEN_ABORT = 2,
+  DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_STALL_THEN_DROP = 3,
+};
 
 class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessageObj {
  public:
@@ -2260,6 +2304,13 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   static constexpr auto SESSION_INITIATOR_TRUSTED_SYSTEM = DataSourceConfig_SessionInitiator_SESSION_INITIATOR_TRUSTED_SYSTEM;
   static constexpr auto SessionInitiator_MIN = DataSourceConfig_SessionInitiator_SESSION_INITIATOR_UNSPECIFIED;
   static constexpr auto SessionInitiator_MAX = DataSourceConfig_SessionInitiator_SESSION_INITIATOR_TRUSTED_SYSTEM;
+  using BufferExhaustedPolicy = DataSourceConfig_BufferExhaustedPolicy;
+  static constexpr auto BUFFER_EXHAUSTED_UNSPECIFIED = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_UNSPECIFIED;
+  static constexpr auto BUFFER_EXHAUSTED_DROP = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_DROP;
+  static constexpr auto BUFFER_EXHAUSTED_STALL_THEN_ABORT = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_STALL_THEN_ABORT;
+  static constexpr auto BUFFER_EXHAUSTED_STALL_THEN_DROP = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_STALL_THEN_DROP;
+  static constexpr auto BufferExhaustedPolicy_MIN = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_UNSPECIFIED;
+  static constexpr auto BufferExhaustedPolicy_MAX = DataSourceConfig_BufferExhaustedPolicy_BUFFER_EXHAUSTED_STALL_THEN_DROP;
   enum FieldNumbers {
     kNameFieldNumber = 1,
     kTargetBufferFieldNumber = 2,
@@ -2269,6 +2320,7 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
     kEnableExtraGuardrailsFieldNumber = 6,
     kSessionInitiatorFieldNumber = 8,
     kTracingSessionIdFieldNumber = 4,
+    kBufferExhaustedPolicyFieldNumber = 9,
     kFtraceConfigFieldNumber = 100,
     kInodeFileConfigFieldNumber = 102,
     kProcessStatsConfigFieldNumber = 103,
@@ -2287,6 +2339,7 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
     kAndroidSystemPropertyConfigFieldNumber = 118,
     kStatsdTracingConfigFieldNumber = 117,
     kSystemInfoConfigFieldNumber = 119,
+    kFrozenFtraceConfigFieldNumber = 136,
     kChromeConfigFieldNumber = 101,
     kV8ConfigFieldNumber = 127,
     kInterceptorConfigFieldNumber = 115,
@@ -2300,6 +2353,11 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
     kPixelModemConfigFieldNumber = 129,
     kWindowmanagerConfigFieldNumber = 130,
     kChromiumSystemMetricsFieldNumber = 131,
+    kKernelWakelocksConfigFieldNumber = 132,
+    kGpuRenderstagesConfigFieldNumber = 133,
+    kChromiumHistogramSamplesFieldNumber = 134,
+    kAppWakelocksConfigFieldNumber = 135,
+    kCpuPerUidConfigFieldNumber = 137,
     kLegacyConfigFieldNumber = 1000,
     kForTestingFieldNumber = 1001,
   };
@@ -2349,6 +2407,10 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   bool has_tracing_session_id() const { return _has_field_[4]; }
   uint64_t tracing_session_id() const { return tracing_session_id_; }
   void set_tracing_session_id(uint64_t value) { tracing_session_id_ = value; _has_field_.set(4); }
+
+  bool has_buffer_exhausted_policy() const { return _has_field_[9]; }
+  DataSourceConfig_BufferExhaustedPolicy buffer_exhausted_policy() const { return buffer_exhausted_policy_; }
+  void set_buffer_exhausted_policy(DataSourceConfig_BufferExhaustedPolicy value) { buffer_exhausted_policy_ = value; _has_field_.set(9); }
 
   const std::string& ftrace_config_raw() const { return ftrace_config_; }
   void set_ftrace_config_raw(const std::string& raw) { ftrace_config_ = raw; _has_field_.set(100); }
@@ -2405,6 +2467,9 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   const SystemInfoConfig& system_info_config() const { return *system_info_config_; }
   SystemInfoConfig* mutable_system_info_config() { _has_field_.set(119); return system_info_config_.get(); }
 
+  const std::string& frozen_ftrace_config_raw() const { return frozen_ftrace_config_; }
+  void set_frozen_ftrace_config_raw(const std::string& raw) { frozen_ftrace_config_ = raw; _has_field_.set(136); }
+
   bool has_chrome_config() const { return _has_field_[101]; }
   const ChromeConfig& chrome_config() const { return *chrome_config_; }
   ChromeConfig* mutable_chrome_config() { _has_field_.set(101); return chrome_config_.get(); }
@@ -2446,6 +2511,21 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   const std::string& chromium_system_metrics_raw() const { return chromium_system_metrics_; }
   void set_chromium_system_metrics_raw(const std::string& raw) { chromium_system_metrics_ = raw; _has_field_.set(131); }
 
+  const std::string& kernel_wakelocks_config_raw() const { return kernel_wakelocks_config_; }
+  void set_kernel_wakelocks_config_raw(const std::string& raw) { kernel_wakelocks_config_ = raw; _has_field_.set(132); }
+
+  const std::string& gpu_renderstages_config_raw() const { return gpu_renderstages_config_; }
+  void set_gpu_renderstages_config_raw(const std::string& raw) { gpu_renderstages_config_ = raw; _has_field_.set(133); }
+
+  const std::string& chromium_histogram_samples_raw() const { return chromium_histogram_samples_; }
+  void set_chromium_histogram_samples_raw(const std::string& raw) { chromium_histogram_samples_ = raw; _has_field_.set(134); }
+
+  const std::string& app_wakelocks_config_raw() const { return app_wakelocks_config_; }
+  void set_app_wakelocks_config_raw(const std::string& raw) { app_wakelocks_config_ = raw; _has_field_.set(135); }
+
+  const std::string& cpu_per_uid_config_raw() const { return cpu_per_uid_config_; }
+  void set_cpu_per_uid_config_raw(const std::string& raw) { cpu_per_uid_config_ = raw; _has_field_.set(137); }
+
   bool has_legacy_config() const { return _has_field_[1000]; }
   const std::string& legacy_config() const { return legacy_config_; }
   void set_legacy_config(const std::string& value) { legacy_config_ = value; _has_field_.set(1000); }
@@ -2463,6 +2543,7 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   bool enable_extra_guardrails_{};
   DataSourceConfig_SessionInitiator session_initiator_{};
   uint64_t tracing_session_id_{};
+  DataSourceConfig_BufferExhaustedPolicy buffer_exhausted_policy_{};
   std::string ftrace_config_;  // [lazy=true]
   std::string inode_file_config_;  // [lazy=true]
   std::string process_stats_config_;  // [lazy=true]
@@ -2481,6 +2562,7 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   std::string android_system_property_config_;  // [lazy=true]
   std::string statsd_tracing_config_;  // [lazy=true]
   ::protozero::CopyablePtr<SystemInfoConfig> system_info_config_;
+  std::string frozen_ftrace_config_;  // [lazy=true]
   ::protozero::CopyablePtr<ChromeConfig> chrome_config_;
   std::string v8_config_;  // [lazy=true]
   ::protozero::CopyablePtr<InterceptorConfig> interceptor_config_;
@@ -2494,6 +2576,11 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
   std::string pixel_modem_config_;  // [lazy=true]
   std::string windowmanager_config_;  // [lazy=true]
   std::string chromium_system_metrics_;  // [lazy=true]
+  std::string kernel_wakelocks_config_;  // [lazy=true]
+  std::string gpu_renderstages_config_;  // [lazy=true]
+  std::string chromium_histogram_samples_;  // [lazy=true]
+  std::string app_wakelocks_config_;  // [lazy=true]
+  std::string cpu_per_uid_config_;  // [lazy=true]
   std::string legacy_config_{};
   ::protozero::CopyablePtr<TestConfig> for_testing_;
 
@@ -2532,9 +2619,9 @@ class PERFETTO_EXPORT_COMPONENT DataSourceConfig : public ::protozero::CppMessag
 // using ::perfetto::Foo = ::perfetto::protos::gen::Foo.
 // See comments in forward_decls.h for the historical reasons of this
 // indirection layer.
-// gen_amalgamated expanded: #include "perfetto/tracing/core/forward_decls.h"
+// gen_amalgamated expanded: #include "perfetto/tracing/core/forward_decls.h"  // IWYU pragma: export
 
-// gen_amalgamated expanded: #include "protos/perfetto/config/data_source_config.gen.h"
+// gen_amalgamated expanded: #include "protos/perfetto/config/data_source_config.gen.h"  // IWYU pragma: export
 
 #endif  // INCLUDE_PERFETTO_TRACING_CORE_DATA_SOURCE_CONFIG_H_
 // gen_amalgamated begin header: include/perfetto/tracing/trace_writer_base.h
@@ -3178,6 +3265,7 @@ class MessageHandle : public MessageHandleBase {
 #ifndef INCLUDE_PERFETTO_TRACING_TRACE_WRITER_BASE_H_
 #define INCLUDE_PERFETTO_TRACING_TRACE_WRITER_BASE_H_
 
+#include <cstdint>
 // gen_amalgamated expanded: #include "perfetto/base/export.h"
 // gen_amalgamated expanded: #include "perfetto/protozero/message_handle.h"
 
@@ -3245,6 +3333,14 @@ class PERFETTO_EXPORT_COMPONENT TraceWriterBase {
 
   // Bytes written since creation. Not reset when new chunks are acquired.
   virtual uint64_t written() const = 0;
+
+  // Number of times the trace writer entered a mode in which it started
+  // dropping data.
+  //
+  // This does not necessarily correspond to the number of packets/chunks
+  // dropped, as multiple such packets/chunks can be dropped on entry into a
+  // drop data mode.
+  virtual uint64_t drop_count() const = 0;
 };
 
 }  // namespace perfetto
@@ -3274,7 +3370,6 @@ class PERFETTO_EXPORT_COMPONENT TraceWriterBase {
 
 #include <array>
 #include <atomic>
-#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -3367,6 +3462,10 @@ struct DataSourceState {
   // Whether this data source instance should call NotifyDataSourceStopped()
   // when it's stopped.
   bool will_notify_on_stop = false;
+
+  // The wanted behavior for this data source instance when a TraceWriter runs
+  // out of space in the shared memory buffer.
+  BufferExhaustedPolicy buffer_exhausted_policy = BufferExhaustedPolicy::kDrop;
 
   // Incremented whenever incremental state should be reset for this instance of
   // this data source.
@@ -5025,7 +5124,7 @@ class TrackEventDefaults : public ::protozero::Message {
   }
 };
 
-class TrackEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/50, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class TrackEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/54, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   TrackEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit TrackEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -5062,6 +5161,12 @@ class TrackEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=
   ::protozero::RepeatedFieldIterator<uint64_t> terminating_flow_ids_old() const { return GetRepeated<uint64_t>(42); }
   bool has_terminating_flow_ids() const { return at<48>().valid(); }
   ::protozero::RepeatedFieldIterator<uint64_t> terminating_flow_ids() const { return GetRepeated<uint64_t>(48); }
+  bool has_correlation_id() const { return at<52>().valid(); }
+  uint64_t correlation_id() const { return at<52>().as_uint64(); }
+  bool has_correlation_id_str() const { return at<53>().valid(); }
+  ::protozero::ConstChars correlation_id_str() const { return at<53>().as_string(); }
+  bool has_correlation_id_str_iid() const { return at<54>().valid(); }
+  uint64_t correlation_id_str_iid() const { return at<54>().as_uint64(); }
   bool has_debug_annotations() const { return at<4>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> debug_annotations() const { return GetRepeated<::protozero::ConstBytes>(4); }
   bool has_task_execution() const { return at<5>().valid(); }
@@ -5138,6 +5243,9 @@ class TrackEvent : public ::protozero::Message {
     kFlowIdsFieldNumber = 47,
     kTerminatingFlowIdsOldFieldNumber = 42,
     kTerminatingFlowIdsFieldNumber = 48,
+    kCorrelationIdFieldNumber = 52,
+    kCorrelationIdStrFieldNumber = 53,
+    kCorrelationIdStrIidFieldNumber = 54,
     kDebugAnnotationsFieldNumber = 4,
     kTaskExecutionFieldNumber = 5,
     kLogMessageFieldNumber = 21,
@@ -5477,6 +5585,66 @@ class TrackEvent : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kFixed64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_CorrelationId =
+    ::protozero::proto_utils::FieldMetadata<
+      52,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TrackEvent>;
+
+  static constexpr FieldMetadata_CorrelationId kCorrelationId{};
+  void set_correlation_id(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_CorrelationId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_CorrelationIdStr =
+    ::protozero::proto_utils::FieldMetadata<
+      53,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      TrackEvent>;
+
+  static constexpr FieldMetadata_CorrelationIdStr kCorrelationIdStr{};
+  void set_correlation_id_str(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_CorrelationIdStr::kFieldId, data, size);
+  }
+  void set_correlation_id_str(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_CorrelationIdStr::kFieldId, chars.data, chars.size);
+  }
+  void set_correlation_id_str(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_CorrelationIdStr::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_CorrelationIdStrIid =
+    ::protozero::proto_utils::FieldMetadata<
+      54,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TrackEvent>;
+
+  static constexpr FieldMetadata_CorrelationIdStrIid kCorrelationIdStrIid{};
+  void set_correlation_id_str_iid(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_CorrelationIdStrIid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
         ::Append(*this, field_id, value);
   }
 
@@ -6739,6 +6907,7 @@ enum TraceConfig_TraceFilter_StringFilterPolicy : int;
 enum TraceConfig_TriggerConfig_TriggerMode : int;
 enum BuiltinClock : int;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 enum TraceConfig_BufferConfig_FillPolicy : int;
@@ -8535,10 +8704,10 @@ PERFETTO_EXPORT_COMPONENT std::vector<std::string> TokenizeProducerSockets(
     const char* producer_socket_names);
 PERFETTO_EXPORT_COMPONENT const char* GetProducerSocket();
 
-// Optionally returns the relay socket name (nullable). The relay socket is used
+// Optionally returns the relay socket name. The relay socket is used
 // for forwarding the IPC messages between the local producers and the remote
 // tracing service.
-PERFETTO_EXPORT_COMPONENT const char* GetRelaySocket();
+PERFETTO_EXPORT_COMPONENT std::string GetRelaySocket();
 
 }  // namespace perfetto
 
@@ -9479,11 +9648,13 @@ struct ScopedReentrancyAnnotator {
 #include <memory>
 
 // gen_amalgamated expanded: #include "perfetto/base/export.h"
+// gen_amalgamated expanded: #include "perfetto/tracing/buffer_exhausted_policy.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/core/forward_decls.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/interceptor.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/internal/basic_types.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/internal/tracing_tls.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/platform.h"
+
 namespace perfetto {
 
 class DataSourceBase;
@@ -9494,8 +9665,15 @@ class TracingSession;
 namespace internal {
 
 struct DataSourceParams {
-  bool supports_multiple_instances;
-  bool requires_callbacks_under_lock;
+  // This is the policy configured by the data source code
+  // (DataSource::kBufferExhaustedPolicy in C++ or
+  // PerfettoDsSetBufferExhaustedPolicy in C). It can be overridden by the
+  // consumer via config if buffer_exhausted_policy_configurable is true.
+  BufferExhaustedPolicy default_buffer_exhausted_policy =
+      BufferExhaustedPolicy::kDrop;
+  bool buffer_exhausted_policy_configurable = false;
+  bool supports_multiple_instances = true;
+  bool requires_callbacks_under_lock = true;
 };
 
 struct DataSourceStaticState;
@@ -9626,20 +9804,16 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
   // * `descriptor` is the data source protobuf descriptor.
   // * `factory` is a std::function used to create instances of the data source
   //   type.
-  // * `buffer_exhausted_policy` specifies what to do when the shared memory
-  //   buffer runs out of chunks.
   // * `create_custom_tls_fn` and `create_incremental_state_fn` are function
   //   pointers called to create custom state. They will receive `user_arg` as
   //   an extra param.
   bool Register(const DataSourceDescriptor& descriptor,
                 TracingMuxer::DataSourceFactory factory,
                 internal::DataSourceParams params,
-                BufferExhaustedPolicy buffer_exhausted_policy,
                 bool no_flush,
                 CreateCustomTlsFn create_custom_tls_fn,
                 CreateIncrementalStateFn create_incremental_state_fn,
                 void* user_arg) {
-    buffer_exhausted_policy_ = buffer_exhausted_policy;
     create_custom_tls_fn_ = create_custom_tls_fn;
     create_incremental_state_fn_ = create_incremental_state_fn;
     user_arg_ = user_arg;
@@ -9779,8 +9953,9 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
       uint32_t instance_index) {
     // Recreate incremental state data if it has been reset by the service.
     if (tls_inst->incremental_state_generation !=
-        static_state()->GetUnsafe(instance_index)->incremental_state_generation.load(
-            std::memory_order_relaxed)) {
+        static_state()
+            ->GetUnsafe(instance_index)
+            ->incremental_state_generation.load(std::memory_order_relaxed)) {
       tls_inst->incremental_state.reset();
       CreateIncrementalState(tls_inst, instance_index);
     }
@@ -9799,8 +9974,9 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
     tls_inst->incremental_state =
         create_incremental_state_fn_(tls_inst, instance_index, user_arg_);
     tls_inst->incremental_state_generation =
-        static_state()->GetUnsafe(instance_index)->incremental_state_generation.load(
-            std::memory_order_relaxed);
+        static_state()
+            ->GetUnsafe(instance_index)
+            ->incremental_state_generation.load(std::memory_order_relaxed);
   }
 
   void PopulateTlsInst(DataSourceInstanceThreadLocalState* tls_inst,
@@ -9882,7 +10058,6 @@ class PERFETTO_EXPORT_COMPONENT DataSourceType {
   }
 
   DataSourceStaticState state_;
-  BufferExhaustedPolicy buffer_exhausted_policy_{};
   CreateCustomTlsFn create_custom_tls_fn_ = nullptr;
   CreateIncrementalStateFn create_incremental_state_fn_ = nullptr;
   // User defined pointer that carries extra content for the fn_ callbacks
@@ -9918,13 +10093,16 @@ class AndroidEnergyEstimationBreakdown;
 class AndroidGameInterventionList;
 class AndroidLogPacket;
 class AndroidSystemProperty;
+class AppWakelockBundle;
 class BatteryCounters;
+class BluetoothTraceEvent;
 class ChromeBenchmarkMetadata;
 class ChromeEventBundle;
 class ChromeMetadataPacket;
 class ChromeTrigger;
 class ClockSnapshot;
 class CpuInfo;
+class CpuPerUidData;
 class DeobfuscationMapping;
 class EntityStateResidency;
 class EtwTraceEventBundle;
@@ -9932,6 +10110,9 @@ class ExtensionDescriptor;
 class FrameTimelineEvent;
 class FtraceEventBundle;
 class FtraceStats;
+class GenericKernelCpuFrequencyEvent;
+class GenericKernelTaskRenameEvent;
+class GenericKernelTaskStateEvent;
 class GpuCounterEvent;
 class GpuLog;
 class GpuMemTotalEvent;
@@ -9941,6 +10122,7 @@ class HeapGraph;
 class InitialDisplayState;
 class InodeFileMap;
 class InternedData;
+class KernelWakelockData;
 class LayersSnapshotProto;
 class MemoryTrackerSnapshot;
 class ModuleSymbols;
@@ -9956,7 +10138,6 @@ class ProcessDescriptor;
 class ProcessStats;
 class ProcessTree;
 class ProfilePacket;
-class ProfiledFrameSymbols;
 class ProtoLogMessage;
 class ProtoLogViewerConfig;
 class RemoteClockSync;
@@ -10135,8 +10316,6 @@ class TracePacket_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID
   ::protozero::ConstBytes android_system_property() const { return at<86>().as_bytes(); }
   bool has_entity_state_residency() const { return at<91>().valid(); }
   ::protozero::ConstBytes entity_state_residency() const { return at<91>().as_bytes(); }
-  bool has_profiled_frame_symbols() const { return at<55>().valid(); }
-  ::protozero::ConstBytes profiled_frame_symbols() const { return at<55>().as_bytes(); }
   bool has_module_symbols() const { return at<61>().valid(); }
   ::protozero::ConstBytes module_symbols() const { return at<61>().as_bytes(); }
   bool has_deobfuscation_mapping() const { return at<64>().valid(); }
@@ -10195,6 +10374,20 @@ class TracePacket_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID
   ::protozero::ConstBytes pixel_modem_token_database() const { return at<111>().as_bytes(); }
   bool has_clone_snapshot_trigger() const { return at<113>().valid(); }
   ::protozero::ConstBytes clone_snapshot_trigger() const { return at<113>().as_bytes(); }
+  bool has_bluetooth_trace_event() const { return at<114>().valid(); }
+  ::protozero::ConstBytes bluetooth_trace_event() const { return at<114>().as_bytes(); }
+  bool has_kernel_wakelock_data() const { return at<115>().valid(); }
+  ::protozero::ConstBytes kernel_wakelock_data() const { return at<115>().as_bytes(); }
+  bool has_app_wakelock_bundle() const { return at<116>().valid(); }
+  ::protozero::ConstBytes app_wakelock_bundle() const { return at<116>().as_bytes(); }
+  bool has_generic_kernel_task_state_event() const { return at<117>().valid(); }
+  ::protozero::ConstBytes generic_kernel_task_state_event() const { return at<117>().as_bytes(); }
+  bool has_generic_kernel_cpu_freq_event() const { return at<118>().valid(); }
+  ::protozero::ConstBytes generic_kernel_cpu_freq_event() const { return at<118>().as_bytes(); }
+  bool has_generic_kernel_task_rename_event() const { return at<120>().valid(); }
+  ::protozero::ConstBytes generic_kernel_task_rename_event() const { return at<120>().as_bytes(); }
+  bool has_cpu_per_uid_data() const { return at<119>().valid(); }
+  ::protozero::ConstBytes cpu_per_uid_data() const { return at<119>().as_bytes(); }
   bool has_for_testing() const { return at<900>().valid(); }
   ::protozero::ConstBytes for_testing() const { return at<900>().as_bytes(); }
   bool has_trusted_uid() const { return at<3>().valid(); }
@@ -10274,7 +10467,6 @@ class TracePacket : public ::protozero::Message {
     kStatsdAtomFieldNumber = 84,
     kAndroidSystemPropertyFieldNumber = 86,
     kEntityStateResidencyFieldNumber = 91,
-    kProfiledFrameSymbolsFieldNumber = 55,
     kModuleSymbolsFieldNumber = 61,
     kDeobfuscationMappingFieldNumber = 64,
     kTrackDescriptorFieldNumber = 60,
@@ -10304,6 +10496,13 @@ class TracePacket : public ::protozero::Message {
     kPixelModemEventsFieldNumber = 110,
     kPixelModemTokenDatabaseFieldNumber = 111,
     kCloneSnapshotTriggerFieldNumber = 113,
+    kBluetoothTraceEventFieldNumber = 114,
+    kKernelWakelockDataFieldNumber = 115,
+    kAppWakelockBundleFieldNumber = 116,
+    kGenericKernelTaskStateEventFieldNumber = 117,
+    kGenericKernelCpuFreqEventFieldNumber = 118,
+    kGenericKernelTaskRenameEventFieldNumber = 120,
+    kCpuPerUidDataFieldNumber = 119,
     kForTestingFieldNumber = 900,
     kTrustedUidFieldNumber = 3,
     kTrustedPacketSequenceIdFieldNumber = 10,
@@ -11049,20 +11248,6 @@ class TracePacket : public ::protozero::Message {
   }
 
 
-  using FieldMetadata_ProfiledFrameSymbols =
-    ::protozero::proto_utils::FieldMetadata<
-      55,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kMessage,
-      ProfiledFrameSymbols,
-      TracePacket>;
-
-  static constexpr FieldMetadata_ProfiledFrameSymbols kProfiledFrameSymbols{};
-  template <typename T = ProfiledFrameSymbols> T* set_profiled_frame_symbols() {
-    return BeginNestedMessage<T>(55);
-  }
-
-
   using FieldMetadata_ModuleSymbols =
     ::protozero::proto_utils::FieldMetadata<
       61,
@@ -11489,6 +11674,104 @@ class TracePacket : public ::protozero::Message {
   }
 
 
+  using FieldMetadata_BluetoothTraceEvent =
+    ::protozero::proto_utils::FieldMetadata<
+      114,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      BluetoothTraceEvent,
+      TracePacket>;
+
+  static constexpr FieldMetadata_BluetoothTraceEvent kBluetoothTraceEvent{};
+  template <typename T = BluetoothTraceEvent> T* set_bluetooth_trace_event() {
+    return BeginNestedMessage<T>(114);
+  }
+
+
+  using FieldMetadata_KernelWakelockData =
+    ::protozero::proto_utils::FieldMetadata<
+      115,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      KernelWakelockData,
+      TracePacket>;
+
+  static constexpr FieldMetadata_KernelWakelockData kKernelWakelockData{};
+  template <typename T = KernelWakelockData> T* set_kernel_wakelock_data() {
+    return BeginNestedMessage<T>(115);
+  }
+
+
+  using FieldMetadata_AppWakelockBundle =
+    ::protozero::proto_utils::FieldMetadata<
+      116,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      AppWakelockBundle,
+      TracePacket>;
+
+  static constexpr FieldMetadata_AppWakelockBundle kAppWakelockBundle{};
+  template <typename T = AppWakelockBundle> T* set_app_wakelock_bundle() {
+    return BeginNestedMessage<T>(116);
+  }
+
+
+  using FieldMetadata_GenericKernelTaskStateEvent =
+    ::protozero::proto_utils::FieldMetadata<
+      117,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      GenericKernelTaskStateEvent,
+      TracePacket>;
+
+  static constexpr FieldMetadata_GenericKernelTaskStateEvent kGenericKernelTaskStateEvent{};
+  template <typename T = GenericKernelTaskStateEvent> T* set_generic_kernel_task_state_event() {
+    return BeginNestedMessage<T>(117);
+  }
+
+
+  using FieldMetadata_GenericKernelCpuFreqEvent =
+    ::protozero::proto_utils::FieldMetadata<
+      118,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      GenericKernelCpuFrequencyEvent,
+      TracePacket>;
+
+  static constexpr FieldMetadata_GenericKernelCpuFreqEvent kGenericKernelCpuFreqEvent{};
+  template <typename T = GenericKernelCpuFrequencyEvent> T* set_generic_kernel_cpu_freq_event() {
+    return BeginNestedMessage<T>(118);
+  }
+
+
+  using FieldMetadata_GenericKernelTaskRenameEvent =
+    ::protozero::proto_utils::FieldMetadata<
+      120,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      GenericKernelTaskRenameEvent,
+      TracePacket>;
+
+  static constexpr FieldMetadata_GenericKernelTaskRenameEvent kGenericKernelTaskRenameEvent{};
+  template <typename T = GenericKernelTaskRenameEvent> T* set_generic_kernel_task_rename_event() {
+    return BeginNestedMessage<T>(120);
+  }
+
+
+  using FieldMetadata_CpuPerUidData =
+    ::protozero::proto_utils::FieldMetadata<
+      119,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      CpuPerUidData,
+      TracePacket>;
+
+  static constexpr FieldMetadata_CpuPerUidData kCpuPerUidData{};
+  template <typename T = CpuPerUidData> T* set_cpu_per_uid_data() {
+    return BeginNestedMessage<T>(119);
+  }
+
+
   using FieldMetadata_ForTesting =
     ::protozero::proto_utils::FieldMetadata<
       900,
@@ -11749,8 +12032,8 @@ namespace perfetto {
 namespace internal {
 class TracingMuxerImpl;
 class TrackEventCategoryRegistry;
-template <typename, const internal::TrackEventCategoryRegistry*>
-class TrackEventDataSource;
+template <const internal::TrackEventCategoryRegistry*>
+class TrackEvent;
 }  // namespace internal
 
 namespace shlib {
@@ -11941,6 +12224,9 @@ class DataSource : public DataSourceBase {
   constexpr static BufferExhaustedPolicy kBufferExhaustedPolicy =
       BufferExhaustedPolicy::kDrop;
 
+  // Whether the kBufferExhaustedPolicy policy above is overridable via config.
+  constexpr static bool kBufferExhaustedPolicyConfigurable = false;
+
   // When this flag is false, we cannot have multiple instances of this data
   // source. When a data source is already active and if we attempt
   // to start another instance of that data source (via another tracing
@@ -12041,10 +12327,12 @@ class DataSource : public DataSourceBase {
           Helper::type().GetIncrementalState(tls_inst_, instance_index_));
     }
 
+    uint32_t instance_index() const { return instance_index_; }
+
    private:
     friend class DataSource;
-    template <typename, const internal::TrackEventCategoryRegistry*>
-    friend class internal::TrackEventDataSource;
+    template <const internal::TrackEventCategoryRegistry*>
+    friend class internal::TrackEvent;
     TraceContext(internal::DataSourceInstanceThreadLocalState* tls_inst,
                  uint32_t instance_index)
         : tls_inst_(tls_inst), instance_index_(instance_index) {}
@@ -12156,12 +12444,17 @@ class DataSource : public DataSourceBase {
     constexpr bool no_flush =
         std::is_same_v<decltype(&DerivedDataSource::OnFlush),
                        decltype(&DataSourceBase::OnFlush)>;
-    internal::DataSourceParams params{
-        DerivedDataSource::kSupportsMultipleInstances,
-        DerivedDataSource::kRequiresCallbacksUnderLock};
+    internal::DataSourceParams params;
+    params.requires_callbacks_under_lock =
+        DerivedDataSource::kRequiresCallbacksUnderLock;
+    params.supports_multiple_instances =
+        DerivedDataSource::kSupportsMultipleInstances;
+    params.default_buffer_exhausted_policy =
+        DerivedDataSource::kBufferExhaustedPolicy;
+    params.buffer_exhausted_policy_configurable =
+        DerivedDataSource::kBufferExhaustedPolicyConfigurable;
     return Helper::type().Register(
-        descriptor, factory, params, DerivedDataSource::kBufferExhaustedPolicy,
-        no_flush,
+        descriptor, factory, params, no_flush,
         GetCreateTlsFn(
             static_cast<typename DataSourceTraits::TlsStateType*>(nullptr)),
         GetCreateIncrementalStateFn(
@@ -12264,7 +12557,7 @@ thread_local internal::DataSourceThreadLocalState* DataSource<T, D>::tls_state_;
 // the macro invocation (e.g., "MACRO(...);") to avoid warnings about extra
 // semicolons.
 #define PERFETTO_INTERNAL_SWALLOW_SEMICOLON() \
-  extern int perfetto_internal_unused
+  [[maybe_unused]] extern int perfetto_internal_unused
 
 // This macro must be used once for each data source next to the data source's
 // declaration.
@@ -12824,7 +13117,7 @@ class PERFETTO_EXPORT_COMPONENT MessageArena {
   // DCHECKs, it MUST be the pointer obtained by the last NewMessage() call.
   void DeleteLastMessage(Message* msg) {
     PERFETTO_DCHECK(!blocks_.empty() && blocks_.front().entries > 0);
-    PERFETTO_DCHECK(&blocks_.front().storage[blocks_.front().entries - 1] ==
+    PERFETTO_DCHECK(blocks_.front().storage[blocks_.front().entries - 1] ==
                     static_cast<void*>(msg));
     DeleteLastMessageInternal();
   }
@@ -12849,8 +13142,7 @@ class PERFETTO_EXPORT_COMPONENT MessageArena {
 
     Block() { PERFETTO_ASAN_POISON(storage, sizeof(storage)); }
 
-    std::aligned_storage<sizeof(Message), alignof(Message)>::type
-        storage[kCapacity];
+    alignas(Message) char storage[kCapacity][sizeof(Message)];
     uint32_t entries = 0;  // # Message entries used (<= kCapacity).
   };
 
@@ -12996,6 +13288,9 @@ class PERFETTO_EXPORT_COMPONENT ScatteredHeapBuffer
   // Stitch all the slices into a single contiguous buffer.
   std::vector<uint8_t> StitchSlices();
 
+  // Stitch all the slices into a contiguous output buffer.
+  std::pair<std::unique_ptr<uint8_t[]>, size_t> StitchAsUniquePtr();
+
   // Note that the returned ranges point back to this buffer and thus cannot
   // outlive it.
   std::vector<protozero::ContiguousMemoryRange> GetRanges();
@@ -13072,6 +13367,11 @@ class HeapBuffered {
   std::string SerializeAsString() {
     auto vec = SerializeAsArray();
     return std::string(reinterpret_cast<const char*>(vec.data()), vec.size());
+  }
+
+  std::pair<std::unique_ptr<uint8_t[]>, size_t> SerializeAsUniquePtr() {
+    msg_.Finalize();
+    return shb_.StitchAsUniquePtr();
   }
 
   std::vector<protozero::ContiguousMemoryRange> GetRanges() {
@@ -14296,7 +14596,7 @@ namespace internal {
 PERFETTO_EXPORT_COMPONENT TracedValue
 CreateTracedValueFromProto(protos::pbzero::DebugAnnotation*,
                            EventContext* = nullptr);
-}
+}  // namespace internal
 
 class PERFETTO_EXPORT_COMPONENT TracedValue {
  public:
@@ -14594,12 +14894,13 @@ struct is_incomplete_type<const char[]> {
 // class does not have it support, so they are useful in SFINAE and in producing
 // helpful compiler results.
 template <typename T, class Result = void>
-using check_traced_value_support_t = decltype(
-    internal::WriteImpl(
-        std::declval<base::priority_tag<internal::kMaxWriteImplPriority>>(),
-        std::declval<TracedValue>(),
-        std::declval<T>()),
-    std::declval<Result>());
+using check_traced_value_support_t =
+    decltype(internal::WriteImpl(
+                 std::declval<
+                     base::priority_tag<internal::kMaxWriteImplPriority>>(),
+                 std::declval<TracedValue>(),
+                 std::declval<T>()),
+             std::declval<Result>());
 
 // check_traced_value_support<T, V>::type is defined (and equal to V) iff T
 // supports being passed to WriteIntoTracedValue. See the comment in
@@ -17008,7 +17309,7 @@ class PERFETTO_EXPORT_COMPONENT NamedTrack : public Track {
   // Usage: TRACE_EVENT_BEGIN("...", "...",
   // perfetto::NamedTrack::ThreadScoped("rendering"))
   template <class TrackEventName>
-  static NamedTrack ThreadScoped(TrackEventName name,
+  static NamedTrack ThreadScoped(TrackEventName&& name,
                                  uint64_t id = 0,
                                  Track parent = Track()) {
     if (parent.uuid == 0)
@@ -17392,6 +17693,7 @@ const char* BuiltinClock_Name(::perfetto::protos::pbzero::BuiltinClock value) {
 namespace perfetto {
 namespace protos {
 namespace pbzero {
+class AppWakelockInfo;
 class Callstack;
 class DebugAnnotationName;
 class DebugAnnotationValueTypeName;
@@ -17410,7 +17712,6 @@ class InternedV8WasmScript;
 class LogMessageBody;
 class Mapping;
 class NetworkPacketContext;
-class ProfiledFrameSymbols;
 class SourceLocation;
 class UnsymbolizedSourceLocation;
 } // Namespace pbzero.
@@ -17421,7 +17722,7 @@ namespace perfetto {
 namespace protos {
 namespace pbzero {
 
-class InternedData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/41, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class InternedData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/43, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   InternedData_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit InternedData_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -17450,8 +17751,6 @@ class InternedData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_I
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> source_paths() const { return GetRepeated<::protozero::ConstBytes>(18); }
   bool has_function_names() const { return at<5>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> function_names() const { return GetRepeated<::protozero::ConstBytes>(5); }
-  bool has_profiled_frame_symbols() const { return at<21>().valid(); }
-  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> profiled_frame_symbols() const { return GetRepeated<::protozero::ConstBytes>(21); }
   bool has_mappings() const { return at<19>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> mappings() const { return GetRepeated<::protozero::ConstBytes>(19); }
   bool has_frames() const { return at<6>().valid(); }
@@ -17492,6 +17791,10 @@ class InternedData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_I
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> viewcapture_view_id() const { return GetRepeated<::protozero::ConstBytes>(40); }
   bool has_viewcapture_class_name() const { return at<41>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> viewcapture_class_name() const { return GetRepeated<::protozero::ConstBytes>(41); }
+  bool has_app_wakelock_info() const { return at<42>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> app_wakelock_info() const { return GetRepeated<::protozero::ConstBytes>(42); }
+  bool has_correlation_id_str() const { return at<43>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> correlation_id_str() const { return GetRepeated<::protozero::ConstBytes>(43); }
 };
 
 class InternedData : public ::protozero::Message {
@@ -17510,7 +17813,6 @@ class InternedData : public ::protozero::Message {
     kMappingPathsFieldNumber = 17,
     kSourcePathsFieldNumber = 18,
     kFunctionNamesFieldNumber = 5,
-    kProfiledFrameSymbolsFieldNumber = 21,
     kMappingsFieldNumber = 19,
     kFramesFieldNumber = 6,
     kCallstacksFieldNumber = 7,
@@ -17531,6 +17833,8 @@ class InternedData : public ::protozero::Message {
     kViewcaptureWindowNameFieldNumber = 39,
     kViewcaptureViewIdFieldNumber = 40,
     kViewcaptureClassNameFieldNumber = 41,
+    kAppWakelockInfoFieldNumber = 42,
+    kCorrelationIdStrFieldNumber = 43,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.InternedData"; }
 
@@ -17700,20 +18004,6 @@ class InternedData : public ::protozero::Message {
   static constexpr FieldMetadata_FunctionNames kFunctionNames{};
   template <typename T = InternedString> T* add_function_names() {
     return BeginNestedMessage<T>(5);
-  }
-
-
-  using FieldMetadata_ProfiledFrameSymbols =
-    ::protozero::proto_utils::FieldMetadata<
-      21,
-      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
-      ::protozero::proto_utils::ProtoSchemaType::kMessage,
-      ProfiledFrameSymbols,
-      InternedData>;
-
-  static constexpr FieldMetadata_ProfiledFrameSymbols kProfiledFrameSymbols{};
-  template <typename T = ProfiledFrameSymbols> T* add_profiled_frame_symbols() {
-    return BeginNestedMessage<T>(21);
   }
 
 
@@ -17996,6 +18286,34 @@ class InternedData : public ::protozero::Message {
     return BeginNestedMessage<T>(41);
   }
 
+
+  using FieldMetadata_AppWakelockInfo =
+    ::protozero::proto_utils::FieldMetadata<
+      42,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      AppWakelockInfo,
+      InternedData>;
+
+  static constexpr FieldMetadata_AppWakelockInfo kAppWakelockInfo{};
+  template <typename T = AppWakelockInfo> T* add_app_wakelock_info() {
+    return BeginNestedMessage<T>(42);
+  }
+
+
+  using FieldMetadata_CorrelationIdStr =
+    ::protozero::proto_utils::FieldMetadata<
+      43,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      InternedString,
+      InternedData>;
+
+  static constexpr FieldMetadata_CorrelationIdStr kCorrelationIdStr{};
+  template <typename T = InternedString> T* add_correlation_id_str() {
+    return BeginNestedMessage<T>(43);
+  }
+
 };
 
 } // Namespace.
@@ -18033,6 +18351,7 @@ class InternedData : public ::protozero::Message {
 // gen_amalgamated expanded: #include "protos/perfetto/trace/interned_data/interned_data.pbzero.h"
 // gen_amalgamated expanded: #include "protos/perfetto/trace/track_event/track_event.pbzero.h"
 
+#include <mutex>
 #include <unordered_map>
 
 namespace perfetto {
@@ -18186,8 +18505,18 @@ struct TrackEventIncrementalState {
 // namespaces.
 class PERFETTO_EXPORT_COMPONENT TrackEventInternal {
  public:
+  static TrackEventInternal& GetInstance();
+
+  std::vector<const TrackEventCategoryRegistry*> AddRegistry(
+      const TrackEventCategoryRegistry*);
+  void EnableTracing(const protos::gen::TrackEventConfig& config,
+                     const DataSourceBase::SetupArgs&);
+  void DisableTracing(uint32_t internal_instance_index);
+
+  void ResetRegistriesForTesting();
+
   static bool Initialize(
-      const TrackEventCategoryRegistry&,
+      const std::vector<const TrackEventCategoryRegistry*> registries,
       bool (*register_data_source)(const DataSourceDescriptor&));
 
   static bool AddSessionObserver(const TrackEventCategoryRegistry&,
@@ -18195,17 +18524,12 @@ class PERFETTO_EXPORT_COMPONENT TrackEventInternal {
   static void RemoveSessionObserver(const TrackEventCategoryRegistry&,
                                     TrackEventSessionObserver*);
 
-  static void EnableTracing(const TrackEventCategoryRegistry& registry,
-                            const protos::gen::TrackEventConfig& config,
-                            const DataSourceBase::SetupArgs&);
-  static void OnStart(const TrackEventCategoryRegistry&,
-                      const DataSourceBase::StartArgs&);
-  static void OnStop(const TrackEventCategoryRegistry&,
-                     const DataSourceBase::StopArgs&);
-  static void DisableTracing(const TrackEventCategoryRegistry& registry,
+  static void EnableRegistry(const TrackEventCategoryRegistry* registry,
+                             const protos::gen::TrackEventConfig& config,
                              uint32_t internal_instance_index);
+  static void OnStart(const DataSourceBase::StartArgs&);
+  static void OnStop(const DataSourceBase::StopArgs&);
   static void WillClearIncrementalState(
-      const TrackEventCategoryRegistry&,
       const DataSourceBase::ClearIncrementalStateArgs&);
 
   static bool IsCategoryEnabled(const TrackEventCategoryRegistry& registry,
@@ -18326,6 +18650,8 @@ class PERFETTO_EXPORT_COMPONENT TrackEventInternal {
   static const Track kDefaultTrack;
 
  private:
+  std::vector<const TrackEventCategoryRegistry*> GetRegistries();
+
   static void ResetIncrementalState(TraceWriterBase* trace_writer,
                                     TrackEventIncrementalState* incr_state,
                                     const TrackEventTlsState& tls_state,
@@ -18351,6 +18677,9 @@ class PERFETTO_EXPORT_COMPONENT TrackEventInternal {
 
   static protos::pbzero::BuiltinClock clock_;
   static bool disallow_merging_with_system_tracks_;
+
+  std::mutex mu_;
+  std::vector<const TrackEventCategoryRegistry*> registries_;
 };
 
 template <typename TraceContext>
@@ -18692,9 +19021,9 @@ WriteIntoTracedProtoImpl(base::priority_tag<1>,
 
 // If T has WriteIntoTrace(TracedProto<MessageType>) method, use it.
 template <typename MessageType, typename T>
-decltype(
-    std::declval<T>().WriteIntoTrace(std::declval<TracedProto<MessageType>>()),
-    void())
+decltype(std::declval<T>().WriteIntoTrace(
+             std::declval<TracedProto<MessageType>>()),
+         void())
 WriteIntoTracedProtoImpl(base::priority_tag<0>,
                          TracedProto<MessageType> message,
                          T&& value) {
@@ -18848,15 +19177,11 @@ class PERFETTO_EXPORT_COMPONENT EventContext {
  public:
   EventContext(EventContext&&) = default;
 
-  // For Chromium during the transition phase to the client library.
-  // TODO(eseckler): Remove once Chromium has switched to client lib entirely.
   explicit EventContext(
       protos::pbzero::TrackEvent* event,
       internal::TrackEventIncrementalState* incremental_state = nullptr,
-      bool filter_debug_annotations = false)
-      : event_(event),
-        incremental_state_(incremental_state),
-        filter_debug_annotations_(filter_debug_annotations) {}
+      bool /*filter_debug_annotations*/ = false)
+      : event_(event), incremental_state_(incremental_state) {}
 
   ~EventContext();
 
@@ -18872,12 +19197,17 @@ class PERFETTO_EXPORT_COMPONENT EventContext {
   // TODO(kraskevich): Come up with a more precise name once we have more than
   // one usecase.
   bool ShouldFilterDebugAnnotations() const {
-    if (tls_state_) {
-      return tls_state_->filter_debug_annotations;
-    }
-    // In Chromium tls_state_ is nullptr, so we need to get this information
-    // from a separate field.
-    return filter_debug_annotations_;
+    if (!tls_state_)
+      return false;
+    return tls_state_->filter_debug_annotations;
+  }
+
+  // Disclaimer: Experimental method, subject to change. Exposed publicly to
+  // emit some DynamicFilter fields in Chromium only in local tracing.
+  bool ShouldFilterDynamicEventNames() const {
+    if (!tls_state_)
+      return false;
+    return tls_state_->filter_dynamic_event_names;
   }
 
   // Get a TrackEvent message to write typed arguments to.
@@ -18935,12 +19265,12 @@ class PERFETTO_EXPORT_COMPONENT EventContext {
   template <typename, size_t, typename, typename>
   friend class TrackEventInternedDataIndex;
   friend class internal::TrackEventInternal;
+  friend class TracedProtoTest;
 
   using TracePacketHandle =
       ::protozero::MessageHandle<protos::pbzero::TracePacket>;
 
-  EventContext(TraceWriterBase* trace_writer,
-               TracePacketHandle,
+  EventContext(TracePacketHandle,
                internal::TrackEventIncrementalState*,
                internal::TrackEventTlsState*);
   EventContext(const EventContext&) = delete;
@@ -18949,18 +19279,10 @@ class PERFETTO_EXPORT_COMPONENT EventContext {
   protos::pbzero::DebugAnnotation* AddDebugAnnotation(
       ::perfetto::DynamicString name);
 
-  TraceWriterBase* trace_writer_ = nullptr;
   TracePacketHandle trace_packet_;
   protos::pbzero::TrackEvent* event_;
   internal::TrackEventIncrementalState* incremental_state_;
-  // TODO(mohitms): Make it const-reference instead of pointer, once we
-  // are certain that it cannot be nullptr. Once we switch to client library in
-  // chrome, we can make that happen.
   internal::TrackEventTlsState* tls_state_ = nullptr;
-  // TODO(kraskevich): Come up with a more precise name once we have more than
-  // one usecase.
-  // TODO(kraskevich): Remove once Chromium has fully switched to client lib.
-  const bool filter_debug_annotations_ = false;
 };
 
 }  // namespace perfetto
@@ -19890,11 +20212,10 @@ constexpr const char* NullCategory(const char*) {
 perfetto::DynamicCategory NullCategory(const perfetto::DynamicCategory&);
 
 constexpr bool StringMatchesPrefix(const char* str, const char* prefix) {
-  return !*str ? !*prefix
-               : !*prefix ? true
-                          : *str != *prefix
-                                ? false
-                                : StringMatchesPrefix(str + 1, prefix + 1);
+  return !*str             ? !*prefix
+         : !*prefix        ? true
+         : *str != *prefix ? false
+                           : StringMatchesPrefix(str + 1, prefix + 1);
 }
 
 constexpr bool IsStringInPrefixList(const char*) {
@@ -19967,11 +20288,10 @@ class PERFETTO_EXPORT_COMPONENT TrackEventCategoryRegistry {
   }
 
   constexpr bool ValidateCategories(size_t index = 0) const {
-    return (index == category_count_)
-               ? true
-               : IsValidCategoryName(categories_[index].name)
-                     ? ValidateCategories(index + 1)
-                     : false;
+    return (index == category_count_) ? true
+           : IsValidCategoryName(categories_[index].name)
+               ? ValidateCategories(index + 1)
+               : false;
   }
 
  private:
@@ -19979,12 +20299,11 @@ class PERFETTO_EXPORT_COMPONENT TrackEventCategoryRegistry {
   constexpr size_t FindImpl(const char* name,
                             bool is_dynamic,
                             size_t index = 0) const {
-    return is_dynamic ? kDynamicCategoryIndex
-                      : (index == category_count_)
-                            ? kInvalidCategoryIndex
-                            : StringEq(categories_[index].name, name)
-                                  ? index
-                                  : FindImpl(name, false, index + 1);
+    return is_dynamic                   ? kDynamicCategoryIndex
+           : (index == category_count_) ? kInvalidCategoryIndex
+           : StringEq(categories_[index].name, name)
+               ? index
+               : FindImpl(name, false, index + 1);
   }
 
   // A compile time helper for checking that a category index is valid.
@@ -20006,14 +20325,15 @@ class PERFETTO_EXPORT_COMPONENT TrackEventCategoryRegistry {
   }
 
   static constexpr bool IsValidCategoryName(const char* name) {
-    return (!name || *name == '\"' || *name == '*' || *name == ' ')
-               ? false
-               : *name ? IsValidCategoryName(name + 1) : true;
+    return (!name || *name == '\"' || *name == '*' || *name == ' ') ? false
+           : *name ? IsValidCategoryName(name + 1)
+                   : true;
   }
 
   static constexpr bool StringEq(const char* a, const char* b) {
-    return *a != *b ? false
-                    : (!*a || !*b) ? (*a == *b) : StringEq(a + 1, b + 1);
+    return *a != *b       ? false
+           : (!*a || !*b) ? (*a == *b)
+                          : StringEq(a + 1, b + 1);
   }
 
   const Category* const categories_;
@@ -20377,40 +20697,23 @@ struct TrackEventDataSourceTraits : public perfetto::DefaultDataSourceTraits {
   }
 };
 
-// A generic track event data source which is instantiated once per track event
-// category namespace.
-template <typename DerivedDataSource,
-          const TrackEventCategoryRegistry* Registry>
-class TrackEventDataSource
-    : public DataSource<DerivedDataSource, TrackEventDataSourceTraits> {
-  using Base = DataSource<DerivedDataSource, TrackEventDataSourceTraits>;
+// A generic track event data source.
+class PERFETTO_EXPORT_COMPONENT TrackEventDataSource
+    : public DataSource<TrackEventDataSource, TrackEventDataSourceTraits> {
+  using Base = DataSource<TrackEventDataSource, TrackEventDataSourceTraits>;
 
  public:
   static constexpr bool kRequiresCallbacksUnderLock = false;
-
-  // Add or remove a session observer for this track event data source. The
-  // observer will be notified about started and stopped tracing sessions.
-  // Returns |true| if the observer was successfully added (i.e., the maximum
-  // number of observers wasn't exceeded).
-  static bool AddSessionObserver(TrackEventSessionObserver* observer) {
-    return TrackEventInternal::AddSessionObserver(*Registry, observer);
-  }
-
-  static void RemoveSessionObserver(TrackEventSessionObserver* observer) {
-    TrackEventInternal::RemoveSessionObserver(*Registry, observer);
-  }
 
   // DataSource implementation.
   void OnSetup(const DataSourceBase::SetupArgs& args) override {
     auto config_raw = args.config->track_event_config_raw();
     bool ok = config_.ParseFromArray(config_raw.data(), config_raw.size());
     PERFETTO_DCHECK(ok);
-    TrackEventInternal::EnableTracing(*Registry, config_, args);
+    TrackEventInternal::GetInstance().EnableTracing(config_, args);
   }
 
-  void OnStart(const DataSourceBase::StartArgs& args) override {
-    TrackEventInternal::OnStart(*Registry, args);
-  }
+  void OnStart(const DataSourceBase::StartArgs& args) override;
 
   void OnStop(const DataSourceBase::StopArgs& args) override {
     auto outer_stop_closure = args.HandleStopAsynchronously();
@@ -20419,11 +20722,11 @@ class TrackEventDataSource
     inner_stop_args.internal_instance_index = internal_instance_index;
     inner_stop_args.async_stop_closure = [internal_instance_index,
                                           outer_stop_closure] {
-      TrackEventInternal::DisableTracing(*Registry, internal_instance_index);
+      TrackEventInternal::GetInstance().DisableTracing(internal_instance_index);
       outer_stop_closure();
     };
 
-    TrackEventInternal::OnStop(*Registry, inner_stop_args);
+    TrackEventInternal::OnStop(inner_stop_args);
 
     // If inner_stop_args.HandleStopAsynchronously() hasn't been called,
     // run the async closure here.
@@ -20433,7 +20736,7 @@ class TrackEventDataSource
 
   void WillClearIncrementalState(
       const DataSourceBase::ClearIncrementalStateArgs& args) override {
-    TrackEventInternal::WillClearIncrementalState(*Registry, args);
+    TrackEventInternal::WillClearIncrementalState(args);
   }
 
   // In Chrome, startup sessions are propagated from the browser process to
@@ -20486,14 +20789,82 @@ class TrackEventDataSource
     return true;
   }
 
+  static bool AddRegistry(const TrackEventCategoryRegistry* registry) {
+    // Registration is performed out-of-line so users don't need to depend on
+    // DataSourceDescriptor C++ bindings.
+    auto registries = TrackEventInternal::GetInstance().AddRegistry(registry);
+    Trace([&](TraceContext ctx) {
+      protos::gen::TrackEventConfig config;
+      {
+        if (auto data_source = ctx.GetDataSourceLocked()) {
+          config = data_source->GetConfig();
+        } else {
+          return;
+        }
+      }
+      TrackEventInternal::EnableRegistry(registry, config,
+                                         ctx.instance_index());
+    });
+    if (registries.size() == 1) {
+      return TrackEventInternal::Initialize(
+          registries,
+          [](const DataSourceDescriptor& dsd) { return Register(dsd); });
+    }
+    return TrackEventInternal::Initialize(registries,
+                                          [](const DataSourceDescriptor& dsd) {
+                                            UpdateDescriptor(dsd);
+                                            return true;
+                                          });
+  }
+
+  const protos::gen::TrackEventConfig& GetConfig() const { return config_; }
+
+  static void ResetForTesting() {
+    TrackEventInternal::GetInstance().ResetRegistriesForTesting();
+  }
+
+ private:
+  // Config for the current tracing session.
+  protos::gen::TrackEventConfig config_;
+};
+
+template <const TrackEventCategoryRegistry* Registry>
+class TrackEvent {
+ public:
+  using TraceContext = TrackEventDataSource::TraceContext;
+  static bool Register() { return TrackEventDataSource::AddRegistry(Registry); }
+
+  // Add or remove a session observer for this track event data source. The
+  // observer will be notified about started and stopped tracing sessions.
+  // Returns |true| if the observer was successfully added (i.e., the maximum
+  // number of observers wasn't exceeded).
+  static bool AddSessionObserver(TrackEventSessionObserver* observer) {
+    return TrackEventInternal::AddSessionObserver(*Registry, observer);
+  }
+
+  static void RemoveSessionObserver(TrackEventSessionObserver* observer) {
+    TrackEventInternal::RemoveSessionObserver(*Registry, observer);
+  }
+
   static void Flush() {
-    Base::Trace([](typename Base::TraceContext ctx) { ctx.Flush(); });
+    TrackEventDataSource::Trace(
+        [](TrackEventDataSource::TraceContext ctx) { ctx.Flush(); });
+  }
+
+  template <typename Callback>
+  static void Trace(Callback cb) {
+    TrackEventDataSource::Trace(cb);
+  }
+
+  template <typename Callback>
+  static void CallIfEnabled(Callback callback) PERFETTO_ALWAYS_INLINE {
+    TrackEventDataSource::CallIfEnabled(callback);
   }
 
   // Determine if *any* tracing category is enabled.
   static bool IsEnabled() {
     bool enabled = false;
-    Base::CallIfEnabled([&](uint32_t /*instances*/) { enabled = true; });
+    CallIfEnabled([&](uint32_t /*instances*/) { enabled = true; });
     return enabled;
   }
 
@@ -20507,7 +20878,7 @@ class TrackEventDataSource
   static bool IsDynamicCategoryEnabled(
       const DynamicCategory& dynamic_category) {
     bool enabled = false;
-    Base::Trace([&](typename Base::TraceContext ctx) {
+    Trace([&](typename TrackEventDataSource::TraceContext ctx) {
       enabled = enabled || IsDynamicCategoryEnabled(&ctx, dynamic_category);
     });
     return enabled;
@@ -20520,7 +20891,7 @@ class TrackEventDataSource
   template <typename Callback>
   static void CallIfCategoryEnabled(size_t category_index,
                                     Callback callback) PERFETTO_ALWAYS_INLINE {
-    Base::template CallIfEnabled<CategoryTracePointTraits>(
+    TrackEventDataSource::CallIfEnabled<CategoryTracePointTraits>(
         [&callback](uint32_t instances) { callback(instances); },
         {category_index});
   }
@@ -20639,22 +21010,12 @@ class TrackEventDataSource
   }
 #endif
 
-  // Initialize the track event library. Should be called before tracing is
-  // enabled.
-  static bool Register() {
-    // Registration is performed out-of-line so users don't need to depend on
-    // DataSourceDescriptor C++ bindings.
-    return TrackEventInternal::Initialize(
-        *Registry,
-        [](const DataSourceDescriptor& dsd) { return Base::Register(dsd); });
-  }
-
   // Record metadata about different types of timeline tracks. See Track.
   static void SetTrackDescriptor(const Track& track,
                                  const protos::gen::TrackDescriptor& desc) {
     PERFETTO_DCHECK(track.uuid == desc.uuid());
     TrackRegistry::Get()->UpdateTrack(track, desc.SerializeAsString());
-    Base::Trace([&](typename Base::TraceContext ctx) {
+    Trace([&](TrackEventDataSource::TraceContext ctx) {
       TrackEventInternal::WriteTrackDescriptor(
           track, ctx.tls_inst_->trace_writer.get(), ctx.GetIncrementalState(),
           *ctx.GetCustomTlsState(), TrackEventInternal::GetTraceTime());
@@ -20674,8 +21035,6 @@ class TrackEventDataSource
   static constexpr protos::pbzero::BuiltinClock GetTraceClockId() {
     return TrackEventInternal::GetClockId();
   }
-
-  const protos::gen::TrackEventConfig& GetConfig() const { return config_; }
 
  private:
   // The DecayStrType method is used to avoid unnecessary instantiations of
@@ -21009,7 +21368,7 @@ class TrackEventDataSource
             typename TrackTypeCheck =
                 typename std::enable_if<IsValidTrack<TrackType>()>::type>
   static perfetto::EventContext WriteTrackEventImpl(
-      typename Base::TraceContext& ctx,
+      TrackEventDataSource::TraceContext& ctx,
       const CategoryType& category,
       const EventNameType& event_name,
       perfetto::protos::pbzero::TrackEvent::Type type,
@@ -21086,7 +21445,7 @@ class TrackEventDataSource
             typename TrackTypeCheck =
                 typename std::enable_if<IsValidTrack<TrackType>()>::type>
   static perfetto::EventContext WriteTrackEvent(
-      typename Base::TraceContext& ctx,
+      TrackEventDataSource::TraceContext& ctx,
       const CategoryType& category,
       const EventNameType& event_name,
       perfetto::protos::pbzero::TrackEvent::Type type,
@@ -21104,7 +21463,7 @@ class TrackEventDataSource
             typename TrackTypeCheck =
                 typename std::enable_if<IsValidTrack<TrackType>()>::type>
   static perfetto::EventContext WriteTrackEvent(
-      typename Base::TraceContext& ctx,
+      TrackEventDataSource::TraceContext& ctx,
       const CategoryType& category,
       const EventNameType& event_name,
       perfetto::protos::pbzero::TrackEvent::Type type,
@@ -21133,7 +21492,7 @@ class TrackEventDataSource
       Arguments&&... args) PERFETTO_ALWAYS_INLINE {
     using CatTraits = CategoryTraits<CategoryType>;
     TraceWithInstances(
-        instances, category, [&](typename Base::TraceContext ctx) {
+        instances, category, [&](TrackEventDataSource::TraceContext ctx) {
           // If this category is dynamic, first check whether it's enabled.
           if (CatTraits::kIsDynamic &&
               !IsDynamicCategoryEnabled(
@@ -21163,7 +21522,7 @@ class TrackEventDataSource
       Arguments&&... args) PERFETTO_ALWAYS_INLINE {
     using CatTraits = CategoryTraits<CategoryType>;
     TraceWithInstances(
-        instances, category, [&](typename Base::TraceContext ctx) {
+        instances, category, [&](TrackEventDataSource::TraceContext ctx) {
           // If this category is dynamic, first check whether it's enabled.
           if (CatTraits::kIsDynamic &&
               !IsDynamicCategoryEnabled(
@@ -21184,9 +21543,9 @@ class TrackEventDataSource
                                  Lambda lambda) PERFETTO_ALWAYS_INLINE {
     using CatTraits = CategoryTraits<CategoryType>;
     if (CatTraits::kIsDynamic) {
-      Base::TraceWithInstances(instances, std::move(lambda));
+      TrackEventDataSource::TraceWithInstances(instances, std::move(lambda));
     } else {
-      Base::template TraceWithInstances<CategoryTracePointTraits>(
+      TrackEventDataSource::TraceWithInstances<CategoryTracePointTraits>(
           instances, std::move(lambda), {CatTraits::GetStaticIndex(category)});
     }
   }
@@ -21195,7 +21554,7 @@ class TrackEventDataSource
   // per-trace writer cache or by falling back to computing it based on the
   // trace config for the given session.
   static bool IsDynamicCategoryEnabled(
-      typename Base::TraceContext* ctx,
+      TrackEventDataSource::TraceContext* ctx,
       const DynamicCategory& dynamic_category) {
     auto incr_state = ctx->GetIncrementalState();
     auto it = incr_state->dynamic_categories.find(dynamic_category.name);
@@ -21208,7 +21567,7 @@ class TrackEventDataSource
       }
       Category category{Category::FromDynamicCategory(dynamic_category)};
       bool enabled = TrackEventInternal::IsCategoryEnabled(
-          *Registry, ds->config_, category);
+          *Registry, ds->GetConfig(), category);
       // TODO(skyostil): Cap the size of |dynamic_categories|.
       incr_state->dynamic_categories[dynamic_category.name] = enabled;
       return enabled;
@@ -21222,6 +21581,11 @@ class TrackEventDataSource
 
 }  // namespace internal
 }  // namespace perfetto
+
+PERFETTO_DECLARE_DATA_SOURCE_STATIC_MEMBERS_WITH_ATTRS(
+    PERFETTO_EXPORT_COMPONENT,
+    perfetto::internal::TrackEventDataSource,
+    perfetto::internal::TrackEventDataSourceTraits);
 
 #endif  // INCLUDE_PERFETTO_TRACING_INTERNAL_TRACK_EVENT_DATA_SOURCE_H_
 // gen_amalgamated begin header: include/perfetto/tracing/internal/track_event_macros.h
@@ -21253,9 +21617,19 @@ class TrackEventDataSource
 // gen_amalgamated expanded: #include "perfetto/tracing/string_helpers.h"
 // gen_amalgamated expanded: #include "perfetto/tracing/track_event_category_registry.h"
 
-// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #if defined(__GNUC__) || defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+// Fix 'error: #pragma system_header ignored in main file' for clang in Google3.
+#pragma clang diagnostic ignored "-Wpragma-system-header-outside-header"
+#endif
+
+// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #endif
 
 // Defines data structures for backing a category registry.
@@ -21314,14 +21688,12 @@ class TrackEventDataSource
 // Defines the TrackEvent data source for the current track event namespace.
 // `virtual ~TrackEvent` is added to avoid `-Wweak-vtables` warning.
 // Learn more : aosp/2019906
-#define PERFETTO_INTERNAL_DECLARE_TRACK_EVENT_DATA_SOURCE(attrs)               \
-  struct attrs TrackEvent : public ::perfetto::internal::TrackEventDataSource< \
-                                TrackEvent, &internal::kCategoryRegistry> {    \
-    virtual ~TrackEvent();                                                     \
-  }
+#define PERFETTO_INTERNAL_DECLARE_TRACK_EVENT_DATA_SOURCE(attrs) \
+  struct attrs PERFETTO_COMPONENT_EXPORT TrackEvent              \
+      : public ::perfetto::internal::TrackEvent<                 \
+            &internal::kCategoryRegistry> {}
 
-#define PERFETTO_INTERNAL_DEFINE_TRACK_EVENT_DATA_SOURCE() \
-  TrackEvent::~TrackEvent() = default;
+#define PERFETTO_INTERNAL_DEFINE_TRACK_EVENT_DATA_SOURCE()
 
 // At compile time, turns a category name represented by a static string into an
 // index into the current category registry. A build error will be generated if
@@ -21337,6 +21709,15 @@ class TrackEventDataSource
 #define PERFETTO_INTERNAL_CONCAT(a, b) PERFETTO_INTERNAL_CONCAT2(a, b)
 #define PERFETTO_UID(prefix) PERFETTO_INTERNAL_CONCAT(prefix, __LINE__)
 
+#if PERFETTO_BUILDFLAG(PERFETTO_COMPILER_MSVC)
+// MSVC with /permissive- fails to build without this. Probably a compiler bug.
+#define PERFETTO_INTERNAL_STATIC_FOR_MSVC static
+#else
+// On the other hand, if we add static with clang, binary size of the chromium
+// build will increase dramatically.
+#define PERFETTO_INTERNAL_STATIC_FOR_MSVC
+#endif
+
 // Efficiently determines whether tracing is enabled for the given category, and
 // if so, emits one trace event with the given arguments.
 #define PERFETTO_INTERNAL_TRACK_EVENT_WITH_METHOD(method, category, name, ...) \
@@ -21345,7 +21726,7 @@ class TrackEventDataSource
     namespace tns = PERFETTO_TRACK_EVENT_NAMESPACE;                            \
     /* Compute the category index outside the lambda to work around a */       \
     /* GCC 7 bug */                                                            \
-    constexpr auto PERFETTO_UID(                                               \
+    PERFETTO_INTERNAL_STATIC_FOR_MSVC constexpr auto PERFETTO_UID(             \
         kCatIndex_ADD_TO_PERFETTO_DEFINE_CATEGORIES_IF_FAILS_) =               \
         PERFETTO_GET_CATEGORY_INDEX(category);                                 \
     if (::PERFETTO_TRACK_EVENT_NAMESPACE::internal::IsDynamicCategory(         \
@@ -21671,9 +22052,7 @@ constexpr bool IsDynamicCategory(const ::perfetto::DynamicCategory&) {
   } /* namespace PERFETTO_TRACK_EVENT_NAMESPACE  */                        \
   using PERFETTO_TRACK_EVENT_NAMESPACE::TrackEvent;                        \
   } /* namespace ns */                                                     \
-  PERFETTO_DECLARE_DATA_SOURCE_STATIC_MEMBERS_WITH_ATTRS(                  \
-      attrs, ns::PERFETTO_TRACK_EVENT_NAMESPACE::TrackEvent,               \
-      ::perfetto::internal::TrackEventDataSourceTraits)
+  PERFETTO_INTERNAL_SWALLOW_SEMICOLON()
 
 // Register the set of available categories by passing a list of categories to
 // this macro: perfetto::Category("cat1"), perfetto::Category("cat2"), ...
@@ -21719,9 +22098,7 @@ constexpr bool IsDynamicCategory(const ::perfetto::DynamicCategory&) {
   PERFETTO_INTERNAL_DEFINE_TRACK_EVENT_DATA_SOURCE()                           \
   } /* namespace PERFETTO_TRACK_EVENT_NAMESPACE */                             \
   } /* namespace ns */                                                         \
-  PERFETTO_DEFINE_DATA_SOURCE_STATIC_MEMBERS_WITH_ATTRS(                       \
-      attrs, ns::PERFETTO_TRACK_EVENT_NAMESPACE::TrackEvent,                   \
-      ::perfetto::internal::TrackEventDataSourceTraits)
+  PERFETTO_INTERNAL_SWALLOW_SEMICOLON()
 
 // Allocate storage for each category by using this macro once per track event
 // namespace.
@@ -21734,9 +22111,19 @@ constexpr bool IsDynamicCategory(const ::perfetto::DynamicCategory&) {
 #define PERFETTO_TRACK_EVENT_STATIC_STORAGE() \
   PERFETTO_TRACK_EVENT_STATIC_STORAGE_IN_NAMESPACE(perfetto)
 
-// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #if defined(__GNUC__) || defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+// Fix 'error: #pragma system_header ignored in main file' for clang in Google3.
+#pragma clang diagnostic ignored "-Wpragma-system-header-outside-header"
+#endif
+
+// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #endif
 
 // Begin a slice under |category| with the title |name|. Both strings must be
@@ -22203,9 +22590,19 @@ class TrackEventInternedDataIndex
 #define PERFETTO_ENABLE_LEGACY_TRACE_EVENTS 0
 #endif
 
-// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #if defined(__GNUC__) || defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+// Fix 'error: #pragma system_header ignored in main file' for clang in Google3.
+#pragma clang diagnostic ignored "-Wpragma-system-header-outside-header"
+#endif
+
+// Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #endif
 
 // ----------------------------------------------------------------------------
@@ -22273,7 +22670,7 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
     /* First check the scope for instant events. */                        \
     if ((phase) == TRACE_EVENT_PHASE_INSTANT) {                            \
       /* Note: Avoids the need to set LegacyEvent::instant_event_scope. */ \
-      auto scope = (flags)&TRACE_EVENT_FLAG_SCOPE_MASK;                    \
+      auto scope = (flags) & TRACE_EVENT_FLAG_SCOPE_MASK;                  \
       switch (scope) {                                                     \
         case TRACE_EVENT_SCOPE_GLOBAL:                                     \
           PERFETTO_INTERNAL_LEGACY_EVENT_WITH_FLAGS_ON_TRACK(              \
@@ -22297,7 +22694,7 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
     if (std::is_same<                                                      \
             decltype(thread_id),                                           \
             ::perfetto::legacy::PerfettoLegacyCurrentThreadId>::value ||   \
-        ((flags)&TRACE_EVENT_FLAG_HAS_PROCESS_ID)) {                       \
+        ((flags) & TRACE_EVENT_FLAG_HAS_PROCESS_ID)) {                     \
       PERFETTO_INTERNAL_LEGACY_EVENT_WITH_FLAGS_ON_TRACK(                  \
           phase, category, name, TrackEventInternal::kDefaultTrack, flags, \
           ##__VA_ARGS__);                                                  \
@@ -22317,7 +22714,7 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
     /* First check the scope for instant events. */                          \
     if ((phase) == TRACE_EVENT_PHASE_INSTANT) {                              \
       /* Note: Avoids the need to set LegacyEvent::instant_event_scope. */   \
-      auto scope = (flags)&TRACE_EVENT_FLAG_SCOPE_MASK;                      \
+      auto scope = (flags) & TRACE_EVENT_FLAG_SCOPE_MASK;                    \
       switch (scope) {                                                       \
         case TRACE_EVENT_SCOPE_GLOBAL:                                       \
           PERFETTO_INTERNAL_LEGACY_EVENT_WITH_ID_ON_TRACK(                   \
@@ -22341,7 +22738,7 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
     if (std::is_same<                                                        \
             decltype(thread_id),                                             \
             ::perfetto::legacy::PerfettoLegacyCurrentThreadId>::value ||     \
-        ((flags)&TRACE_EVENT_FLAG_HAS_PROCESS_ID)) {                         \
+        ((flags) & TRACE_EVENT_FLAG_HAS_PROCESS_ID)) {                       \
       PERFETTO_INTERNAL_LEGACY_EVENT_WITH_ID_ON_TRACK(                       \
           phase, category, name, TrackEventInternal::kDefaultTrack, flags,   \
           thread_id, id, ##__VA_ARGS__);                                     \
@@ -23103,13 +23500,6 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
       TRACE_EVENT_PHASE_SNAPSHOT_OBJECT, category_group, name, id,    \
       TRACE_EVENT_FLAG_NONE, "snapshot", snapshot)
 
-#define TRACE_EVENT_OBJECT_SNAPSHOT_WITH_ID_AND_TIMESTAMP(                 \
-    category_group, name, id, timestamp, snapshot)                         \
-  INTERNAL_TRACE_EVENT_ADD_WITH_ID_TID_AND_TIMESTAMP(                      \
-      TRACE_EVENT_PHASE_SNAPSHOT_OBJECT, category_group, name, id,         \
-      TRACE_EVENT_API_CURRENT_THREAD_ID, timestamp, TRACE_EVENT_FLAG_NONE, \
-      "snapshot", snapshot)
-
 #define TRACE_EVENT_OBJECT_DELETED_WITH_ID(category_group, name, id) \
   INTERNAL_TRACE_EVENT_ADD_WITH_ID(TRACE_EVENT_PHASE_DELETE_OBJECT,  \
                                    category_group, name, id,         \
@@ -23149,8 +23539,10 @@ ConvertThreadId(const PerfettoLegacyCurrentThreadId&);
 // involvement from the embedder. APIs such as TRACE_EVENT_API_ADD_TRACE_EVENT
 // are still up to the embedder to define.
 
-#define TRACE_STR_COPY(str) \
-  ::perfetto::DynamicString { ::perfetto::internal::PossiblyNull(str) }
+#define TRACE_STR_COPY(str)                 \
+  ::perfetto::DynamicString {               \
+    ::perfetto::internal::PossiblyNull(str) \
+  }
 
 #define TRACE_ID_WITH_SCOPE(scope, ...) \
   ::perfetto::internal::LegacyTraceId::WithScope(scope, ##__VA_ARGS__)
@@ -25149,6 +25541,7 @@ class PERFETTO_EXPORT_COMPONENT ObservableEvents_CloneTriggerHit : public ::prot
     kProducerNameFieldNumber = 3,
     kProducerUidFieldNumber = 4,
     kBootTimeNsFieldNumber = 5,
+    kTriggerDelayMsFieldNumber = 6,
   };
 
   ObservableEvents_CloneTriggerHit();
@@ -25185,18 +25578,23 @@ class PERFETTO_EXPORT_COMPONENT ObservableEvents_CloneTriggerHit : public ::prot
   uint64_t boot_time_ns() const { return boot_time_ns_; }
   void set_boot_time_ns(uint64_t value) { boot_time_ns_ = value; _has_field_.set(5); }
 
+  bool has_trigger_delay_ms() const { return _has_field_[6]; }
+  uint64_t trigger_delay_ms() const { return trigger_delay_ms_; }
+  void set_trigger_delay_ms(uint64_t value) { trigger_delay_ms_ = value; _has_field_.set(6); }
+
  private:
   int64_t tracing_session_id_{};
   std::string trigger_name_{};
   std::string producer_name_{};
   uint32_t producer_uid_{};
   uint64_t boot_time_ns_{};
+  uint64_t trigger_delay_ms_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<6> _has_field_{};
+  std::bitset<7> _has_field_{};
 };
 
 
@@ -25534,6 +25932,7 @@ class PERFETTO_EXPORT_COMPONENT PerfEvents_Timebase : public ::protozero::CppMes
   enum FieldNumbers {
     kFrequencyFieldNumber = 2,
     kPeriodFieldNumber = 1,
+    kPollPeriodMsFieldNumber = 6,
     kCounterFieldNumber = 4,
     kTracepointFieldNumber = 3,
     kRawEventFieldNumber = 5,
@@ -25563,6 +25962,10 @@ class PERFETTO_EXPORT_COMPONENT PerfEvents_Timebase : public ::protozero::CppMes
   uint64_t period() const { return period_; }
   void set_period(uint64_t value) { period_ = value; _has_field_.set(1); }
 
+  bool has_poll_period_ms() const { return _has_field_[6]; }
+  uint32_t poll_period_ms() const { return poll_period_ms_; }
+  void set_poll_period_ms(uint32_t value) { poll_period_ms_ = value; _has_field_.set(6); }
+
   bool has_counter() const { return _has_field_[4]; }
   PerfEvents_Counter counter() const { return counter_; }
   void set_counter(PerfEvents_Counter value) { counter_ = value; _has_field_.set(4); }
@@ -25586,6 +25989,7 @@ class PERFETTO_EXPORT_COMPONENT PerfEvents_Timebase : public ::protozero::CppMes
  private:
   uint64_t frequency_{};
   uint64_t period_{};
+  uint32_t poll_period_ms_{};
   PerfEvents_Counter counter_{};
   ::protozero::CopyablePtr<PerfEvents_Tracepoint> tracepoint_;
   ::protozero::CopyablePtr<PerfEvents_RawEvent> raw_event_;
@@ -25916,6 +26320,214 @@ enum VmstatCounters : int {
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYS_STATS_COUNTERS_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/common/system_info.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYSTEM_INFO_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYSTEM_INFO_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class SystemInfo;
+class Utsname;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT SystemInfo : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kUtsnameFieldNumber = 1,
+    kAndroidBuildFingerprintFieldNumber = 2,
+    kAndroidDeviceManufacturerFieldNumber = 14,
+    kAndroidSocModelFieldNumber = 9,
+    kAndroidGuestSocModelFieldNumber = 13,
+    kAndroidHardwareRevisionFieldNumber = 10,
+    kAndroidStorageModelFieldNumber = 11,
+    kAndroidRamModelFieldNumber = 12,
+    kAndroidSerialConsoleFieldNumber = 15,
+    kTracingServiceVersionFieldNumber = 4,
+    kAndroidSdkVersionFieldNumber = 5,
+    kPageSizeFieldNumber = 6,
+    kNumCpusFieldNumber = 8,
+    kTimezoneOffMinsFieldNumber = 7,
+    kHzFieldNumber = 3,
+  };
+
+  SystemInfo();
+  ~SystemInfo() override;
+  SystemInfo(SystemInfo&&) noexcept;
+  SystemInfo& operator=(SystemInfo&&);
+  SystemInfo(const SystemInfo&);
+  SystemInfo& operator=(const SystemInfo&);
+  bool operator==(const SystemInfo&) const;
+  bool operator!=(const SystemInfo& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_utsname() const { return _has_field_[1]; }
+  const Utsname& utsname() const { return *utsname_; }
+  Utsname* mutable_utsname() { _has_field_.set(1); return utsname_.get(); }
+
+  bool has_android_build_fingerprint() const { return _has_field_[2]; }
+  const std::string& android_build_fingerprint() const { return android_build_fingerprint_; }
+  void set_android_build_fingerprint(const std::string& value) { android_build_fingerprint_ = value; _has_field_.set(2); }
+
+  bool has_android_device_manufacturer() const { return _has_field_[14]; }
+  const std::string& android_device_manufacturer() const { return android_device_manufacturer_; }
+  void set_android_device_manufacturer(const std::string& value) { android_device_manufacturer_ = value; _has_field_.set(14); }
+
+  bool has_android_soc_model() const { return _has_field_[9]; }
+  const std::string& android_soc_model() const { return android_soc_model_; }
+  void set_android_soc_model(const std::string& value) { android_soc_model_ = value; _has_field_.set(9); }
+
+  bool has_android_guest_soc_model() const { return _has_field_[13]; }
+  const std::string& android_guest_soc_model() const { return android_guest_soc_model_; }
+  void set_android_guest_soc_model(const std::string& value) { android_guest_soc_model_ = value; _has_field_.set(13); }
+
+  bool has_android_hardware_revision() const { return _has_field_[10]; }
+  const std::string& android_hardware_revision() const { return android_hardware_revision_; }
+  void set_android_hardware_revision(const std::string& value) { android_hardware_revision_ = value; _has_field_.set(10); }
+
+  bool has_android_storage_model() const { return _has_field_[11]; }
+  const std::string& android_storage_model() const { return android_storage_model_; }
+  void set_android_storage_model(const std::string& value) { android_storage_model_ = value; _has_field_.set(11); }
+
+  bool has_android_ram_model() const { return _has_field_[12]; }
+  const std::string& android_ram_model() const { return android_ram_model_; }
+  void set_android_ram_model(const std::string& value) { android_ram_model_ = value; _has_field_.set(12); }
+
+  bool has_android_serial_console() const { return _has_field_[15]; }
+  const std::string& android_serial_console() const { return android_serial_console_; }
+  void set_android_serial_console(const std::string& value) { android_serial_console_ = value; _has_field_.set(15); }
+
+  bool has_tracing_service_version() const { return _has_field_[4]; }
+  const std::string& tracing_service_version() const { return tracing_service_version_; }
+  void set_tracing_service_version(const std::string& value) { tracing_service_version_ = value; _has_field_.set(4); }
+
+  bool has_android_sdk_version() const { return _has_field_[5]; }
+  uint64_t android_sdk_version() const { return android_sdk_version_; }
+  void set_android_sdk_version(uint64_t value) { android_sdk_version_ = value; _has_field_.set(5); }
+
+  bool has_page_size() const { return _has_field_[6]; }
+  uint32_t page_size() const { return page_size_; }
+  void set_page_size(uint32_t value) { page_size_ = value; _has_field_.set(6); }
+
+  bool has_num_cpus() const { return _has_field_[8]; }
+  uint32_t num_cpus() const { return num_cpus_; }
+  void set_num_cpus(uint32_t value) { num_cpus_ = value; _has_field_.set(8); }
+
+  bool has_timezone_off_mins() const { return _has_field_[7]; }
+  int32_t timezone_off_mins() const { return timezone_off_mins_; }
+  void set_timezone_off_mins(int32_t value) { timezone_off_mins_ = value; _has_field_.set(7); }
+
+  bool has_hz() const { return _has_field_[3]; }
+  int64_t hz() const { return hz_; }
+  void set_hz(int64_t value) { hz_ = value; _has_field_.set(3); }
+
+ private:
+  ::protozero::CopyablePtr<Utsname> utsname_;
+  std::string android_build_fingerprint_{};
+  std::string android_device_manufacturer_{};
+  std::string android_soc_model_{};
+  std::string android_guest_soc_model_{};
+  std::string android_hardware_revision_{};
+  std::string android_storage_model_{};
+  std::string android_ram_model_{};
+  std::string android_serial_console_{};
+  std::string tracing_service_version_{};
+  uint64_t android_sdk_version_{};
+  uint32_t page_size_{};
+  uint32_t num_cpus_{};
+  int32_t timezone_off_mins_{};
+  int64_t hz_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<16> _has_field_{};
+};
+
+
+class PERFETTO_EXPORT_COMPONENT Utsname : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kSysnameFieldNumber = 1,
+    kVersionFieldNumber = 2,
+    kReleaseFieldNumber = 3,
+    kMachineFieldNumber = 4,
+  };
+
+  Utsname();
+  ~Utsname() override;
+  Utsname(Utsname&&) noexcept;
+  Utsname& operator=(Utsname&&);
+  Utsname(const Utsname&);
+  Utsname& operator=(const Utsname&);
+  bool operator==(const Utsname&) const;
+  bool operator!=(const Utsname& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_sysname() const { return _has_field_[1]; }
+  const std::string& sysname() const { return sysname_; }
+  void set_sysname(const std::string& value) { sysname_ = value; _has_field_.set(1); }
+
+  bool has_version() const { return _has_field_[2]; }
+  const std::string& version() const { return version_; }
+  void set_version(const std::string& value) { version_ = value; _has_field_.set(2); }
+
+  bool has_release() const { return _has_field_[3]; }
+  const std::string& release() const { return release_; }
+  void set_release(const std::string& value) { release_ = value; _has_field_.set(3); }
+
+  bool has_machine() const { return _has_field_[4]; }
+  const std::string& machine() const { return machine_; }
+  void set_machine(const std::string& value) { machine_ = value; _has_field_.set(4); }
+
+ private:
+  std::string sysname_{};
+  std::string version_{};
+  std::string release_{};
+  std::string machine_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<5> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYSTEM_INFO_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/common/trace_stats.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_TRACE_STATS_PROTO_CPP_H_
@@ -30411,7 +31023,7 @@ class ObservableEvents : public ::protozero::Message {
 
 };
 
-class ObservableEvents_CloneTriggerHit_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class ObservableEvents_CloneTriggerHit_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   ObservableEvents_CloneTriggerHit_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ObservableEvents_CloneTriggerHit_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -30426,6 +31038,8 @@ class ObservableEvents_CloneTriggerHit_Decoder : public ::protozero::TypedProtoD
   uint32_t producer_uid() const { return at<4>().as_uint32(); }
   bool has_boot_time_ns() const { return at<5>().valid(); }
   uint64_t boot_time_ns() const { return at<5>().as_uint64(); }
+  bool has_trigger_delay_ms() const { return at<6>().valid(); }
+  uint64_t trigger_delay_ms() const { return at<6>().as_uint64(); }
 };
 
 class ObservableEvents_CloneTriggerHit : public ::protozero::Message {
@@ -30437,6 +31051,7 @@ class ObservableEvents_CloneTriggerHit : public ::protozero::Message {
     kProducerNameFieldNumber = 3,
     kProducerUidFieldNumber = 4,
     kBootTimeNsFieldNumber = 5,
+    kTriggerDelayMsFieldNumber = 6,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ObservableEvents.CloneTriggerHit"; }
 
@@ -30536,6 +31151,24 @@ class ObservableEvents_CloneTriggerHit : public ::protozero::Message {
   static constexpr FieldMetadata_BootTimeNs kBootTimeNs{};
   void set_boot_time_ns(uint64_t value) {
     static constexpr uint32_t field_id = FieldMetadata_BootTimeNs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TriggerDelayMs =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      ObservableEvents_CloneTriggerHit>;
+
+  static constexpr FieldMetadata_TriggerDelayMs kTriggerDelayMs{};
+  void set_trigger_delay_ms(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TriggerDelayMs::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -31144,6 +31777,8 @@ class PerfEvents_Timebase_Decoder : public ::protozero::TypedProtoDecoder</*MAX_
   uint64_t frequency() const { return at<2>().as_uint64(); }
   bool has_period() const { return at<1>().valid(); }
   uint64_t period() const { return at<1>().as_uint64(); }
+  bool has_poll_period_ms() const { return at<6>().valid(); }
+  uint32_t poll_period_ms() const { return at<6>().as_uint32(); }
   bool has_counter() const { return at<4>().valid(); }
   int32_t counter() const { return at<4>().as_int32(); }
   bool has_tracepoint() const { return at<3>().valid(); }
@@ -31162,6 +31797,7 @@ class PerfEvents_Timebase : public ::protozero::Message {
   enum : int32_t {
     kFrequencyFieldNumber = 2,
     kPeriodFieldNumber = 1,
+    kPollPeriodMsFieldNumber = 6,
     kCounterFieldNumber = 4,
     kTracepointFieldNumber = 3,
     kRawEventFieldNumber = 5,
@@ -31204,6 +31840,24 @@ class PerfEvents_Timebase : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_PollPeriodMs =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      PerfEvents_Timebase>;
+
+  static constexpr FieldMetadata_PollPeriodMs kPollPeriodMs{};
+  void set_poll_period_ms(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_PollPeriodMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
         ::Append(*this, field_id, value);
   }
 
@@ -32322,6 +32976,542 @@ const char* VmstatCounters_Name(::perfetto::protos::pbzero::VmstatCounters value
   }
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/common/system_info.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYSTEM_INFO_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_COMMON_SYSTEM_INFO_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+class Utsname;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class SystemInfo_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/15, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  SystemInfo_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit SystemInfo_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit SystemInfo_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_utsname() const { return at<1>().valid(); }
+  ::protozero::ConstBytes utsname() const { return at<1>().as_bytes(); }
+  bool has_android_build_fingerprint() const { return at<2>().valid(); }
+  ::protozero::ConstChars android_build_fingerprint() const { return at<2>().as_string(); }
+  bool has_android_device_manufacturer() const { return at<14>().valid(); }
+  ::protozero::ConstChars android_device_manufacturer() const { return at<14>().as_string(); }
+  bool has_android_soc_model() const { return at<9>().valid(); }
+  ::protozero::ConstChars android_soc_model() const { return at<9>().as_string(); }
+  bool has_android_guest_soc_model() const { return at<13>().valid(); }
+  ::protozero::ConstChars android_guest_soc_model() const { return at<13>().as_string(); }
+  bool has_android_hardware_revision() const { return at<10>().valid(); }
+  ::protozero::ConstChars android_hardware_revision() const { return at<10>().as_string(); }
+  bool has_android_storage_model() const { return at<11>().valid(); }
+  ::protozero::ConstChars android_storage_model() const { return at<11>().as_string(); }
+  bool has_android_ram_model() const { return at<12>().valid(); }
+  ::protozero::ConstChars android_ram_model() const { return at<12>().as_string(); }
+  bool has_android_serial_console() const { return at<15>().valid(); }
+  ::protozero::ConstChars android_serial_console() const { return at<15>().as_string(); }
+  bool has_tracing_service_version() const { return at<4>().valid(); }
+  ::protozero::ConstChars tracing_service_version() const { return at<4>().as_string(); }
+  bool has_android_sdk_version() const { return at<5>().valid(); }
+  uint64_t android_sdk_version() const { return at<5>().as_uint64(); }
+  bool has_page_size() const { return at<6>().valid(); }
+  uint32_t page_size() const { return at<6>().as_uint32(); }
+  bool has_num_cpus() const { return at<8>().valid(); }
+  uint32_t num_cpus() const { return at<8>().as_uint32(); }
+  bool has_timezone_off_mins() const { return at<7>().valid(); }
+  int32_t timezone_off_mins() const { return at<7>().as_int32(); }
+  bool has_hz() const { return at<3>().valid(); }
+  int64_t hz() const { return at<3>().as_int64(); }
+};
+
+class SystemInfo : public ::protozero::Message {
+ public:
+  using Decoder = SystemInfo_Decoder;
+  enum : int32_t {
+    kUtsnameFieldNumber = 1,
+    kAndroidBuildFingerprintFieldNumber = 2,
+    kAndroidDeviceManufacturerFieldNumber = 14,
+    kAndroidSocModelFieldNumber = 9,
+    kAndroidGuestSocModelFieldNumber = 13,
+    kAndroidHardwareRevisionFieldNumber = 10,
+    kAndroidStorageModelFieldNumber = 11,
+    kAndroidRamModelFieldNumber = 12,
+    kAndroidSerialConsoleFieldNumber = 15,
+    kTracingServiceVersionFieldNumber = 4,
+    kAndroidSdkVersionFieldNumber = 5,
+    kPageSizeFieldNumber = 6,
+    kNumCpusFieldNumber = 8,
+    kTimezoneOffMinsFieldNumber = 7,
+    kHzFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.SystemInfo"; }
+
+
+  using FieldMetadata_Utsname =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Utsname,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_Utsname kUtsname{};
+  template <typename T = Utsname> T* set_utsname() {
+    return BeginNestedMessage<T>(1);
+  }
+
+
+  using FieldMetadata_AndroidBuildFingerprint =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidBuildFingerprint kAndroidBuildFingerprint{};
+  void set_android_build_fingerprint(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidBuildFingerprint::kFieldId, data, size);
+  }
+  void set_android_build_fingerprint(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidBuildFingerprint::kFieldId, chars.data, chars.size);
+  }
+  void set_android_build_fingerprint(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidBuildFingerprint::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidDeviceManufacturer =
+    ::protozero::proto_utils::FieldMetadata<
+      14,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidDeviceManufacturer kAndroidDeviceManufacturer{};
+  void set_android_device_manufacturer(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidDeviceManufacturer::kFieldId, data, size);
+  }
+  void set_android_device_manufacturer(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidDeviceManufacturer::kFieldId, chars.data, chars.size);
+  }
+  void set_android_device_manufacturer(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidDeviceManufacturer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidSocModel =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidSocModel kAndroidSocModel{};
+  void set_android_soc_model(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidSocModel::kFieldId, data, size);
+  }
+  void set_android_soc_model(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidSocModel::kFieldId, chars.data, chars.size);
+  }
+  void set_android_soc_model(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidSocModel::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidGuestSocModel =
+    ::protozero::proto_utils::FieldMetadata<
+      13,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidGuestSocModel kAndroidGuestSocModel{};
+  void set_android_guest_soc_model(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidGuestSocModel::kFieldId, data, size);
+  }
+  void set_android_guest_soc_model(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidGuestSocModel::kFieldId, chars.data, chars.size);
+  }
+  void set_android_guest_soc_model(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidGuestSocModel::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidHardwareRevision =
+    ::protozero::proto_utils::FieldMetadata<
+      10,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidHardwareRevision kAndroidHardwareRevision{};
+  void set_android_hardware_revision(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidHardwareRevision::kFieldId, data, size);
+  }
+  void set_android_hardware_revision(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidHardwareRevision::kFieldId, chars.data, chars.size);
+  }
+  void set_android_hardware_revision(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidHardwareRevision::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidStorageModel =
+    ::protozero::proto_utils::FieldMetadata<
+      11,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidStorageModel kAndroidStorageModel{};
+  void set_android_storage_model(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidStorageModel::kFieldId, data, size);
+  }
+  void set_android_storage_model(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidStorageModel::kFieldId, chars.data, chars.size);
+  }
+  void set_android_storage_model(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidStorageModel::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidRamModel =
+    ::protozero::proto_utils::FieldMetadata<
+      12,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidRamModel kAndroidRamModel{};
+  void set_android_ram_model(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidRamModel::kFieldId, data, size);
+  }
+  void set_android_ram_model(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidRamModel::kFieldId, chars.data, chars.size);
+  }
+  void set_android_ram_model(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidRamModel::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidSerialConsole =
+    ::protozero::proto_utils::FieldMetadata<
+      15,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidSerialConsole kAndroidSerialConsole{};
+  void set_android_serial_console(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_AndroidSerialConsole::kFieldId, data, size);
+  }
+  void set_android_serial_console(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_AndroidSerialConsole::kFieldId, chars.data, chars.size);
+  }
+  void set_android_serial_console(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidSerialConsole::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TracingServiceVersion =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_TracingServiceVersion kTracingServiceVersion{};
+  void set_tracing_service_version(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_TracingServiceVersion::kFieldId, data, size);
+  }
+  void set_tracing_service_version(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_TracingServiceVersion::kFieldId, chars.data, chars.size);
+  }
+  void set_tracing_service_version(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_TracingServiceVersion::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_AndroidSdkVersion =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_AndroidSdkVersion kAndroidSdkVersion{};
+  void set_android_sdk_version(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_AndroidSdkVersion::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_PageSize =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_PageSize kPageSize{};
+  void set_page_size(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_PageSize::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NumCpus =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_NumCpus kNumCpus{};
+  void set_num_cpus(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NumCpus::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TimezoneOffMins =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_TimezoneOffMins kTimezoneOffMins{};
+  void set_timezone_off_mins(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TimezoneOffMins::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Hz =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      SystemInfo>;
+
+  static constexpr FieldMetadata_Hz kHz{};
+  void set_hz(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Hz::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Utsname_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Utsname_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Utsname_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Utsname_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_sysname() const { return at<1>().valid(); }
+  ::protozero::ConstChars sysname() const { return at<1>().as_string(); }
+  bool has_version() const { return at<2>().valid(); }
+  ::protozero::ConstChars version() const { return at<2>().as_string(); }
+  bool has_release() const { return at<3>().valid(); }
+  ::protozero::ConstChars release() const { return at<3>().as_string(); }
+  bool has_machine() const { return at<4>().valid(); }
+  ::protozero::ConstChars machine() const { return at<4>().as_string(); }
+};
+
+class Utsname : public ::protozero::Message {
+ public:
+  using Decoder = Utsname_Decoder;
+  enum : int32_t {
+    kSysnameFieldNumber = 1,
+    kVersionFieldNumber = 2,
+    kReleaseFieldNumber = 3,
+    kMachineFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Utsname"; }
+
+
+  using FieldMetadata_Sysname =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Utsname>;
+
+  static constexpr FieldMetadata_Sysname kSysname{};
+  void set_sysname(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Sysname::kFieldId, data, size);
+  }
+  void set_sysname(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Sysname::kFieldId, chars.data, chars.size);
+  }
+  void set_sysname(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Sysname::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Version =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Utsname>;
+
+  static constexpr FieldMetadata_Version kVersion{};
+  void set_version(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Version::kFieldId, data, size);
+  }
+  void set_version(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Version::kFieldId, chars.data, chars.size);
+  }
+  void set_version(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Version::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Release =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Utsname>;
+
+  static constexpr FieldMetadata_Release kRelease{};
+  void set_release(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Release::kFieldId, data, size);
+  }
+  void set_release(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Release::kFieldId, chars.data, chars.size);
+  }
+  void set_release(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Release::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Machine =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Utsname>;
+
+  static constexpr FieldMetadata_Machine kMachine{};
+  void set_machine(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Machine::kFieldId, data, size);
+  }
+  void set_machine(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Machine::kFieldId, chars.data, chars.size);
+  }
+  void set_machine(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Machine::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
 
 } // Namespace.
 } // Namespace.
@@ -34952,6 +36142,228 @@ class PERFETTO_EXPORT_COMPONENT AndroidSystemPropertyConfig : public ::protozero
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_ANDROID_SYSTEM_PROPERTY_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/app_wakelock_config.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_APP_WAKELOCK_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_APP_WAKELOCK_CONFIG_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class AppWakelocksConfig;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT AppWakelocksConfig : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kWriteDelayMsFieldNumber = 1,
+    kFilterDurationBelowMsFieldNumber = 2,
+    kDropOwnerPidFieldNumber = 3,
+  };
+
+  AppWakelocksConfig();
+  ~AppWakelocksConfig() override;
+  AppWakelocksConfig(AppWakelocksConfig&&) noexcept;
+  AppWakelocksConfig& operator=(AppWakelocksConfig&&);
+  AppWakelocksConfig(const AppWakelocksConfig&);
+  AppWakelocksConfig& operator=(const AppWakelocksConfig&);
+  bool operator==(const AppWakelocksConfig&) const;
+  bool operator!=(const AppWakelocksConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_write_delay_ms() const { return _has_field_[1]; }
+  int32_t write_delay_ms() const { return write_delay_ms_; }
+  void set_write_delay_ms(int32_t value) { write_delay_ms_ = value; _has_field_.set(1); }
+
+  bool has_filter_duration_below_ms() const { return _has_field_[2]; }
+  int32_t filter_duration_below_ms() const { return filter_duration_below_ms_; }
+  void set_filter_duration_below_ms(int32_t value) { filter_duration_below_ms_ = value; _has_field_.set(2); }
+
+  bool has_drop_owner_pid() const { return _has_field_[3]; }
+  bool drop_owner_pid() const { return drop_owner_pid_; }
+  void set_drop_owner_pid(bool value) { drop_owner_pid_ = value; _has_field_.set(3); }
+
+ private:
+  int32_t write_delay_ms_{};
+  int32_t filter_duration_below_ms_{};
+  bool drop_owner_pid_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<4> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_APP_WAKELOCK_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/cpu_per_uid_config.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_CPU_PER_UID_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_CPU_PER_UID_CONFIG_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class CpuPerUidConfig;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT CpuPerUidConfig : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kPollMsFieldNumber = 1,
+  };
+
+  CpuPerUidConfig();
+  ~CpuPerUidConfig() override;
+  CpuPerUidConfig(CpuPerUidConfig&&) noexcept;
+  CpuPerUidConfig& operator=(CpuPerUidConfig&&);
+  CpuPerUidConfig(const CpuPerUidConfig&);
+  CpuPerUidConfig& operator=(const CpuPerUidConfig&);
+  bool operator==(const CpuPerUidConfig&) const;
+  bool operator!=(const CpuPerUidConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_poll_ms() const { return _has_field_[1]; }
+  uint32_t poll_ms() const { return poll_ms_; }
+  void set_poll_ms(uint32_t value) { poll_ms_ = value; _has_field_.set(1); }
+
+ private:
+  uint32_t poll_ms_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<2> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_CPU_PER_UID_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/kernel_wakelocks_config.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_KERNEL_WAKELOCKS_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_KERNEL_WAKELOCKS_CONFIG_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class KernelWakelocksConfig;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT KernelWakelocksConfig : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kPollMsFieldNumber = 1,
+  };
+
+  KernelWakelocksConfig();
+  ~KernelWakelocksConfig() override;
+  KernelWakelocksConfig(KernelWakelocksConfig&&) noexcept;
+  KernelWakelocksConfig& operator=(KernelWakelocksConfig&&);
+  KernelWakelocksConfig(const KernelWakelocksConfig&);
+  KernelWakelocksConfig& operator=(const KernelWakelocksConfig&);
+  bool operator==(const KernelWakelocksConfig&) const;
+  bool operator!=(const KernelWakelocksConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_poll_ms() const { return _has_field_[1]; }
+  uint32_t poll_ms() const { return poll_ms_; }
+  void set_poll_ms(uint32_t value) { poll_ms_ = value; _has_field_.set(1); }
+
+ private:
+  uint32_t poll_ms_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<2> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_KERNEL_WAKELOCKS_CONFIG_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/config/android/network_trace_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_NETWORK_TRACE_CONFIG_PROTO_CPP_H_
@@ -35671,6 +37083,76 @@ class PERFETTO_EXPORT_COMPONENT WindowManagerConfig : public ::protozero::CppMes
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_WINDOWMANAGER_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/ftrace/frozen_ftrace_config.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FROZEN_FTRACE_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FROZEN_FTRACE_CONFIG_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class FrozenFtraceConfig;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT FrozenFtraceConfig : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kInstanceNameFieldNumber = 1,
+  };
+
+  FrozenFtraceConfig();
+  ~FrozenFtraceConfig() override;
+  FrozenFtraceConfig(FrozenFtraceConfig&&) noexcept;
+  FrozenFtraceConfig& operator=(FrozenFtraceConfig&&);
+  FrozenFtraceConfig(const FrozenFtraceConfig&);
+  FrozenFtraceConfig& operator=(const FrozenFtraceConfig&);
+  bool operator==(const FrozenFtraceConfig&) const;
+  bool operator!=(const FrozenFtraceConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_instance_name() const { return _has_field_[1]; }
+  const std::string& instance_name() const { return instance_name_; }
+  void set_instance_name(const std::string& value) { instance_name_ = value; _has_field_.set(1); }
+
+ private:
+  std::string instance_name_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<2> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FROZEN_FTRACE_CONFIG_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/config/ftrace/ftrace_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FTRACE_CONFIG_PROTO_CPP_H_
@@ -35746,6 +37228,7 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
     kKsymsMemPolicyFieldNumber = 17,
     kInitializeKsymsSynchronouslyForTestingFieldNumber = 14,
     kThrottleRssStatFieldNumber = 15,
+    kDenserGenericEventEncodingFieldNumber = 32,
     kDisableGenericEventsFieldNumber = 16,
     kSyscallEventsFieldNumber = 18,
     kEnableFunctionGraphFieldNumber = 19,
@@ -35755,6 +37238,8 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
     kUseMonotonicRawClockFieldNumber = 24,
     kInstanceNameFieldNumber = 25,
     kBufferSizeLowerBoundFieldNumber = 27,
+    kDebugFtraceAbiFieldNumber = 31,
+    kFunctionGraphMaxDepthFieldNumber = 33,
   };
 
   FtraceConfig();
@@ -35841,6 +37326,10 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
   bool throttle_rss_stat() const { return throttle_rss_stat_; }
   void set_throttle_rss_stat(bool value) { throttle_rss_stat_ = value; _has_field_.set(15); }
 
+  bool has_denser_generic_event_encoding() const { return _has_field_[32]; }
+  bool denser_generic_event_encoding() const { return denser_generic_event_encoding_; }
+  void set_denser_generic_event_encoding(bool value) { denser_generic_event_encoding_ = value; _has_field_.set(32); }
+
   bool has_disable_generic_events() const { return _has_field_[16]; }
   bool disable_generic_events() const { return disable_generic_events_; }
   void set_disable_generic_events(bool value) { disable_generic_events_ = value; _has_field_.set(16); }
@@ -35886,6 +37375,14 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
   bool buffer_size_lower_bound() const { return buffer_size_lower_bound_; }
   void set_buffer_size_lower_bound(bool value) { buffer_size_lower_bound_ = value; _has_field_.set(27); }
 
+  bool has_debug_ftrace_abi() const { return _has_field_[31]; }
+  bool debug_ftrace_abi() const { return debug_ftrace_abi_; }
+  void set_debug_ftrace_abi(bool value) { debug_ftrace_abi_ = value; _has_field_.set(31); }
+
+  bool has_function_graph_max_depth() const { return _has_field_[33]; }
+  uint32_t function_graph_max_depth() const { return function_graph_max_depth_; }
+  void set_function_graph_max_depth(uint32_t value) { function_graph_max_depth_ = value; _has_field_.set(33); }
+
  private:
   std::vector<std::string> ftrace_events_;
   std::vector<FtraceConfig_KprobeEvent> kprobe_events_;
@@ -35901,6 +37398,7 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
   FtraceConfig_KsymsMemPolicy ksyms_mem_policy_{};
   bool initialize_ksyms_synchronously_for_testing_{};
   bool throttle_rss_stat_{};
+  bool denser_generic_event_encoding_{};
   bool disable_generic_events_{};
   std::vector<std::string> syscall_events_;
   bool enable_function_graph_{};
@@ -35910,12 +37408,14 @@ class PERFETTO_EXPORT_COMPONENT FtraceConfig : public ::protozero::CppMessageObj
   bool use_monotonic_raw_clock_{};
   std::string instance_name_{};
   bool buffer_size_lower_bound_{};
+  bool debug_ftrace_abi_{};
+  uint32_t function_graph_max_depth_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<31> _has_field_{};
+  std::bitset<34> _has_field_{};
 };
 
 
@@ -36224,6 +37724,91 @@ class PERFETTO_EXPORT_COMPONENT GpuCounterConfig : public ::protozero::CppMessag
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_COUNTER_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/gpu/gpu_renderstages_config.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_RENDERSTAGES_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_RENDERSTAGES_CONFIG_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class GpuRenderStagesConfig;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT GpuRenderStagesConfig : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kFullLoadstoreFieldNumber = 1,
+    kLowOverheadFieldNumber = 2,
+    kTraceMetricsFieldNumber = 3,
+  };
+
+  GpuRenderStagesConfig();
+  ~GpuRenderStagesConfig() override;
+  GpuRenderStagesConfig(GpuRenderStagesConfig&&) noexcept;
+  GpuRenderStagesConfig& operator=(GpuRenderStagesConfig&&);
+  GpuRenderStagesConfig(const GpuRenderStagesConfig&);
+  GpuRenderStagesConfig& operator=(const GpuRenderStagesConfig&);
+  bool operator==(const GpuRenderStagesConfig&) const;
+  bool operator!=(const GpuRenderStagesConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_full_loadstore() const { return _has_field_[1]; }
+  bool full_loadstore() const { return full_loadstore_; }
+  void set_full_loadstore(bool value) { full_loadstore_ = value; _has_field_.set(1); }
+
+  bool has_low_overhead() const { return _has_field_[2]; }
+  bool low_overhead() const { return low_overhead_; }
+  void set_low_overhead(bool value) { low_overhead_ = value; _has_field_.set(2); }
+
+  const std::vector<std::string>& trace_metrics() const { return trace_metrics_; }
+  std::vector<std::string>* mutable_trace_metrics() { return &trace_metrics_; }
+  int trace_metrics_size() const { return static_cast<int>(trace_metrics_.size()); }
+  void clear_trace_metrics() { trace_metrics_.clear(); }
+  void add_trace_metrics(std::string value) { trace_metrics_.emplace_back(value); }
+  std::string* add_trace_metrics() { trace_metrics_.emplace_back(); return &trace_metrics_.back(); }
+
+ private:
+  bool full_loadstore_{};
+  bool low_overhead_{};
+  std::vector<std::string> trace_metrics_;
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<4> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_RENDERSTAGES_CONFIG_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/config/gpu/vulkan_memory_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_VULKAN_MEMORY_CONFIG_PROTO_CPP_H_
@@ -37293,6 +38878,7 @@ class PERFETTO_EXPORT_COMPONENT PerfEventConfig : public ::protozero::CppMessage
     kTimebaseFieldNumber = 15,
     kFollowersFieldNumber = 19,
     kCallstackSamplingFieldNumber = 16,
+    kTargetCpuFieldNumber = 20,
     kRingBufferReadPeriodMsFieldNumber = 8,
     kRingBufferPagesFieldNumber = 3,
     kMaxEnqueuedFootprintKbFieldNumber = 17,
@@ -37337,6 +38923,13 @@ class PERFETTO_EXPORT_COMPONENT PerfEventConfig : public ::protozero::CppMessage
   bool has_callstack_sampling() const { return _has_field_[16]; }
   const PerfEventConfig_CallstackSampling& callstack_sampling() const { return *callstack_sampling_; }
   PerfEventConfig_CallstackSampling* mutable_callstack_sampling() { _has_field_.set(16); return callstack_sampling_.get(); }
+
+  const std::vector<uint32_t>& target_cpu() const { return target_cpu_; }
+  std::vector<uint32_t>* mutable_target_cpu() { return &target_cpu_; }
+  int target_cpu_size() const { return static_cast<int>(target_cpu_.size()); }
+  void clear_target_cpu() { target_cpu_.clear(); }
+  void add_target_cpu(uint32_t value) { target_cpu_.emplace_back(value); }
+  uint32_t* add_target_cpu() { target_cpu_.emplace_back(); return &target_cpu_.back(); }
 
   bool has_ring_buffer_read_period_ms() const { return _has_field_[8]; }
   uint32_t ring_buffer_read_period_ms() const { return ring_buffer_read_period_ms_; }
@@ -37417,6 +39010,7 @@ class PERFETTO_EXPORT_COMPONENT PerfEventConfig : public ::protozero::CppMessage
   ::protozero::CopyablePtr<PerfEvents_Timebase> timebase_;
   std::vector<FollowerEvent> followers_;
   ::protozero::CopyablePtr<PerfEventConfig_CallstackSampling> callstack_sampling_;
+  std::vector<uint32_t> target_cpu_;
   uint32_t ring_buffer_read_period_ms_{};
   uint32_t ring_buffer_pages_{};
   uint64_t max_enqueued_footprint_kb_{};
@@ -37437,7 +39031,7 @@ class PERFETTO_EXPORT_COMPONENT PerfEventConfig : public ::protozero::CppMessage
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<20> _has_field_{};
+  std::bitset<21> _has_field_{};
 };
 
 
@@ -37996,7 +39590,6 @@ enum AtomId : int {
   ATOM_CLIPBOARD_CLEARED = 408,
   ATOM_VM_CREATION_REQUESTED = 409,
   ATOM_NEARBY_DEVICE_SCAN_STATE_CHANGED = 410,
-  ATOM_CAMERA_COMPAT_CONTROL_EVENT_REPORTED = 411,
   ATOM_APPLICATION_LOCALES_CHANGED = 412,
   ATOM_MEDIAMETRICS_AUDIOTRACKSTATUS_REPORTED = 413,
   ATOM_FOLD_STATE_DURATION_REPORTED = 414,
@@ -38330,6 +39923,7 @@ enum AtomId : int {
   ATOM_NOTIFICATION_MEMORY_USE = 10174,
   ATOM_HDR_CAPABILITIES = 10175,
   ATOM_WS_FAVOURITE_WATCH_FACE_LIST_SNAPSHOT = 10176,
+  ATOM_ACCESSIBILITY_CHECK_RESULT_REPORTED = 910,
   ATOM_ADAPTIVE_AUTH_UNLOCK_AFTER_LOCK_REPORTED = 820,
   ATOM_THERMAL_STATUS_CALLED = 772,
   ATOM_THERMAL_HEADROOM_CALLED = 773,
@@ -38404,6 +39998,10 @@ enum AtomId : int {
   ATOM_SELECT_ADS_FROM_OUTCOMES_API_CALLED = 876,
   ATOM_REPORT_IMPRESSION_API_CALLED = 877,
   ATOM_AD_SERVICES_ENROLLMENT_TRANSACTION_STATS = 885,
+  ATOM_AD_SERVICES_COBALT_LOGGER_EVENT_REPORTED = 902,
+  ATOM_AD_SERVICES_COBALT_PERIODIC_JOB_EVENT_REPORTED = 903,
+  ATOM_UPDATE_SIGNALS_PROCESS_REPORTED = 905,
+  ATOM_TOPICS_SCHEDULE_EPOCH_JOB_SETTING_REPORTED = 930,
   ATOM_AI_WALLPAPERS_BUTTON_PRESSED = 706,
   ATOM_AI_WALLPAPERS_TEMPLATE_SELECTED = 707,
   ATOM_AI_WALLPAPERS_TERM_SELECTED = 708,
@@ -38416,6 +40014,7 @@ enum AtomId : int {
   ATOM_APP_SEARCH_SCHEMA_MIGRATION_STATS_REPORTED = 579,
   ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_STATS_REPORTED = 825,
   ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_RAW_QUERY_STATS_REPORTED = 826,
+  ATOM_APP_SEARCH_APPS_INDEXER_STATS_REPORTED = 909,
   ATOM_ART_DATUM_REPORTED = 332,
   ATOM_ART_DEVICE_DATUM_REPORTED = 550,
   ATOM_ART_DATUM_DELTA_REPORTED = 565,
@@ -38455,7 +40054,11 @@ enum AtomId : int {
   ATOM_BROADCAST_AUDIO_SESSION_REPORTED = 927,
   ATOM_BROADCAST_AUDIO_SYNC_REPORTED = 928,
   ATOM_BLUETOOTH_RFCOMM_CONNECTION_REPORTED_AT_CLOSE = 982,
+  ATOM_BLUETOOTH_LE_CONNECTION = 988,
+  ATOM_BROADCAST_SENT = 922,
   ATOM_CAMERA_FEATURE_COMBINATION_QUERY_EVENT = 900,
+  ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_STATE_CHANGED = 934,
+  ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_UPDATE_FAILED = 972,
   ATOM_DAILY_KEEPALIVE_INFO_REPORTED = 650,
   ATOM_NETWORK_REQUEST_STATE_CHANGED = 779,
   ATOM_TETHERING_ACTIVE_SESSIONS_REPORTED = 925,
@@ -38482,6 +40085,7 @@ enum AtomId : int {
   ATOM_CRONET_INITIALIZED = 764,
   ATOM_DESKTOP_MODE_UI_CHANGED = 818,
   ATOM_DESKTOP_MODE_SESSION_TASK_UPDATE = 819,
+  ATOM_DESKTOP_MODE_TASK_SIZE_UPDATED = 935,
   ATOM_DEVICE_LOCK_CHECK_IN_REQUEST_REPORTED = 726,
   ATOM_DEVICE_LOCK_PROVISIONING_COMPLETE_REPORTED = 727,
   ATOM_DEVICE_LOCK_KIOSK_APP_REQUEST_REPORTED = 728,
@@ -38505,6 +40109,7 @@ enum AtomId : int {
   ATOM_FULL_SCREEN_INTENT_LAUNCHED = 631,
   ATOM_BAL_ALLOWED = 632,
   ATOM_IN_TASK_ACTIVITY_STARTED = 685,
+  ATOM_DEVICE_ORIENTATION_CHANGED = 906,
   ATOM_CACHED_APPS_HIGH_WATERMARK = 10189,
   ATOM_STYLUS_PREDICTION_METRICS_REPORTED = 718,
   ATOM_USER_RISK_EVENT_REPORTED = 725,
@@ -38520,8 +40125,14 @@ enum AtomId : int {
   ATOM_SENSITIVE_NOTIFICATION_REDACTION = 833,
   ATOM_SENSITIVE_CONTENT_APP_PROTECTION = 835,
   ATOM_APP_RESTRICTION_STATE_CHANGED = 866,
+  ATOM_BATTERY_USAGE_STATS_PER_UID = 10209,
+  ATOM_POSTGC_MEMORY_SNAPSHOT = 924,
+  ATOM_POWER_SAVE_TEMP_ALLOWLIST_CHANGED = 926,
+  ATOM_APP_OP_ACCESS_TRACKED = 931,
+  ATOM_CONTENT_OR_FILE_URI_EVENT_REPORTED = 933,
   ATOM_APPLICATION_GRAMMATICAL_INFLECTION_CHANGED = 584,
   ATOM_SYSTEM_GRAMMATICAL_INFLECTION_CHANGED = 816,
+  ATOM_BATTERY_HEALTH = 10220,
   ATOM_HDMI_EARC_STATUS_REPORTED = 701,
   ATOM_HDMI_SOUNDBAR_MODE_STATUS_REPORTED = 724,
   ATOM_HEALTH_CONNECT_API_CALLED = 616,
@@ -38529,6 +40140,9 @@ enum AtomId : int {
   ATOM_HEALTH_CONNECT_STORAGE_STATS = 618,
   ATOM_HEALTH_CONNECT_API_INVOKED = 643,
   ATOM_EXERCISE_ROUTE_API_CALLED = 654,
+  ATOM_HEALTH_CONNECT_EXPORT_INVOKED = 907,
+  ATOM_HEALTH_CONNECT_IMPORT_INVOKED = 918,
+  ATOM_HEALTH_CONNECT_EXPORT_IMPORT_STATS_REPORTED = 919,
   ATOM_HEALTH_CONNECT_UI_IMPRESSION = 623,
   ATOM_HEALTH_CONNECT_UI_INTERACTION = 624,
   ATOM_HEALTH_CONNECT_APP_OPENED_REPORTED = 625,
@@ -38539,16 +40153,21 @@ enum AtomId : int {
   ATOM_KEYBOARD_CONFIGURED = 682,
   ATOM_KEYBOARD_SYSTEMS_EVENT_REPORTED = 683,
   ATOM_INPUTDEVICE_USAGE_REPORTED = 686,
+  ATOM_INPUT_EVENT_LATENCY_REPORTED = 932,
   ATOM_TOUCHPAD_USAGE = 10191,
   ATOM_KERNEL_OOM_KILL_OCCURRED = 754,
   ATOM_EMERGENCY_STATE_CHANGED = 633,
   ATOM_CHRE_SIGNIFICANT_MOTION_STATE_CHANGED = 868,
+  ATOM_POPULATION_DENSITY_PROVIDER_LOADING_REPORTED = 1002,
+  ATOM_DENSITY_BASED_COARSE_LOCATIONS_USAGE_REPORTED = 1003,
+  ATOM_DENSITY_BASED_COARSE_LOCATIONS_PROVIDER_QUERY_REPORTED = 1004,
   ATOM_MEDIA_CODEC_RECLAIM_REQUEST_COMPLETED = 600,
   ATOM_MEDIA_CODEC_STARTED = 641,
   ATOM_MEDIA_CODEC_STOPPED = 642,
   ATOM_MEDIA_CODEC_RENDERED = 684,
   ATOM_MEDIA_EDITING_ENDED_REPORTED = 798,
   ATOM_MTE_STATE = 10181,
+  ATOM_MICROXR_DEVICE_BOOT_COMPLETE_REPORTED = 901,
   ATOM_NFC_OBSERVE_MODE_STATE_CHANGED = 855,
   ATOM_NFC_FIELD_CHANGED = 856,
   ATOM_NFC_POLLING_LOOP_NOTIFICATION_REPORTED = 857,
@@ -38558,6 +40177,7 @@ enum AtomId : int {
   ATOM_PDF_LOAD_REPORTED = 859,
   ATOM_PDF_API_USAGE_REPORTED = 860,
   ATOM_PDF_SEARCH_REPORTED = 861,
+  ATOM_PRESSURE_STALL_INFORMATION = 10229,
   ATOM_PERMISSION_RATIONALE_DIALOG_VIEWED = 645,
   ATOM_PERMISSION_RATIONALE_DIALOG_ACTION_REPORTED = 646,
   ATOM_APP_DATA_SHARING_UPDATES_NOTIFICATION_INTERACTION = 647,
@@ -38587,6 +40207,11 @@ enum AtomId : int {
   ATOM_SCREEN_DIM_REPORTED = 867,
   ATOM_MEDIA_PROVIDER_DATABASE_ROLLBACK_REPORTED = 784,
   ATOM_BACKUP_SETUP_STATUS_REPORTED = 785,
+  ATOM_RANGING_SESSION_CONFIGURED = 993,
+  ATOM_RANGING_SESSION_STARTED = 994,
+  ATOM_RANGING_SESSION_CLOSED = 995,
+  ATOM_RANGING_TECHNOLOGY_STARTED = 996,
+  ATOM_RANGING_TECHNOLOGY_STOPPED = 997,
   ATOM_RKPD_POOL_STATS = 664,
   ATOM_RKPD_CLIENT_OPERATION = 665,
   ATOM_SANDBOX_API_CALLED = 488,
@@ -38604,12 +40229,19 @@ enum AtomId : int {
   ATOM_DISPLAY_SWITCH_LATENCY_TRACKED = 753,
   ATOM_NOTIFICATION_LISTENER_SERVICE = 829,
   ATOM_NAV_HANDLE_TOUCH_POINTS = 869,
+  ATOM_COMMUNAL_HUB_WIDGET_EVENT_REPORTED = 908,
+  ATOM_COMMUNAL_HUB_SNAPSHOT = 10226,
   ATOM_EMERGENCY_NUMBER_DIALED = 637,
+  ATOM_CALL_STATS = 10221,
+  ATOM_CALL_AUDIO_ROUTE_STATS = 10222,
+  ATOM_TELECOM_API_STATS = 10223,
+  ATOM_TELECOM_ERROR_STATS = 10224,
   ATOM_CELLULAR_RADIO_POWER_STATE_CHANGED = 713,
   ATOM_EMERGENCY_NUMBERS_INFO = 10180,
   ATOM_DATA_NETWORK_VALIDATION = 10207,
   ATOM_DATA_RAT_STATE_CHANGED = 854,
   ATOM_CONNECTED_CHANNEL_CHANGED = 882,
+  ATOM_IWLAN_UNDERLYING_NETWORK_VALIDATION_RESULT_REPORTED = 923,
   ATOM_QUALIFIED_RAT_LIST_CHANGED = 634,
   ATOM_QNS_IMS_CALL_DROP_STATS = 635,
   ATOM_QNS_FALLBACK_RESTRICTION_CHANGED = 636,
@@ -38635,10 +40267,12 @@ enum AtomId : int {
   ATOM_BOOT_INTEGRITY_INFO_REPORTED = 775,
   ATOM_TV_LOW_POWER_STANDBY_POLICY = 679,
   ATOM_EXTERNAL_TV_INPUT_EVENT = 717,
+  ATOM_TEST_UPROBESTATS_ATOM_REPORTED = 915,
   ATOM_UWB_ACTIVITY_INFO = 10188,
   ATOM_MEDIATOR_UPDATED = 721,
   ATOM_SYSPROXY_BLUETOOTH_BYTES_TRANSFER = 10196,
   ATOM_SYSPROXY_CONNECTION_UPDATED = 786,
+  ATOM_WEAR_COMPANION_CONNECTION_STATE = 921,
   ATOM_MEDIA_ACTION_REPORTED = 608,
   ATOM_MEDIA_CONTROLS_LAUNCHED = 609,
   ATOM_MEDIA_SESSION_STATE_CHANGED = 677,
@@ -38659,6 +40293,10 @@ enum AtomId : int {
   ATOM_INFLATION_FAILED = 749,
   ATOM_IGNORED_INFLATION_FAILURES_REPORTED = 750,
   ATOM_DRAWABLE_RENDERED = 751,
+  ATOM_WEAR_TIME_SYNC_REQUESTED = 911,
+  ATOM_WEAR_TIME_UPDATE_STARTED = 912,
+  ATOM_WEAR_TIME_SYNC_ATTEMPT_COMPLETED = 913,
+  ATOM_WEAR_TIME_CHANGED = 914,
   ATOM_WEAR_ADAPTIVE_SUSPEND_STATS_REPORTED = 619,
   ATOM_WEAR_POWER_ANOMALY_SERVICE_OPERATIONAL_STATS_REPORTED = 620,
   ATOM_WEAR_POWER_ANOMALY_SERVICE_EVENT_STATS_REPORTED = 621,
@@ -38672,10 +40310,18 @@ enum AtomId : int {
   ATOM_WS_WATCH_FACE_RESTRICTED_COMPLICATIONS_IMPACTED = 802,
   ATOM_WS_WATCH_FACE_DEFAULT_RESTRICTED_COMPLICATIONS_REMOVED = 803,
   ATOM_WS_COMPLICATIONS_IMPACTED_NOTIFICATION_EVENT_REPORTED = 804,
+  ATOM_WS_REMOTE_EVENT_USAGE_REPORTED = 920,
+  ATOM_WS_BUGREPORT_REQUESTED = 936,
+  ATOM_WS_BUGREPORT_TRIGGERED = 937,
+  ATOM_WS_BUGREPORT_FINISHED = 938,
+  ATOM_WS_BUGREPORT_RESULT_RECEIVED = 939,
   ATOM_WS_STANDALONE_MODE_SNAPSHOT = 10197,
   ATOM_WS_FAVORITE_WATCH_FACE_SNAPSHOT = 10206,
+  ATOM_WS_PHOTOS_WATCH_FACE_FEATURE_SNAPSHOT = 10225,
+  ATOM_WS_WATCH_FACE_CUSTOMIZATION_SNAPSHOT = 10227,
   ATOM_WEAR_POWER_MENU_OPENED = 731,
   ATOM_WEAR_ASSISTANT_OPENED = 755,
+  ATOM_FIRST_OVERLAY_STATE_CHANGED = 917,
   ATOM_WIFI_AWARE_NDP_REPORTED = 638,
   ATOM_WIFI_AWARE_ATTACH_REPORTED = 639,
   ATOM_WIFI_SELF_RECOVERY_TRIGGERED = 661,
@@ -39036,10 +40682,10 @@ class PERFETTO_EXPORT_COMPONENT SysStatsConfig : public ::protozero::CppMessageO
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYS_STATS_SYS_STATS_CONFIG_PROTO_CPP_H_
-// gen_amalgamated begin header: gen/protos/perfetto/config/system_info/system_info.gen.h
+// gen_amalgamated begin header: gen/protos/perfetto/config/system_info/system_info_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
-#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_PROTO_CPP_H_
-#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_PROTO_CPP_H_
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_CONFIG_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_CONFIG_PROTO_CPP_H_
 
 #include <stdint.h>
 #include <bitset>
@@ -39099,7 +40745,7 @@ class PERFETTO_EXPORT_COMPONENT SystemInfoConfig : public ::protozero::CppMessag
 }  // namespace protos
 }  // namespace gen
 
-#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_PROTO_CPP_H_
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_CONFIG_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/config/chrome/chrome_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_CHROME_CONFIG_PROTO_CPP_H_
@@ -39151,6 +40797,7 @@ class PERFETTO_EXPORT_COMPONENT ChromeConfig : public ::protozero::CppMessageObj
     kConvertToLegacyJsonFieldNumber = 3,
     kClientPriorityFieldNumber = 4,
     kJsonAgentLabelFilterFieldNumber = 5,
+    kEventPackageNameFilterEnabledFieldNumber = 6,
   };
 
   ChromeConfig();
@@ -39187,18 +40834,23 @@ class PERFETTO_EXPORT_COMPONENT ChromeConfig : public ::protozero::CppMessageObj
   const std::string& json_agent_label_filter() const { return json_agent_label_filter_; }
   void set_json_agent_label_filter(const std::string& value) { json_agent_label_filter_ = value; _has_field_.set(5); }
 
+  bool has_event_package_name_filter_enabled() const { return _has_field_[6]; }
+  bool event_package_name_filter_enabled() const { return event_package_name_filter_enabled_; }
+  void set_event_package_name_filter_enabled(bool value) { event_package_name_filter_enabled_ = value; _has_field_.set(6); }
+
  private:
   std::string trace_config_{};
   bool privacy_filtering_enabled_{};
   bool convert_to_legacy_json_{};
   ChromeConfig_ClientPriority client_priority_{};
   std::string json_agent_label_filter_{};
+  bool event_package_name_filter_enabled_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<6> _has_field_{};
+  std::bitset<7> _has_field_{};
 };
 
 }  // namespace perfetto
@@ -39206,6 +40858,133 @@ class PERFETTO_EXPORT_COMPONENT ChromeConfig : public ::protozero::CppMessageObj
 }  // namespace gen
 
 #endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_CHROME_CONFIG_PROTO_CPP_H_
+// gen_amalgamated begin header: gen/protos/perfetto/config/chrome/histogram_samples.gen.h
+// DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_HISTOGRAM_SAMPLES_PROTO_CPP_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_HISTOGRAM_SAMPLES_PROTO_CPP_H_
+
+#include <stdint.h>
+#include <bitset>
+#include <vector>
+#include <string>
+#include <type_traits>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/cpp_message_obj.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/copyable_ptr.h"
+// gen_amalgamated expanded: #include "perfetto/base/export.h"
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+class ChromiumHistogramSamplesConfig;
+class ChromiumHistogramSamplesConfig_HistogramSample;
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+namespace protozero {
+class Message;
+}  // namespace protozero
+
+namespace perfetto {
+namespace protos {
+namespace gen {
+
+class PERFETTO_EXPORT_COMPONENT ChromiumHistogramSamplesConfig : public ::protozero::CppMessageObj {
+ public:
+  using HistogramSample = ChromiumHistogramSamplesConfig_HistogramSample;
+  enum FieldNumbers {
+    kHistogramsFieldNumber = 1,
+    kFilterHistogramNamesFieldNumber = 2,
+  };
+
+  ChromiumHistogramSamplesConfig();
+  ~ChromiumHistogramSamplesConfig() override;
+  ChromiumHistogramSamplesConfig(ChromiumHistogramSamplesConfig&&) noexcept;
+  ChromiumHistogramSamplesConfig& operator=(ChromiumHistogramSamplesConfig&&);
+  ChromiumHistogramSamplesConfig(const ChromiumHistogramSamplesConfig&);
+  ChromiumHistogramSamplesConfig& operator=(const ChromiumHistogramSamplesConfig&);
+  bool operator==(const ChromiumHistogramSamplesConfig&) const;
+  bool operator!=(const ChromiumHistogramSamplesConfig& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  const std::vector<ChromiumHistogramSamplesConfig_HistogramSample>& histograms() const { return histograms_; }
+  std::vector<ChromiumHistogramSamplesConfig_HistogramSample>* mutable_histograms() { return &histograms_; }
+  int histograms_size() const;
+  void clear_histograms();
+  ChromiumHistogramSamplesConfig_HistogramSample* add_histograms();
+
+  bool has_filter_histogram_names() const { return _has_field_[2]; }
+  bool filter_histogram_names() const { return filter_histogram_names_; }
+  void set_filter_histogram_names(bool value) { filter_histogram_names_ = value; _has_field_.set(2); }
+
+ private:
+  std::vector<ChromiumHistogramSamplesConfig_HistogramSample> histograms_;
+  bool filter_histogram_names_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<3> _has_field_{};
+};
+
+
+class PERFETTO_EXPORT_COMPONENT ChromiumHistogramSamplesConfig_HistogramSample : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kHistogramNameFieldNumber = 1,
+    kMinValueFieldNumber = 2,
+    kMaxValueFieldNumber = 3,
+  };
+
+  ChromiumHistogramSamplesConfig_HistogramSample();
+  ~ChromiumHistogramSamplesConfig_HistogramSample() override;
+  ChromiumHistogramSamplesConfig_HistogramSample(ChromiumHistogramSamplesConfig_HistogramSample&&) noexcept;
+  ChromiumHistogramSamplesConfig_HistogramSample& operator=(ChromiumHistogramSamplesConfig_HistogramSample&&);
+  ChromiumHistogramSamplesConfig_HistogramSample(const ChromiumHistogramSamplesConfig_HistogramSample&);
+  ChromiumHistogramSamplesConfig_HistogramSample& operator=(const ChromiumHistogramSamplesConfig_HistogramSample&);
+  bool operator==(const ChromiumHistogramSamplesConfig_HistogramSample&) const;
+  bool operator!=(const ChromiumHistogramSamplesConfig_HistogramSample& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_histogram_name() const { return _has_field_[1]; }
+  const std::string& histogram_name() const { return histogram_name_; }
+  void set_histogram_name(const std::string& value) { histogram_name_ = value; _has_field_.set(1); }
+
+  bool has_min_value() const { return _has_field_[2]; }
+  int64_t min_value() const { return min_value_; }
+  void set_min_value(int64_t value) { min_value_ = value; _has_field_.set(2); }
+
+  bool has_max_value() const { return _has_field_[3]; }
+  int64_t max_value() const { return max_value_; }
+  void set_max_value(int64_t value) { max_value_ = value; _has_field_.set(3); }
+
+ private:
+  std::string histogram_name_{};
+  int64_t min_value_{};
+  int64_t max_value_{};
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<4> _has_field_{};
+};
+
+}  // namespace perfetto
+}  // namespace protos
+}  // namespace gen
+
+#endif  // PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_HISTOGRAM_SAMPLES_PROTO_CPP_H_
 // gen_amalgamated begin header: gen/protos/perfetto/config/chrome/scenario_config.gen.h
 // DO NOT EDIT. Autogenerated by Perfetto cppgen_plugin
 #ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_SCENARIO_CONFIG_PROTO_CPP_H_
@@ -39262,6 +41041,7 @@ enum TraceConfig_TraceFilter_StringFilterPolicy : int;
 enum TraceConfig_TriggerConfig_TriggerMode : int;
 enum BuiltinClock : int;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 enum TraceConfig_BufferConfig_FillPolicy : int;
@@ -39516,12 +41296,14 @@ class PERFETTO_EXPORT_COMPONENT ScenarioConfig : public ::protozero::CppMessageO
  public:
   enum FieldNumbers {
     kScenarioNameFieldNumber = 1,
+    kScenarioDescriptionFieldNumber = 9,
     kStartRulesFieldNumber = 2,
     kStopRulesFieldNumber = 3,
     kUploadRulesFieldNumber = 4,
     kSetupRulesFieldNumber = 5,
     kTraceConfigFieldNumber = 6,
     kNestedScenariosFieldNumber = 7,
+    kUseSystemBackendFieldNumber = 8,
   };
 
   ScenarioConfig();
@@ -39541,6 +41323,10 @@ class PERFETTO_EXPORT_COMPONENT ScenarioConfig : public ::protozero::CppMessageO
   bool has_scenario_name() const { return _has_field_[1]; }
   const std::string& scenario_name() const { return scenario_name_; }
   void set_scenario_name(const std::string& value) { scenario_name_ = value; _has_field_.set(1); }
+
+  bool has_scenario_description() const { return _has_field_[9]; }
+  const std::string& scenario_description() const { return scenario_description_; }
+  void set_scenario_description(const std::string& value) { scenario_description_ = value; _has_field_.set(9); }
 
   const std::vector<TriggerRule>& start_rules() const { return start_rules_; }
   std::vector<TriggerRule>* mutable_start_rules() { return &start_rules_; }
@@ -39576,20 +41362,26 @@ class PERFETTO_EXPORT_COMPONENT ScenarioConfig : public ::protozero::CppMessageO
   void clear_nested_scenarios();
   NestedScenarioConfig* add_nested_scenarios();
 
+  bool has_use_system_backend() const { return _has_field_[8]; }
+  bool use_system_backend() const { return use_system_backend_; }
+  void set_use_system_backend(bool value) { use_system_backend_ = value; _has_field_.set(8); }
+
  private:
   std::string scenario_name_{};
+  std::string scenario_description_{};
   std::vector<TriggerRule> start_rules_;
   std::vector<TriggerRule> stop_rules_;
   std::vector<TriggerRule> upload_rules_;
   std::vector<TriggerRule> setup_rules_;
   ::protozero::CopyablePtr<TraceConfig> trace_config_;
   std::vector<NestedScenarioConfig> nested_scenarios_;
+  bool use_system_backend_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<8> _has_field_{};
+  std::bitset<10> _has_field_{};
 };
 
 
@@ -40014,6 +41806,7 @@ enum TraceConfig_TraceFilter_StringFilterPolicy : int;
 enum TraceConfig_TriggerConfig_TriggerMode : int;
 enum BuiltinClock : int;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 enum TraceConfig_BufferConfig_FillPolicy : int;
@@ -41184,6 +42977,231 @@ class AndroidSystemPropertyConfig : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/app_wakelock_config.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_APP_WAKELOCK_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_APP_WAKELOCK_CONFIG_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class AppWakelocksConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  AppWakelocksConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit AppWakelocksConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit AppWakelocksConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_write_delay_ms() const { return at<1>().valid(); }
+  int32_t write_delay_ms() const { return at<1>().as_int32(); }
+  bool has_filter_duration_below_ms() const { return at<2>().valid(); }
+  int32_t filter_duration_below_ms() const { return at<2>().as_int32(); }
+  bool has_drop_owner_pid() const { return at<3>().valid(); }
+  bool drop_owner_pid() const { return at<3>().as_bool(); }
+};
+
+class AppWakelocksConfig : public ::protozero::Message {
+ public:
+  using Decoder = AppWakelocksConfig_Decoder;
+  enum : int32_t {
+    kWriteDelayMsFieldNumber = 1,
+    kFilterDurationBelowMsFieldNumber = 2,
+    kDropOwnerPidFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.AppWakelocksConfig"; }
+
+
+  using FieldMetadata_WriteDelayMs =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelocksConfig>;
+
+  static constexpr FieldMetadata_WriteDelayMs kWriteDelayMs{};
+  void set_write_delay_ms(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WriteDelayMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_FilterDurationBelowMs =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelocksConfig>;
+
+  static constexpr FieldMetadata_FilterDurationBelowMs kFilterDurationBelowMs{};
+  void set_filter_duration_below_ms(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FilterDurationBelowMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_DropOwnerPid =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      AppWakelocksConfig>;
+
+  static constexpr FieldMetadata_DropOwnerPid kDropOwnerPid{};
+  void set_drop_owner_pid(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_DropOwnerPid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/cpu_per_uid_config.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_CPU_PER_UID_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_CPU_PER_UID_CONFIG_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class CpuPerUidConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  CpuPerUidConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit CpuPerUidConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit CpuPerUidConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_poll_ms() const { return at<1>().valid(); }
+  uint32_t poll_ms() const { return at<1>().as_uint32(); }
+};
+
+class CpuPerUidConfig : public ::protozero::Message {
+ public:
+  using Decoder = CpuPerUidConfig_Decoder;
+  enum : int32_t {
+    kPollMsFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.CpuPerUidConfig"; }
+
+
+  using FieldMetadata_PollMs =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      CpuPerUidConfig>;
+
+  static constexpr FieldMetadata_PollMs kPollMs{};
+  void set_poll_ms(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_PollMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/android/kernel_wakelocks_config.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_KERNEL_WAKELOCKS_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_ANDROID_KERNEL_WAKELOCKS_CONFIG_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class KernelWakelocksConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  KernelWakelocksConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit KernelWakelocksConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit KernelWakelocksConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_poll_ms() const { return at<1>().valid(); }
+  uint32_t poll_ms() const { return at<1>().as_uint32(); }
+};
+
+class KernelWakelocksConfig : public ::protozero::Message {
+ public:
+  using Decoder = KernelWakelocksConfig_Decoder;
+  enum : int32_t {
+    kPollMsFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.KernelWakelocksConfig"; }
+
+
+  using FieldMetadata_PollMs =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      KernelWakelocksConfig>;
+
+  static constexpr FieldMetadata_PollMs kPollMs{};
+  void set_poll_ms(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_PollMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/config/android/network_trace_config.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -42288,6 +44306,73 @@ class WindowManagerConfig : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/ftrace/frozen_ftrace_config.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FROZEN_FTRACE_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_FTRACE_FROZEN_FTRACE_CONFIG_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class FrozenFtraceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  FrozenFtraceConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit FrozenFtraceConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit FrozenFtraceConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_instance_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars instance_name() const { return at<1>().as_string(); }
+};
+
+class FrozenFtraceConfig : public ::protozero::Message {
+ public:
+  using Decoder = FrozenFtraceConfig_Decoder;
+  enum : int32_t {
+    kInstanceNameFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.FrozenFtraceConfig"; }
+
+
+  using FieldMetadata_InstanceName =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      FrozenFtraceConfig>;
+
+  static constexpr FieldMetadata_InstanceName kInstanceName{};
+  void set_instance_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_InstanceName::kFieldId, data, size);
+  }
+  void set_instance_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_InstanceName::kFieldId, chars.data, chars.size);
+  }
+  void set_instance_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_InstanceName::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/config/ftrace/ftrace_config.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -42389,7 +44474,7 @@ const char* FtraceConfig_KprobeEvent_KprobeType_Name(::perfetto::protos::pbzero:
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class FtraceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/30, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class FtraceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/33, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   FtraceConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit FtraceConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -42422,6 +44507,8 @@ class FtraceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_I
   bool initialize_ksyms_synchronously_for_testing() const { return at<14>().as_bool(); }
   bool has_throttle_rss_stat() const { return at<15>().valid(); }
   bool throttle_rss_stat() const { return at<15>().as_bool(); }
+  bool has_denser_generic_event_encoding() const { return at<32>().valid(); }
+  bool denser_generic_event_encoding() const { return at<32>().as_bool(); }
   bool has_disable_generic_events() const { return at<16>().valid(); }
   bool disable_generic_events() const { return at<16>().as_bool(); }
   bool has_syscall_events() const { return at<18>().valid(); }
@@ -42440,6 +44527,10 @@ class FtraceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_I
   ::protozero::ConstChars instance_name() const { return at<25>().as_string(); }
   bool has_buffer_size_lower_bound() const { return at<27>().valid(); }
   bool buffer_size_lower_bound() const { return at<27>().as_bool(); }
+  bool has_debug_ftrace_abi() const { return at<31>().valid(); }
+  bool debug_ftrace_abi() const { return at<31>().as_bool(); }
+  bool has_function_graph_max_depth() const { return at<33>().valid(); }
+  uint32_t function_graph_max_depth() const { return at<33>().as_uint32(); }
 };
 
 class FtraceConfig : public ::protozero::Message {
@@ -42460,6 +44551,7 @@ class FtraceConfig : public ::protozero::Message {
     kKsymsMemPolicyFieldNumber = 17,
     kInitializeKsymsSynchronouslyForTestingFieldNumber = 14,
     kThrottleRssStatFieldNumber = 15,
+    kDenserGenericEventEncodingFieldNumber = 32,
     kDisableGenericEventsFieldNumber = 16,
     kSyscallEventsFieldNumber = 18,
     kEnableFunctionGraphFieldNumber = 19,
@@ -42469,6 +44561,8 @@ class FtraceConfig : public ::protozero::Message {
     kUseMonotonicRawClockFieldNumber = 24,
     kInstanceNameFieldNumber = 25,
     kBufferSizeLowerBoundFieldNumber = 27,
+    kDebugFtraceAbiFieldNumber = 31,
+    kFunctionGraphMaxDepthFieldNumber = 33,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.FtraceConfig"; }
 
@@ -42748,6 +44842,24 @@ class FtraceConfig : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
+  using FieldMetadata_DenserGenericEventEncoding =
+    ::protozero::proto_utils::FieldMetadata<
+      32,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      FtraceConfig>;
+
+  static constexpr FieldMetadata_DenserGenericEventEncoding kDenserGenericEventEncoding{};
+  void set_denser_generic_event_encoding(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_DenserGenericEventEncoding::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
   using FieldMetadata_DisableGenericEvents =
     ::protozero::proto_utils::FieldMetadata<
       16,
@@ -42931,6 +45043,42 @@ class FtraceConfig : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_DebugFtraceAbi =
+    ::protozero::proto_utils::FieldMetadata<
+      31,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      FtraceConfig>;
+
+  static constexpr FieldMetadata_DebugFtraceAbi kDebugFtraceAbi{};
+  void set_debug_ftrace_abi(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_DebugFtraceAbi::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_FunctionGraphMaxDepth =
+    ::protozero::proto_utils::FieldMetadata<
+      33,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      FtraceConfig>;
+
+  static constexpr FieldMetadata_FunctionGraphMaxDepth kFunctionGraphMaxDepth{};
+  void set_function_graph_max_depth(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FunctionGraphMaxDepth::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
         ::Append(*this, field_id, value);
   }
 };
@@ -43351,6 +45499,115 @@ class GpuCounterConfig : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/gpu/gpu_renderstages_config.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_RENDERSTAGES_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_GPU_GPU_RENDERSTAGES_CONFIG_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class GpuRenderStagesConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+ public:
+  GpuRenderStagesConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit GpuRenderStagesConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit GpuRenderStagesConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_full_loadstore() const { return at<1>().valid(); }
+  bool full_loadstore() const { return at<1>().as_bool(); }
+  bool has_low_overhead() const { return at<2>().valid(); }
+  bool low_overhead() const { return at<2>().as_bool(); }
+  bool has_trace_metrics() const { return at<3>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstChars> trace_metrics() const { return GetRepeated<::protozero::ConstChars>(3); }
+};
+
+class GpuRenderStagesConfig : public ::protozero::Message {
+ public:
+  using Decoder = GpuRenderStagesConfig_Decoder;
+  enum : int32_t {
+    kFullLoadstoreFieldNumber = 1,
+    kLowOverheadFieldNumber = 2,
+    kTraceMetricsFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.GpuRenderStagesConfig"; }
+
+
+  using FieldMetadata_FullLoadstore =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      GpuRenderStagesConfig>;
+
+  static constexpr FieldMetadata_FullLoadstore kFullLoadstore{};
+  void set_full_loadstore(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_FullLoadstore::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_LowOverhead =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      GpuRenderStagesConfig>;
+
+  static constexpr FieldMetadata_LowOverhead kLowOverhead{};
+  void set_low_overhead(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_LowOverhead::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TraceMetrics =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      GpuRenderStagesConfig>;
+
+  static constexpr FieldMetadata_TraceMetrics kTraceMetrics{};
+  void add_trace_metrics(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_TraceMetrics::kFieldId, data, size);
+  }
+  void add_trace_metrics(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_TraceMetrics::kFieldId, chars.data, chars.size);
+  }
+  void add_trace_metrics(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_TraceMetrics::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
         ::Append(*this, field_id, value);
   }
 };
@@ -45311,7 +47568,7 @@ const char* PerfEventConfig_UnwindMode_Name(::perfetto::protos::pbzero::PerfEven
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class PerfEventConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/19, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class PerfEventConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/20, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   PerfEventConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit PerfEventConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -45322,6 +47579,8 @@ class PerfEventConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIEL
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> followers() const { return GetRepeated<::protozero::ConstBytes>(19); }
   bool has_callstack_sampling() const { return at<16>().valid(); }
   ::protozero::ConstBytes callstack_sampling() const { return at<16>().as_bytes(); }
+  bool has_target_cpu() const { return at<20>().valid(); }
+  ::protozero::RepeatedFieldIterator<uint32_t> target_cpu() const { return GetRepeated<uint32_t>(20); }
   bool has_ring_buffer_read_period_ms() const { return at<8>().valid(); }
   uint32_t ring_buffer_read_period_ms() const { return at<8>().as_uint32(); }
   bool has_ring_buffer_pages() const { return at<3>().valid(); }
@@ -45361,6 +47620,7 @@ class PerfEventConfig : public ::protozero::Message {
     kTimebaseFieldNumber = 15,
     kFollowersFieldNumber = 19,
     kCallstackSamplingFieldNumber = 16,
+    kTargetCpuFieldNumber = 20,
     kRingBufferReadPeriodMsFieldNumber = 8,
     kRingBufferPagesFieldNumber = 3,
     kMaxEnqueuedFootprintKbFieldNumber = 17,
@@ -45432,6 +47692,24 @@ class PerfEventConfig : public ::protozero::Message {
     return BeginNestedMessage<T>(16);
   }
 
+
+  using FieldMetadata_TargetCpu =
+    ::protozero::proto_utils::FieldMetadata<
+      20,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      PerfEventConfig>;
+
+  static constexpr FieldMetadata_TargetCpu kTargetCpu{};
+  void add_target_cpu(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TargetCpu::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
 
   using FieldMetadata_RingBufferReadPeriodMs =
     ::protozero::proto_utils::FieldMetadata<
@@ -46372,7 +48650,6 @@ enum AtomId : int32_t {
   ATOM_CLIPBOARD_CLEARED = 408,
   ATOM_VM_CREATION_REQUESTED = 409,
   ATOM_NEARBY_DEVICE_SCAN_STATE_CHANGED = 410,
-  ATOM_CAMERA_COMPAT_CONTROL_EVENT_REPORTED = 411,
   ATOM_APPLICATION_LOCALES_CHANGED = 412,
   ATOM_MEDIAMETRICS_AUDIOTRACKSTATUS_REPORTED = 413,
   ATOM_FOLD_STATE_DURATION_REPORTED = 414,
@@ -46706,6 +48983,7 @@ enum AtomId : int32_t {
   ATOM_NOTIFICATION_MEMORY_USE = 10174,
   ATOM_HDR_CAPABILITIES = 10175,
   ATOM_WS_FAVOURITE_WATCH_FACE_LIST_SNAPSHOT = 10176,
+  ATOM_ACCESSIBILITY_CHECK_RESULT_REPORTED = 910,
   ATOM_ADAPTIVE_AUTH_UNLOCK_AFTER_LOCK_REPORTED = 820,
   ATOM_THERMAL_STATUS_CALLED = 772,
   ATOM_THERMAL_HEADROOM_CALLED = 773,
@@ -46780,6 +49058,10 @@ enum AtomId : int32_t {
   ATOM_SELECT_ADS_FROM_OUTCOMES_API_CALLED = 876,
   ATOM_REPORT_IMPRESSION_API_CALLED = 877,
   ATOM_AD_SERVICES_ENROLLMENT_TRANSACTION_STATS = 885,
+  ATOM_AD_SERVICES_COBALT_LOGGER_EVENT_REPORTED = 902,
+  ATOM_AD_SERVICES_COBALT_PERIODIC_JOB_EVENT_REPORTED = 903,
+  ATOM_UPDATE_SIGNALS_PROCESS_REPORTED = 905,
+  ATOM_TOPICS_SCHEDULE_EPOCH_JOB_SETTING_REPORTED = 930,
   ATOM_AI_WALLPAPERS_BUTTON_PRESSED = 706,
   ATOM_AI_WALLPAPERS_TEMPLATE_SELECTED = 707,
   ATOM_AI_WALLPAPERS_TERM_SELECTED = 708,
@@ -46792,6 +49074,7 @@ enum AtomId : int32_t {
   ATOM_APP_SEARCH_SCHEMA_MIGRATION_STATS_REPORTED = 579,
   ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_STATS_REPORTED = 825,
   ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_RAW_QUERY_STATS_REPORTED = 826,
+  ATOM_APP_SEARCH_APPS_INDEXER_STATS_REPORTED = 909,
   ATOM_ART_DATUM_REPORTED = 332,
   ATOM_ART_DEVICE_DATUM_REPORTED = 550,
   ATOM_ART_DATUM_DELTA_REPORTED = 565,
@@ -46831,7 +49114,11 @@ enum AtomId : int32_t {
   ATOM_BROADCAST_AUDIO_SESSION_REPORTED = 927,
   ATOM_BROADCAST_AUDIO_SYNC_REPORTED = 928,
   ATOM_BLUETOOTH_RFCOMM_CONNECTION_REPORTED_AT_CLOSE = 982,
+  ATOM_BLUETOOTH_LE_CONNECTION = 988,
+  ATOM_BROADCAST_SENT = 922,
   ATOM_CAMERA_FEATURE_COMBINATION_QUERY_EVENT = 900,
+  ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_STATE_CHANGED = 934,
+  ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_UPDATE_FAILED = 972,
   ATOM_DAILY_KEEPALIVE_INFO_REPORTED = 650,
   ATOM_NETWORK_REQUEST_STATE_CHANGED = 779,
   ATOM_TETHERING_ACTIVE_SESSIONS_REPORTED = 925,
@@ -46858,6 +49145,7 @@ enum AtomId : int32_t {
   ATOM_CRONET_INITIALIZED = 764,
   ATOM_DESKTOP_MODE_UI_CHANGED = 818,
   ATOM_DESKTOP_MODE_SESSION_TASK_UPDATE = 819,
+  ATOM_DESKTOP_MODE_TASK_SIZE_UPDATED = 935,
   ATOM_DEVICE_LOCK_CHECK_IN_REQUEST_REPORTED = 726,
   ATOM_DEVICE_LOCK_PROVISIONING_COMPLETE_REPORTED = 727,
   ATOM_DEVICE_LOCK_KIOSK_APP_REQUEST_REPORTED = 728,
@@ -46881,6 +49169,7 @@ enum AtomId : int32_t {
   ATOM_FULL_SCREEN_INTENT_LAUNCHED = 631,
   ATOM_BAL_ALLOWED = 632,
   ATOM_IN_TASK_ACTIVITY_STARTED = 685,
+  ATOM_DEVICE_ORIENTATION_CHANGED = 906,
   ATOM_CACHED_APPS_HIGH_WATERMARK = 10189,
   ATOM_STYLUS_PREDICTION_METRICS_REPORTED = 718,
   ATOM_USER_RISK_EVENT_REPORTED = 725,
@@ -46896,8 +49185,14 @@ enum AtomId : int32_t {
   ATOM_SENSITIVE_NOTIFICATION_REDACTION = 833,
   ATOM_SENSITIVE_CONTENT_APP_PROTECTION = 835,
   ATOM_APP_RESTRICTION_STATE_CHANGED = 866,
+  ATOM_BATTERY_USAGE_STATS_PER_UID = 10209,
+  ATOM_POSTGC_MEMORY_SNAPSHOT = 924,
+  ATOM_POWER_SAVE_TEMP_ALLOWLIST_CHANGED = 926,
+  ATOM_APP_OP_ACCESS_TRACKED = 931,
+  ATOM_CONTENT_OR_FILE_URI_EVENT_REPORTED = 933,
   ATOM_APPLICATION_GRAMMATICAL_INFLECTION_CHANGED = 584,
   ATOM_SYSTEM_GRAMMATICAL_INFLECTION_CHANGED = 816,
+  ATOM_BATTERY_HEALTH = 10220,
   ATOM_HDMI_EARC_STATUS_REPORTED = 701,
   ATOM_HDMI_SOUNDBAR_MODE_STATUS_REPORTED = 724,
   ATOM_HEALTH_CONNECT_API_CALLED = 616,
@@ -46905,6 +49200,9 @@ enum AtomId : int32_t {
   ATOM_HEALTH_CONNECT_STORAGE_STATS = 618,
   ATOM_HEALTH_CONNECT_API_INVOKED = 643,
   ATOM_EXERCISE_ROUTE_API_CALLED = 654,
+  ATOM_HEALTH_CONNECT_EXPORT_INVOKED = 907,
+  ATOM_HEALTH_CONNECT_IMPORT_INVOKED = 918,
+  ATOM_HEALTH_CONNECT_EXPORT_IMPORT_STATS_REPORTED = 919,
   ATOM_HEALTH_CONNECT_UI_IMPRESSION = 623,
   ATOM_HEALTH_CONNECT_UI_INTERACTION = 624,
   ATOM_HEALTH_CONNECT_APP_OPENED_REPORTED = 625,
@@ -46915,16 +49213,21 @@ enum AtomId : int32_t {
   ATOM_KEYBOARD_CONFIGURED = 682,
   ATOM_KEYBOARD_SYSTEMS_EVENT_REPORTED = 683,
   ATOM_INPUTDEVICE_USAGE_REPORTED = 686,
+  ATOM_INPUT_EVENT_LATENCY_REPORTED = 932,
   ATOM_TOUCHPAD_USAGE = 10191,
   ATOM_KERNEL_OOM_KILL_OCCURRED = 754,
   ATOM_EMERGENCY_STATE_CHANGED = 633,
   ATOM_CHRE_SIGNIFICANT_MOTION_STATE_CHANGED = 868,
+  ATOM_POPULATION_DENSITY_PROVIDER_LOADING_REPORTED = 1002,
+  ATOM_DENSITY_BASED_COARSE_LOCATIONS_USAGE_REPORTED = 1003,
+  ATOM_DENSITY_BASED_COARSE_LOCATIONS_PROVIDER_QUERY_REPORTED = 1004,
   ATOM_MEDIA_CODEC_RECLAIM_REQUEST_COMPLETED = 600,
   ATOM_MEDIA_CODEC_STARTED = 641,
   ATOM_MEDIA_CODEC_STOPPED = 642,
   ATOM_MEDIA_CODEC_RENDERED = 684,
   ATOM_MEDIA_EDITING_ENDED_REPORTED = 798,
   ATOM_MTE_STATE = 10181,
+  ATOM_MICROXR_DEVICE_BOOT_COMPLETE_REPORTED = 901,
   ATOM_NFC_OBSERVE_MODE_STATE_CHANGED = 855,
   ATOM_NFC_FIELD_CHANGED = 856,
   ATOM_NFC_POLLING_LOOP_NOTIFICATION_REPORTED = 857,
@@ -46934,6 +49237,7 @@ enum AtomId : int32_t {
   ATOM_PDF_LOAD_REPORTED = 859,
   ATOM_PDF_API_USAGE_REPORTED = 860,
   ATOM_PDF_SEARCH_REPORTED = 861,
+  ATOM_PRESSURE_STALL_INFORMATION = 10229,
   ATOM_PERMISSION_RATIONALE_DIALOG_VIEWED = 645,
   ATOM_PERMISSION_RATIONALE_DIALOG_ACTION_REPORTED = 646,
   ATOM_APP_DATA_SHARING_UPDATES_NOTIFICATION_INTERACTION = 647,
@@ -46963,6 +49267,11 @@ enum AtomId : int32_t {
   ATOM_SCREEN_DIM_REPORTED = 867,
   ATOM_MEDIA_PROVIDER_DATABASE_ROLLBACK_REPORTED = 784,
   ATOM_BACKUP_SETUP_STATUS_REPORTED = 785,
+  ATOM_RANGING_SESSION_CONFIGURED = 993,
+  ATOM_RANGING_SESSION_STARTED = 994,
+  ATOM_RANGING_SESSION_CLOSED = 995,
+  ATOM_RANGING_TECHNOLOGY_STARTED = 996,
+  ATOM_RANGING_TECHNOLOGY_STOPPED = 997,
   ATOM_RKPD_POOL_STATS = 664,
   ATOM_RKPD_CLIENT_OPERATION = 665,
   ATOM_SANDBOX_API_CALLED = 488,
@@ -46980,12 +49289,19 @@ enum AtomId : int32_t {
   ATOM_DISPLAY_SWITCH_LATENCY_TRACKED = 753,
   ATOM_NOTIFICATION_LISTENER_SERVICE = 829,
   ATOM_NAV_HANDLE_TOUCH_POINTS = 869,
+  ATOM_COMMUNAL_HUB_WIDGET_EVENT_REPORTED = 908,
+  ATOM_COMMUNAL_HUB_SNAPSHOT = 10226,
   ATOM_EMERGENCY_NUMBER_DIALED = 637,
+  ATOM_CALL_STATS = 10221,
+  ATOM_CALL_AUDIO_ROUTE_STATS = 10222,
+  ATOM_TELECOM_API_STATS = 10223,
+  ATOM_TELECOM_ERROR_STATS = 10224,
   ATOM_CELLULAR_RADIO_POWER_STATE_CHANGED = 713,
   ATOM_EMERGENCY_NUMBERS_INFO = 10180,
   ATOM_DATA_NETWORK_VALIDATION = 10207,
   ATOM_DATA_RAT_STATE_CHANGED = 854,
   ATOM_CONNECTED_CHANNEL_CHANGED = 882,
+  ATOM_IWLAN_UNDERLYING_NETWORK_VALIDATION_RESULT_REPORTED = 923,
   ATOM_QUALIFIED_RAT_LIST_CHANGED = 634,
   ATOM_QNS_IMS_CALL_DROP_STATS = 635,
   ATOM_QNS_FALLBACK_RESTRICTION_CHANGED = 636,
@@ -47011,10 +49327,12 @@ enum AtomId : int32_t {
   ATOM_BOOT_INTEGRITY_INFO_REPORTED = 775,
   ATOM_TV_LOW_POWER_STANDBY_POLICY = 679,
   ATOM_EXTERNAL_TV_INPUT_EVENT = 717,
+  ATOM_TEST_UPROBESTATS_ATOM_REPORTED = 915,
   ATOM_UWB_ACTIVITY_INFO = 10188,
   ATOM_MEDIATOR_UPDATED = 721,
   ATOM_SYSPROXY_BLUETOOTH_BYTES_TRANSFER = 10196,
   ATOM_SYSPROXY_CONNECTION_UPDATED = 786,
+  ATOM_WEAR_COMPANION_CONNECTION_STATE = 921,
   ATOM_MEDIA_ACTION_REPORTED = 608,
   ATOM_MEDIA_CONTROLS_LAUNCHED = 609,
   ATOM_MEDIA_SESSION_STATE_CHANGED = 677,
@@ -47035,6 +49353,10 @@ enum AtomId : int32_t {
   ATOM_INFLATION_FAILED = 749,
   ATOM_IGNORED_INFLATION_FAILURES_REPORTED = 750,
   ATOM_DRAWABLE_RENDERED = 751,
+  ATOM_WEAR_TIME_SYNC_REQUESTED = 911,
+  ATOM_WEAR_TIME_UPDATE_STARTED = 912,
+  ATOM_WEAR_TIME_SYNC_ATTEMPT_COMPLETED = 913,
+  ATOM_WEAR_TIME_CHANGED = 914,
   ATOM_WEAR_ADAPTIVE_SUSPEND_STATS_REPORTED = 619,
   ATOM_WEAR_POWER_ANOMALY_SERVICE_OPERATIONAL_STATS_REPORTED = 620,
   ATOM_WEAR_POWER_ANOMALY_SERVICE_EVENT_STATS_REPORTED = 621,
@@ -47048,10 +49370,18 @@ enum AtomId : int32_t {
   ATOM_WS_WATCH_FACE_RESTRICTED_COMPLICATIONS_IMPACTED = 802,
   ATOM_WS_WATCH_FACE_DEFAULT_RESTRICTED_COMPLICATIONS_REMOVED = 803,
   ATOM_WS_COMPLICATIONS_IMPACTED_NOTIFICATION_EVENT_REPORTED = 804,
+  ATOM_WS_REMOTE_EVENT_USAGE_REPORTED = 920,
+  ATOM_WS_BUGREPORT_REQUESTED = 936,
+  ATOM_WS_BUGREPORT_TRIGGERED = 937,
+  ATOM_WS_BUGREPORT_FINISHED = 938,
+  ATOM_WS_BUGREPORT_RESULT_RECEIVED = 939,
   ATOM_WS_STANDALONE_MODE_SNAPSHOT = 10197,
   ATOM_WS_FAVORITE_WATCH_FACE_SNAPSHOT = 10206,
+  ATOM_WS_PHOTOS_WATCH_FACE_FEATURE_SNAPSHOT = 10225,
+  ATOM_WS_WATCH_FACE_CUSTOMIZATION_SNAPSHOT = 10227,
   ATOM_WEAR_POWER_MENU_OPENED = 731,
   ATOM_WEAR_ASSISTANT_OPENED = 755,
+  ATOM_FIRST_OVERLAY_STATE_CHANGED = 917,
   ATOM_WIFI_AWARE_NDP_REPORTED = 638,
   ATOM_WIFI_AWARE_ATTACH_REPORTED = 639,
   ATOM_WIFI_SELF_RECOVERY_TRIGGERED = 661,
@@ -48274,9 +50604,6 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_NEARBY_DEVICE_SCAN_STATE_CHANGED:
     return "ATOM_NEARBY_DEVICE_SCAN_STATE_CHANGED";
 
-  case ::perfetto::protos::pbzero::AtomId::ATOM_CAMERA_COMPAT_CONTROL_EVENT_REPORTED:
-    return "ATOM_CAMERA_COMPAT_CONTROL_EVENT_REPORTED";
-
   case ::perfetto::protos::pbzero::AtomId::ATOM_APPLICATION_LOCALES_CHANGED:
     return "ATOM_APPLICATION_LOCALES_CHANGED";
 
@@ -49276,6 +51603,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_WS_FAVOURITE_WATCH_FACE_LIST_SNAPSHOT:
     return "ATOM_WS_FAVOURITE_WATCH_FACE_LIST_SNAPSHOT";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_ACCESSIBILITY_CHECK_RESULT_REPORTED:
+    return "ATOM_ACCESSIBILITY_CHECK_RESULT_REPORTED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_ADAPTIVE_AUTH_UNLOCK_AFTER_LOCK_REPORTED:
     return "ATOM_ADAPTIVE_AUTH_UNLOCK_AFTER_LOCK_REPORTED";
 
@@ -49498,6 +51828,18 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_AD_SERVICES_ENROLLMENT_TRANSACTION_STATS:
     return "ATOM_AD_SERVICES_ENROLLMENT_TRANSACTION_STATS";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_AD_SERVICES_COBALT_LOGGER_EVENT_REPORTED:
+    return "ATOM_AD_SERVICES_COBALT_LOGGER_EVENT_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_AD_SERVICES_COBALT_PERIODIC_JOB_EVENT_REPORTED:
+    return "ATOM_AD_SERVICES_COBALT_PERIODIC_JOB_EVENT_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_UPDATE_SIGNALS_PROCESS_REPORTED:
+    return "ATOM_UPDATE_SIGNALS_PROCESS_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_TOPICS_SCHEDULE_EPOCH_JOB_SETTING_REPORTED:
+    return "ATOM_TOPICS_SCHEDULE_EPOCH_JOB_SETTING_REPORTED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_AI_WALLPAPERS_BUTTON_PRESSED:
     return "ATOM_AI_WALLPAPERS_BUTTON_PRESSED";
 
@@ -49533,6 +51875,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_RAW_QUERY_STATS_REPORTED:
     return "ATOM_APP_SEARCH_USAGE_SEARCH_INTENT_RAW_QUERY_STATS_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_APP_SEARCH_APPS_INDEXER_STATS_REPORTED:
+    return "ATOM_APP_SEARCH_APPS_INDEXER_STATS_REPORTED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_ART_DATUM_REPORTED:
     return "ATOM_ART_DATUM_REPORTED";
@@ -49651,8 +51996,20 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_BLUETOOTH_RFCOMM_CONNECTION_REPORTED_AT_CLOSE:
     return "ATOM_BLUETOOTH_RFCOMM_CONNECTION_REPORTED_AT_CLOSE";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_BLUETOOTH_LE_CONNECTION:
+    return "ATOM_BLUETOOTH_LE_CONNECTION";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_BROADCAST_SENT:
+    return "ATOM_BROADCAST_SENT";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_CAMERA_FEATURE_COMBINATION_QUERY_EVENT:
     return "ATOM_CAMERA_FEATURE_COMBINATION_QUERY_EVENT";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_STATE_CHANGED:
+    return "ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_STATE_CHANGED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_UPDATE_FAILED:
+    return "ATOM_CERTIFICATE_TRANSPARENCY_LOG_LIST_UPDATE_FAILED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_DAILY_KEEPALIVE_INFO_REPORTED:
     return "ATOM_DAILY_KEEPALIVE_INFO_REPORTED";
@@ -49732,6 +52089,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_DESKTOP_MODE_SESSION_TASK_UPDATE:
     return "ATOM_DESKTOP_MODE_SESSION_TASK_UPDATE";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_DESKTOP_MODE_TASK_SIZE_UPDATED:
+    return "ATOM_DESKTOP_MODE_TASK_SIZE_UPDATED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_DEVICE_LOCK_CHECK_IN_REQUEST_REPORTED:
     return "ATOM_DEVICE_LOCK_CHECK_IN_REQUEST_REPORTED";
 
@@ -49801,6 +52161,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_IN_TASK_ACTIVITY_STARTED:
     return "ATOM_IN_TASK_ACTIVITY_STARTED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_DEVICE_ORIENTATION_CHANGED:
+    return "ATOM_DEVICE_ORIENTATION_CHANGED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_CACHED_APPS_HIGH_WATERMARK:
     return "ATOM_CACHED_APPS_HIGH_WATERMARK";
 
@@ -49846,11 +52209,29 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_APP_RESTRICTION_STATE_CHANGED:
     return "ATOM_APP_RESTRICTION_STATE_CHANGED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_BATTERY_USAGE_STATS_PER_UID:
+    return "ATOM_BATTERY_USAGE_STATS_PER_UID";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_POSTGC_MEMORY_SNAPSHOT:
+    return "ATOM_POSTGC_MEMORY_SNAPSHOT";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_POWER_SAVE_TEMP_ALLOWLIST_CHANGED:
+    return "ATOM_POWER_SAVE_TEMP_ALLOWLIST_CHANGED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_APP_OP_ACCESS_TRACKED:
+    return "ATOM_APP_OP_ACCESS_TRACKED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_CONTENT_OR_FILE_URI_EVENT_REPORTED:
+    return "ATOM_CONTENT_OR_FILE_URI_EVENT_REPORTED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_APPLICATION_GRAMMATICAL_INFLECTION_CHANGED:
     return "ATOM_APPLICATION_GRAMMATICAL_INFLECTION_CHANGED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_SYSTEM_GRAMMATICAL_INFLECTION_CHANGED:
     return "ATOM_SYSTEM_GRAMMATICAL_INFLECTION_CHANGED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_BATTERY_HEALTH:
+    return "ATOM_BATTERY_HEALTH";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_HDMI_EARC_STATUS_REPORTED:
     return "ATOM_HDMI_EARC_STATUS_REPORTED";
@@ -49872,6 +52253,15 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_EXERCISE_ROUTE_API_CALLED:
     return "ATOM_EXERCISE_ROUTE_API_CALLED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_HEALTH_CONNECT_EXPORT_INVOKED:
+    return "ATOM_HEALTH_CONNECT_EXPORT_INVOKED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_HEALTH_CONNECT_IMPORT_INVOKED:
+    return "ATOM_HEALTH_CONNECT_IMPORT_INVOKED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_HEALTH_CONNECT_EXPORT_IMPORT_STATS_REPORTED:
+    return "ATOM_HEALTH_CONNECT_EXPORT_IMPORT_STATS_REPORTED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_HEALTH_CONNECT_UI_IMPRESSION:
     return "ATOM_HEALTH_CONNECT_UI_IMPRESSION";
@@ -49903,6 +52293,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_INPUTDEVICE_USAGE_REPORTED:
     return "ATOM_INPUTDEVICE_USAGE_REPORTED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_INPUT_EVENT_LATENCY_REPORTED:
+    return "ATOM_INPUT_EVENT_LATENCY_REPORTED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_TOUCHPAD_USAGE:
     return "ATOM_TOUCHPAD_USAGE";
 
@@ -49914,6 +52307,15 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_CHRE_SIGNIFICANT_MOTION_STATE_CHANGED:
     return "ATOM_CHRE_SIGNIFICANT_MOTION_STATE_CHANGED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_POPULATION_DENSITY_PROVIDER_LOADING_REPORTED:
+    return "ATOM_POPULATION_DENSITY_PROVIDER_LOADING_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_DENSITY_BASED_COARSE_LOCATIONS_USAGE_REPORTED:
+    return "ATOM_DENSITY_BASED_COARSE_LOCATIONS_USAGE_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_DENSITY_BASED_COARSE_LOCATIONS_PROVIDER_QUERY_REPORTED:
+    return "ATOM_DENSITY_BASED_COARSE_LOCATIONS_PROVIDER_QUERY_REPORTED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_MEDIA_CODEC_RECLAIM_REQUEST_COMPLETED:
     return "ATOM_MEDIA_CODEC_RECLAIM_REQUEST_COMPLETED";
@@ -49932,6 +52334,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_MTE_STATE:
     return "ATOM_MTE_STATE";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_MICROXR_DEVICE_BOOT_COMPLETE_REPORTED:
+    return "ATOM_MICROXR_DEVICE_BOOT_COMPLETE_REPORTED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_NFC_OBSERVE_MODE_STATE_CHANGED:
     return "ATOM_NFC_OBSERVE_MODE_STATE_CHANGED";
@@ -49959,6 +52364,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_PDF_SEARCH_REPORTED:
     return "ATOM_PDF_SEARCH_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_PRESSURE_STALL_INFORMATION:
+    return "ATOM_PRESSURE_STALL_INFORMATION";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_PERMISSION_RATIONALE_DIALOG_VIEWED:
     return "ATOM_PERMISSION_RATIONALE_DIALOG_VIEWED";
@@ -50047,6 +52455,21 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_BACKUP_SETUP_STATUS_REPORTED:
     return "ATOM_BACKUP_SETUP_STATUS_REPORTED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_RANGING_SESSION_CONFIGURED:
+    return "ATOM_RANGING_SESSION_CONFIGURED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_RANGING_SESSION_STARTED:
+    return "ATOM_RANGING_SESSION_STARTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_RANGING_SESSION_CLOSED:
+    return "ATOM_RANGING_SESSION_CLOSED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_RANGING_TECHNOLOGY_STARTED:
+    return "ATOM_RANGING_TECHNOLOGY_STARTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_RANGING_TECHNOLOGY_STOPPED:
+    return "ATOM_RANGING_TECHNOLOGY_STOPPED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_RKPD_POOL_STATS:
     return "ATOM_RKPD_POOL_STATS";
 
@@ -50098,8 +52521,26 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_NAV_HANDLE_TOUCH_POINTS:
     return "ATOM_NAV_HANDLE_TOUCH_POINTS";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_COMMUNAL_HUB_WIDGET_EVENT_REPORTED:
+    return "ATOM_COMMUNAL_HUB_WIDGET_EVENT_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_COMMUNAL_HUB_SNAPSHOT:
+    return "ATOM_COMMUNAL_HUB_SNAPSHOT";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_EMERGENCY_NUMBER_DIALED:
     return "ATOM_EMERGENCY_NUMBER_DIALED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_CALL_STATS:
+    return "ATOM_CALL_STATS";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_CALL_AUDIO_ROUTE_STATS:
+    return "ATOM_CALL_AUDIO_ROUTE_STATS";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_TELECOM_API_STATS:
+    return "ATOM_TELECOM_API_STATS";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_TELECOM_ERROR_STATS:
+    return "ATOM_TELECOM_ERROR_STATS";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_CELLULAR_RADIO_POWER_STATE_CHANGED:
     return "ATOM_CELLULAR_RADIO_POWER_STATE_CHANGED";
@@ -50115,6 +52556,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_CONNECTED_CHANNEL_CHANGED:
     return "ATOM_CONNECTED_CHANNEL_CHANGED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_IWLAN_UNDERLYING_NETWORK_VALIDATION_RESULT_REPORTED:
+    return "ATOM_IWLAN_UNDERLYING_NETWORK_VALIDATION_RESULT_REPORTED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_QUALIFIED_RAT_LIST_CHANGED:
     return "ATOM_QUALIFIED_RAT_LIST_CHANGED";
@@ -50191,6 +52635,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_EXTERNAL_TV_INPUT_EVENT:
     return "ATOM_EXTERNAL_TV_INPUT_EVENT";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_TEST_UPROBESTATS_ATOM_REPORTED:
+    return "ATOM_TEST_UPROBESTATS_ATOM_REPORTED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_UWB_ACTIVITY_INFO:
     return "ATOM_UWB_ACTIVITY_INFO";
 
@@ -50202,6 +52649,9 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_SYSPROXY_CONNECTION_UPDATED:
     return "ATOM_SYSPROXY_CONNECTION_UPDATED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_COMPANION_CONNECTION_STATE:
+    return "ATOM_WEAR_COMPANION_CONNECTION_STATE";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_MEDIA_ACTION_REPORTED:
     return "ATOM_MEDIA_ACTION_REPORTED";
@@ -50263,6 +52713,18 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_DRAWABLE_RENDERED:
     return "ATOM_DRAWABLE_RENDERED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_TIME_SYNC_REQUESTED:
+    return "ATOM_WEAR_TIME_SYNC_REQUESTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_TIME_UPDATE_STARTED:
+    return "ATOM_WEAR_TIME_UPDATE_STARTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_TIME_SYNC_ATTEMPT_COMPLETED:
+    return "ATOM_WEAR_TIME_SYNC_ATTEMPT_COMPLETED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_TIME_CHANGED:
+    return "ATOM_WEAR_TIME_CHANGED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_ADAPTIVE_SUSPEND_STATS_REPORTED:
     return "ATOM_WEAR_ADAPTIVE_SUSPEND_STATS_REPORTED";
 
@@ -50302,17 +52764,41 @@ const char* AtomId_Name(::perfetto::protos::pbzero::AtomId value) {
   case ::perfetto::protos::pbzero::AtomId::ATOM_WS_COMPLICATIONS_IMPACTED_NOTIFICATION_EVENT_REPORTED:
     return "ATOM_WS_COMPLICATIONS_IMPACTED_NOTIFICATION_EVENT_REPORTED";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_REMOTE_EVENT_USAGE_REPORTED:
+    return "ATOM_WS_REMOTE_EVENT_USAGE_REPORTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_BUGREPORT_REQUESTED:
+    return "ATOM_WS_BUGREPORT_REQUESTED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_BUGREPORT_TRIGGERED:
+    return "ATOM_WS_BUGREPORT_TRIGGERED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_BUGREPORT_FINISHED:
+    return "ATOM_WS_BUGREPORT_FINISHED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_BUGREPORT_RESULT_RECEIVED:
+    return "ATOM_WS_BUGREPORT_RESULT_RECEIVED";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_WS_STANDALONE_MODE_SNAPSHOT:
     return "ATOM_WS_STANDALONE_MODE_SNAPSHOT";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_WS_FAVORITE_WATCH_FACE_SNAPSHOT:
     return "ATOM_WS_FAVORITE_WATCH_FACE_SNAPSHOT";
 
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_PHOTOS_WATCH_FACE_FEATURE_SNAPSHOT:
+    return "ATOM_WS_PHOTOS_WATCH_FACE_FEATURE_SNAPSHOT";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_WS_WATCH_FACE_CUSTOMIZATION_SNAPSHOT:
+    return "ATOM_WS_WATCH_FACE_CUSTOMIZATION_SNAPSHOT";
+
   case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_POWER_MENU_OPENED:
     return "ATOM_WEAR_POWER_MENU_OPENED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_WEAR_ASSISTANT_OPENED:
     return "ATOM_WEAR_ASSISTANT_OPENED";
+
+  case ::perfetto::protos::pbzero::AtomId::ATOM_FIRST_OVERLAY_STATE_CHANGED:
+    return "ATOM_FIRST_OVERLAY_STATE_CHANGED";
 
   case ::perfetto::protos::pbzero::AtomId::ATOM_WIFI_AWARE_NDP_REPORTED:
     return "ATOM_WIFI_AWARE_NDP_REPORTED";
@@ -51002,11 +53488,11 @@ class SysStatsConfig : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
-// gen_amalgamated begin header: gen/protos/perfetto/config/system_info/system_info.pbzero.h
+// gen_amalgamated begin header: gen/protos/perfetto/config/system_info/system_info_config.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
-#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_PROTO_H_
-#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_PROTO_H_
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_CONFIG_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_SYSTEM_INFO_SYSTEM_INFO_CONFIG_PROTO_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -51352,7 +53838,7 @@ const char* ChromeConfig_ClientPriority_Name(::perfetto::protos::pbzero::ChromeC
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class ChromeConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class ChromeConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   ChromeConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ChromeConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -51367,6 +53853,8 @@ class ChromeConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_I
   int32_t client_priority() const { return at<4>().as_int32(); }
   bool has_json_agent_label_filter() const { return at<5>().valid(); }
   ::protozero::ConstChars json_agent_label_filter() const { return at<5>().as_string(); }
+  bool has_event_package_name_filter_enabled() const { return at<6>().valid(); }
+  bool event_package_name_filter_enabled() const { return at<6>().as_bool(); }
 };
 
 class ChromeConfig : public ::protozero::Message {
@@ -51378,6 +53866,7 @@ class ChromeConfig : public ::protozero::Message {
     kConvertToLegacyJsonFieldNumber = 3,
     kClientPriorityFieldNumber = 4,
     kJsonAgentLabelFilterFieldNumber = 5,
+    kEventPackageNameFilterEnabledFieldNumber = 6,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ChromeConfig"; }
 
@@ -51491,6 +53980,195 @@ class ChromeConfig : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kString>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_EventPackageNameFilterEnabled =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      ChromeConfig>;
+
+  static constexpr FieldMetadata_EventPackageNameFilterEnabled kEventPackageNameFilterEnabled{};
+  void set_event_package_name_filter_enabled(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_EventPackageNameFilterEnabled::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/config/chrome/histogram_samples.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_HISTOGRAM_SAMPLES_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_CONFIG_CHROME_HISTOGRAM_SAMPLES_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+class ChromiumHistogramSamplesConfig_HistogramSample;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class ChromiumHistogramSamplesConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+ public:
+  ChromiumHistogramSamplesConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit ChromiumHistogramSamplesConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit ChromiumHistogramSamplesConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_histograms() const { return at<1>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> histograms() const { return GetRepeated<::protozero::ConstBytes>(1); }
+  bool has_filter_histogram_names() const { return at<2>().valid(); }
+  bool filter_histogram_names() const { return at<2>().as_bool(); }
+};
+
+class ChromiumHistogramSamplesConfig : public ::protozero::Message {
+ public:
+  using Decoder = ChromiumHistogramSamplesConfig_Decoder;
+  enum : int32_t {
+    kHistogramsFieldNumber = 1,
+    kFilterHistogramNamesFieldNumber = 2,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.ChromiumHistogramSamplesConfig"; }
+
+  using HistogramSample = ::perfetto::protos::pbzero::ChromiumHistogramSamplesConfig_HistogramSample;
+
+  using FieldMetadata_Histograms =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      ChromiumHistogramSamplesConfig_HistogramSample,
+      ChromiumHistogramSamplesConfig>;
+
+  static constexpr FieldMetadata_Histograms kHistograms{};
+  template <typename T = ChromiumHistogramSamplesConfig_HistogramSample> T* add_histograms() {
+    return BeginNestedMessage<T>(1);
+  }
+
+
+  using FieldMetadata_FilterHistogramNames =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      ChromiumHistogramSamplesConfig>;
+
+  static constexpr FieldMetadata_FilterHistogramNames kFilterHistogramNames{};
+  void set_filter_histogram_names(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_FilterHistogramNames::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class ChromiumHistogramSamplesConfig_HistogramSample_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  ChromiumHistogramSamplesConfig_HistogramSample_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit ChromiumHistogramSamplesConfig_HistogramSample_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit ChromiumHistogramSamplesConfig_HistogramSample_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_histogram_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars histogram_name() const { return at<1>().as_string(); }
+  bool has_min_value() const { return at<2>().valid(); }
+  int64_t min_value() const { return at<2>().as_int64(); }
+  bool has_max_value() const { return at<3>().valid(); }
+  int64_t max_value() const { return at<3>().as_int64(); }
+};
+
+class ChromiumHistogramSamplesConfig_HistogramSample : public ::protozero::Message {
+ public:
+  using Decoder = ChromiumHistogramSamplesConfig_HistogramSample_Decoder;
+  enum : int32_t {
+    kHistogramNameFieldNumber = 1,
+    kMinValueFieldNumber = 2,
+    kMaxValueFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.ChromiumHistogramSamplesConfig.HistogramSample"; }
+
+
+  using FieldMetadata_HistogramName =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      ChromiumHistogramSamplesConfig_HistogramSample>;
+
+  static constexpr FieldMetadata_HistogramName kHistogramName{};
+  void set_histogram_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_HistogramName::kFieldId, data, size);
+  }
+  void set_histogram_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_HistogramName::kFieldId, chars.data, chars.size);
+  }
+  void set_histogram_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_HistogramName::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MinValue =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      ChromiumHistogramSamplesConfig_HistogramSample>;
+
+  static constexpr FieldMetadata_MinValue kMinValue{};
+  void set_min_value(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MinValue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MaxValue =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      ChromiumHistogramSamplesConfig_HistogramSample>;
+
+  static constexpr FieldMetadata_MaxValue kMaxValue{};
+  void set_max_value(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MaxValue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
 };
 
 } // Namespace.
@@ -51595,13 +54273,15 @@ class ChromeFieldTracingConfig : public ::protozero::Message {
 
 };
 
-class ScenarioConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/7, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class ScenarioConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   ScenarioConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ScenarioConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
   explicit ScenarioConfig_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
   bool has_scenario_name() const { return at<1>().valid(); }
   ::protozero::ConstChars scenario_name() const { return at<1>().as_string(); }
+  bool has_scenario_description() const { return at<9>().valid(); }
+  ::protozero::ConstChars scenario_description() const { return at<9>().as_string(); }
   bool has_start_rules() const { return at<2>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> start_rules() const { return GetRepeated<::protozero::ConstBytes>(2); }
   bool has_stop_rules() const { return at<3>().valid(); }
@@ -51614,6 +54294,8 @@ class ScenarioConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD
   ::protozero::ConstBytes trace_config() const { return at<6>().as_bytes(); }
   bool has_nested_scenarios() const { return at<7>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> nested_scenarios() const { return GetRepeated<::protozero::ConstBytes>(7); }
+  bool has_use_system_backend() const { return at<8>().valid(); }
+  bool use_system_backend() const { return at<8>().as_bool(); }
 };
 
 class ScenarioConfig : public ::protozero::Message {
@@ -51621,12 +54303,14 @@ class ScenarioConfig : public ::protozero::Message {
   using Decoder = ScenarioConfig_Decoder;
   enum : int32_t {
     kScenarioNameFieldNumber = 1,
+    kScenarioDescriptionFieldNumber = 9,
     kStartRulesFieldNumber = 2,
     kStopRulesFieldNumber = 3,
     kUploadRulesFieldNumber = 4,
     kSetupRulesFieldNumber = 5,
     kTraceConfigFieldNumber = 6,
     kNestedScenariosFieldNumber = 7,
+    kUseSystemBackendFieldNumber = 8,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ScenarioConfig"; }
 
@@ -51648,6 +54332,30 @@ class ScenarioConfig : public ::protozero::Message {
   }
   void set_scenario_name(std::string value) {
     static constexpr uint32_t field_id = FieldMetadata_ScenarioName::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ScenarioDescription =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      ScenarioConfig>;
+
+  static constexpr FieldMetadata_ScenarioDescription kScenarioDescription{};
+  void set_scenario_description(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_ScenarioDescription::kFieldId, data, size);
+  }
+  void set_scenario_description(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_ScenarioDescription::kFieldId, chars.data, chars.size);
+  }
+  void set_scenario_description(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_ScenarioDescription::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -51738,6 +54446,24 @@ class ScenarioConfig : public ::protozero::Message {
     return BeginNestedMessage<T>(7);
   }
 
+
+  using FieldMetadata_UseSystemBackend =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      ScenarioConfig>;
+
+  static constexpr FieldMetadata_UseSystemBackend kUseSystemBackend{};
+  void set_use_system_backend(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_UseSystemBackend::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
 };
 
 class NestedScenarioConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
@@ -52318,15 +55044,21 @@ class AndroidPolledStateConfig;
 class AndroidPowerConfig;
 class AndroidSdkSyspropGuardConfig;
 class AndroidSystemPropertyConfig;
+class AppWakelocksConfig;
 class ChromeConfig;
+class ChromiumHistogramSamplesConfig;
 class ChromiumSystemMetricsConfig;
+class CpuPerUidConfig;
 class EtwConfig;
+class FrozenFtraceConfig;
 class FtraceConfig;
 class GpuCounterConfig;
+class GpuRenderStagesConfig;
 class HeapprofdConfig;
 class InodeFileConfig;
 class InterceptorConfig;
 class JavaHprofConfig;
+class KernelWakelocksConfig;
 class NetworkPacketTraceConfig;
 class PackagesListConfig;
 class PerfEventConfig;
@@ -52343,6 +55075,10 @@ class TrackEventConfig;
 class V8Config;
 class VulkanMemoryConfig;
 class WindowManagerConfig;
+namespace perfetto_pbzero_enum_DataSourceConfig {
+enum BufferExhaustedPolicy : int32_t;
+}  // namespace perfetto_pbzero_enum_DataSourceConfig
+using DataSourceConfig_BufferExhaustedPolicy = perfetto_pbzero_enum_DataSourceConfig::BufferExhaustedPolicy;
 namespace perfetto_pbzero_enum_DataSourceConfig {
 enum SessionInitiator : int32_t;
 }  // namespace perfetto_pbzero_enum_DataSourceConfig
@@ -52380,7 +55116,40 @@ const char* DataSourceConfig_SessionInitiator_Name(::perfetto::protos::pbzero::D
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class DataSourceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/131, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+namespace perfetto_pbzero_enum_DataSourceConfig {
+enum BufferExhaustedPolicy : int32_t {
+  BUFFER_EXHAUSTED_UNSPECIFIED = 0,
+  BUFFER_EXHAUSTED_DROP = 1,
+  BUFFER_EXHAUSTED_STALL_THEN_ABORT = 2,
+  BUFFER_EXHAUSTED_STALL_THEN_DROP = 3,
+};
+} // namespace perfetto_pbzero_enum_DataSourceConfig
+using DataSourceConfig_BufferExhaustedPolicy = perfetto_pbzero_enum_DataSourceConfig::BufferExhaustedPolicy;
+
+
+constexpr DataSourceConfig_BufferExhaustedPolicy DataSourceConfig_BufferExhaustedPolicy_MIN = DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_UNSPECIFIED;
+constexpr DataSourceConfig_BufferExhaustedPolicy DataSourceConfig_BufferExhaustedPolicy_MAX = DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_STALL_THEN_DROP;
+
+
+PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
+const char* DataSourceConfig_BufferExhaustedPolicy_Name(::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy value) {
+  switch (value) {
+  case ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_UNSPECIFIED:
+    return "BUFFER_EXHAUSTED_UNSPECIFIED";
+
+  case ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_DROP:
+    return "BUFFER_EXHAUSTED_DROP";
+
+  case ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_STALL_THEN_ABORT:
+    return "BUFFER_EXHAUSTED_STALL_THEN_ABORT";
+
+  case ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy::BUFFER_EXHAUSTED_STALL_THEN_DROP:
+    return "BUFFER_EXHAUSTED_STALL_THEN_DROP";
+  }
+  return "PBZERO_UNKNOWN_ENUM_VALUE";
+}
+
+class DataSourceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/137, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   DataSourceConfig_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit DataSourceConfig_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -52401,6 +55170,8 @@ class DataSourceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIE
   int32_t session_initiator() const { return at<8>().as_int32(); }
   bool has_tracing_session_id() const { return at<4>().valid(); }
   uint64_t tracing_session_id() const { return at<4>().as_uint64(); }
+  bool has_buffer_exhausted_policy() const { return at<9>().valid(); }
+  int32_t buffer_exhausted_policy() const { return at<9>().as_int32(); }
   bool has_ftrace_config() const { return at<100>().valid(); }
   ::protozero::ConstBytes ftrace_config() const { return at<100>().as_bytes(); }
   bool has_inode_file_config() const { return at<102>().valid(); }
@@ -52437,6 +55208,8 @@ class DataSourceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIE
   ::protozero::ConstBytes statsd_tracing_config() const { return at<117>().as_bytes(); }
   bool has_system_info_config() const { return at<119>().valid(); }
   ::protozero::ConstBytes system_info_config() const { return at<119>().as_bytes(); }
+  bool has_frozen_ftrace_config() const { return at<136>().valid(); }
+  ::protozero::ConstBytes frozen_ftrace_config() const { return at<136>().as_bytes(); }
   bool has_chrome_config() const { return at<101>().valid(); }
   ::protozero::ConstBytes chrome_config() const { return at<101>().as_bytes(); }
   bool has_v8_config() const { return at<127>().valid(); }
@@ -52463,6 +55236,16 @@ class DataSourceConfig_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIE
   ::protozero::ConstBytes windowmanager_config() const { return at<130>().as_bytes(); }
   bool has_chromium_system_metrics() const { return at<131>().valid(); }
   ::protozero::ConstBytes chromium_system_metrics() const { return at<131>().as_bytes(); }
+  bool has_kernel_wakelocks_config() const { return at<132>().valid(); }
+  ::protozero::ConstBytes kernel_wakelocks_config() const { return at<132>().as_bytes(); }
+  bool has_gpu_renderstages_config() const { return at<133>().valid(); }
+  ::protozero::ConstBytes gpu_renderstages_config() const { return at<133>().as_bytes(); }
+  bool has_chromium_histogram_samples() const { return at<134>().valid(); }
+  ::protozero::ConstBytes chromium_histogram_samples() const { return at<134>().as_bytes(); }
+  bool has_app_wakelocks_config() const { return at<135>().valid(); }
+  ::protozero::ConstBytes app_wakelocks_config() const { return at<135>().as_bytes(); }
+  bool has_cpu_per_uid_config() const { return at<137>().valid(); }
+  ::protozero::ConstBytes cpu_per_uid_config() const { return at<137>().as_bytes(); }
   // field legacy_config omitted because its id is too high
   // field for_testing omitted because its id is too high
 };
@@ -52479,6 +55262,7 @@ class DataSourceConfig : public ::protozero::Message {
     kEnableExtraGuardrailsFieldNumber = 6,
     kSessionInitiatorFieldNumber = 8,
     kTracingSessionIdFieldNumber = 4,
+    kBufferExhaustedPolicyFieldNumber = 9,
     kFtraceConfigFieldNumber = 100,
     kInodeFileConfigFieldNumber = 102,
     kProcessStatsConfigFieldNumber = 103,
@@ -52497,6 +55281,7 @@ class DataSourceConfig : public ::protozero::Message {
     kAndroidSystemPropertyConfigFieldNumber = 118,
     kStatsdTracingConfigFieldNumber = 117,
     kSystemInfoConfigFieldNumber = 119,
+    kFrozenFtraceConfigFieldNumber = 136,
     kChromeConfigFieldNumber = 101,
     kV8ConfigFieldNumber = 127,
     kInterceptorConfigFieldNumber = 115,
@@ -52510,6 +55295,11 @@ class DataSourceConfig : public ::protozero::Message {
     kPixelModemConfigFieldNumber = 129,
     kWindowmanagerConfigFieldNumber = 130,
     kChromiumSystemMetricsFieldNumber = 131,
+    kKernelWakelocksConfigFieldNumber = 132,
+    kGpuRenderstagesConfigFieldNumber = 133,
+    kChromiumHistogramSamplesFieldNumber = 134,
+    kAppWakelocksConfigFieldNumber = 135,
+    kCpuPerUidConfigFieldNumber = 137,
     kLegacyConfigFieldNumber = 1000,
     kForTestingFieldNumber = 1001,
   };
@@ -52520,8 +55310,17 @@ class DataSourceConfig : public ::protozero::Message {
   static inline const char* SessionInitiator_Name(SessionInitiator value) {
     return ::perfetto::protos::pbzero::DataSourceConfig_SessionInitiator_Name(value);
   }
+
+  using BufferExhaustedPolicy = ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy;
+  static inline const char* BufferExhaustedPolicy_Name(BufferExhaustedPolicy value) {
+    return ::perfetto::protos::pbzero::DataSourceConfig_BufferExhaustedPolicy_Name(value);
+  }
   static inline const SessionInitiator SESSION_INITIATOR_UNSPECIFIED = SessionInitiator::SESSION_INITIATOR_UNSPECIFIED;
   static inline const SessionInitiator SESSION_INITIATOR_TRUSTED_SYSTEM = SessionInitiator::SESSION_INITIATOR_TRUSTED_SYSTEM;
+  static inline const BufferExhaustedPolicy BUFFER_EXHAUSTED_UNSPECIFIED = BufferExhaustedPolicy::BUFFER_EXHAUSTED_UNSPECIFIED;
+  static inline const BufferExhaustedPolicy BUFFER_EXHAUSTED_DROP = BufferExhaustedPolicy::BUFFER_EXHAUSTED_DROP;
+  static inline const BufferExhaustedPolicy BUFFER_EXHAUSTED_STALL_THEN_ABORT = BufferExhaustedPolicy::BUFFER_EXHAUSTED_STALL_THEN_ABORT;
+  static inline const BufferExhaustedPolicy BUFFER_EXHAUSTED_STALL_THEN_DROP = BufferExhaustedPolicy::BUFFER_EXHAUSTED_STALL_THEN_DROP;
 
   using FieldMetadata_Name =
     ::protozero::proto_utils::FieldMetadata<
@@ -52670,6 +55469,24 @@ class DataSourceConfig : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_BufferExhaustedPolicy =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kEnum,
+      DataSourceConfig_BufferExhaustedPolicy,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_BufferExhaustedPolicy kBufferExhaustedPolicy{};
+  void set_buffer_exhausted_policy(DataSourceConfig_BufferExhaustedPolicy value) {
+    static constexpr uint32_t field_id = FieldMetadata_BufferExhaustedPolicy::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
   }
 
@@ -52993,6 +55810,24 @@ class DataSourceConfig : public ::protozero::Message {
   }
 
 
+  using FieldMetadata_FrozenFtraceConfig =
+    ::protozero::proto_utils::FieldMetadata<
+      136,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      FrozenFtraceConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_FrozenFtraceConfig kFrozenFtraceConfig{};
+  template <typename T = FrozenFtraceConfig> T* set_frozen_ftrace_config() {
+    return BeginNestedMessage<T>(136);
+  }
+
+  void set_frozen_ftrace_config_raw(const std::string& raw) {
+    return AppendBytes(136, raw.data(), raw.size());
+  }
+
+
   using FieldMetadata_ChromeConfig =
     ::protozero::proto_utils::FieldMetadata<
       101,
@@ -53216,6 +56051,96 @@ class DataSourceConfig : public ::protozero::Message {
 
   void set_chromium_system_metrics_raw(const std::string& raw) {
     return AppendBytes(131, raw.data(), raw.size());
+  }
+
+
+  using FieldMetadata_KernelWakelocksConfig =
+    ::protozero::proto_utils::FieldMetadata<
+      132,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      KernelWakelocksConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_KernelWakelocksConfig kKernelWakelocksConfig{};
+  template <typename T = KernelWakelocksConfig> T* set_kernel_wakelocks_config() {
+    return BeginNestedMessage<T>(132);
+  }
+
+  void set_kernel_wakelocks_config_raw(const std::string& raw) {
+    return AppendBytes(132, raw.data(), raw.size());
+  }
+
+
+  using FieldMetadata_GpuRenderstagesConfig =
+    ::protozero::proto_utils::FieldMetadata<
+      133,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      GpuRenderStagesConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_GpuRenderstagesConfig kGpuRenderstagesConfig{};
+  template <typename T = GpuRenderStagesConfig> T* set_gpu_renderstages_config() {
+    return BeginNestedMessage<T>(133);
+  }
+
+  void set_gpu_renderstages_config_raw(const std::string& raw) {
+    return AppendBytes(133, raw.data(), raw.size());
+  }
+
+
+  using FieldMetadata_ChromiumHistogramSamples =
+    ::protozero::proto_utils::FieldMetadata<
+      134,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      ChromiumHistogramSamplesConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_ChromiumHistogramSamples kChromiumHistogramSamples{};
+  template <typename T = ChromiumHistogramSamplesConfig> T* set_chromium_histogram_samples() {
+    return BeginNestedMessage<T>(134);
+  }
+
+  void set_chromium_histogram_samples_raw(const std::string& raw) {
+    return AppendBytes(134, raw.data(), raw.size());
+  }
+
+
+  using FieldMetadata_AppWakelocksConfig =
+    ::protozero::proto_utils::FieldMetadata<
+      135,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      AppWakelocksConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_AppWakelocksConfig kAppWakelocksConfig{};
+  template <typename T = AppWakelocksConfig> T* set_app_wakelocks_config() {
+    return BeginNestedMessage<T>(135);
+  }
+
+  void set_app_wakelocks_config_raw(const std::string& raw) {
+    return AppendBytes(135, raw.data(), raw.size());
+  }
+
+
+  using FieldMetadata_CpuPerUidConfig =
+    ::protozero::proto_utils::FieldMetadata<
+      137,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      CpuPerUidConfig,
+      DataSourceConfig>;
+
+  static constexpr FieldMetadata_CpuPerUidConfig kCpuPerUidConfig{};
+  template <typename T = CpuPerUidConfig> T* set_cpu_per_uid_config() {
+    return BeginNestedMessage<T>(137);
+  }
+
+  void set_cpu_per_uid_config_raw(const std::string& raw) {
+    return AppendBytes(137, raw.data(), raw.size());
   }
 
 
@@ -57194,7 +60119,7 @@ namespace perfetto {
 namespace protos {
 namespace pbzero {
 
-class Trigger_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class Trigger_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   Trigger_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit Trigger_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -57205,6 +60130,8 @@ class Trigger_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3
   ::protozero::ConstChars producer_name() const { return at<2>().as_string(); }
   bool has_trusted_producer_uid() const { return at<3>().valid(); }
   int32_t trusted_producer_uid() const { return at<3>().as_int32(); }
+  bool has_stop_delay_ms() const { return at<4>().valid(); }
+  uint64_t stop_delay_ms() const { return at<4>().as_uint64(); }
 };
 
 class Trigger : public ::protozero::Message {
@@ -57214,6 +60141,7 @@ class Trigger : public ::protozero::Message {
     kTriggerNameFieldNumber = 1,
     kProducerNameFieldNumber = 2,
     kTrustedProducerUidFieldNumber = 3,
+    kStopDelayMsFieldNumber = 4,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.Trigger"; }
 
@@ -57283,17 +60211,35 @@ class Trigger : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kInt32>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_StopDelayMs =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Trigger>;
+
+  static constexpr FieldMetadata_StopDelayMs kStopDelayMs{};
+  void set_stop_delay_ms(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_StopDelayMs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
 };
 
 } // Namespace.
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
-// gen_amalgamated begin header: gen/protos/perfetto/trace/system_info.pbzero.h
+// gen_amalgamated begin header: gen/protos/perfetto/trace/android/graphics/insets.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
-#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_SYSTEM_INFO_PROTO_H_
-#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_SYSTEM_INFO_PROTO_H_
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_GRAPHICS_INSETS_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_GRAPHICS_INSETS_PROTO_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -57304,346 +60250,49 @@ class Trigger : public ::protozero::Message {
 // gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
 // gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
 
-namespace perfetto {
-namespace protos {
-namespace pbzero {
-class Utsname;
-} // Namespace pbzero.
-} // Namespace protos.
-} // Namespace perfetto.
 
 namespace perfetto {
 namespace protos {
 namespace pbzero {
 
-class SystemInfo_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/14, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class InsetsProto_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
-  SystemInfo_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
-  explicit SystemInfo_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
-  explicit SystemInfo_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
-  bool has_utsname() const { return at<1>().valid(); }
-  ::protozero::ConstBytes utsname() const { return at<1>().as_bytes(); }
-  bool has_android_build_fingerprint() const { return at<2>().valid(); }
-  ::protozero::ConstChars android_build_fingerprint() const { return at<2>().as_string(); }
-  bool has_android_device_manufacturer() const { return at<14>().valid(); }
-  ::protozero::ConstChars android_device_manufacturer() const { return at<14>().as_string(); }
-  bool has_android_soc_model() const { return at<9>().valid(); }
-  ::protozero::ConstChars android_soc_model() const { return at<9>().as_string(); }
-  bool has_android_guest_soc_model() const { return at<13>().valid(); }
-  ::protozero::ConstChars android_guest_soc_model() const { return at<13>().as_string(); }
-  bool has_android_hardware_revision() const { return at<10>().valid(); }
-  ::protozero::ConstChars android_hardware_revision() const { return at<10>().as_string(); }
-  bool has_android_storage_model() const { return at<11>().valid(); }
-  ::protozero::ConstChars android_storage_model() const { return at<11>().as_string(); }
-  bool has_android_ram_model() const { return at<12>().valid(); }
-  ::protozero::ConstChars android_ram_model() const { return at<12>().as_string(); }
-  bool has_tracing_service_version() const { return at<4>().valid(); }
-  ::protozero::ConstChars tracing_service_version() const { return at<4>().as_string(); }
-  bool has_android_sdk_version() const { return at<5>().valid(); }
-  uint64_t android_sdk_version() const { return at<5>().as_uint64(); }
-  bool has_page_size() const { return at<6>().valid(); }
-  uint32_t page_size() const { return at<6>().as_uint32(); }
-  bool has_num_cpus() const { return at<8>().valid(); }
-  uint32_t num_cpus() const { return at<8>().as_uint32(); }
-  bool has_timezone_off_mins() const { return at<7>().valid(); }
-  int32_t timezone_off_mins() const { return at<7>().as_int32(); }
-  bool has_hz() const { return at<3>().valid(); }
-  int64_t hz() const { return at<3>().as_int64(); }
+  InsetsProto_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit InsetsProto_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit InsetsProto_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_left() const { return at<1>().valid(); }
+  int32_t left() const { return at<1>().as_int32(); }
+  bool has_top() const { return at<2>().valid(); }
+  int32_t top() const { return at<2>().as_int32(); }
+  bool has_right() const { return at<3>().valid(); }
+  int32_t right() const { return at<3>().as_int32(); }
+  bool has_bottom() const { return at<4>().valid(); }
+  int32_t bottom() const { return at<4>().as_int32(); }
 };
 
-class SystemInfo : public ::protozero::Message {
+class InsetsProto : public ::protozero::Message {
  public:
-  using Decoder = SystemInfo_Decoder;
+  using Decoder = InsetsProto_Decoder;
   enum : int32_t {
-    kUtsnameFieldNumber = 1,
-    kAndroidBuildFingerprintFieldNumber = 2,
-    kAndroidDeviceManufacturerFieldNumber = 14,
-    kAndroidSocModelFieldNumber = 9,
-    kAndroidGuestSocModelFieldNumber = 13,
-    kAndroidHardwareRevisionFieldNumber = 10,
-    kAndroidStorageModelFieldNumber = 11,
-    kAndroidRamModelFieldNumber = 12,
-    kTracingServiceVersionFieldNumber = 4,
-    kAndroidSdkVersionFieldNumber = 5,
-    kPageSizeFieldNumber = 6,
-    kNumCpusFieldNumber = 8,
-    kTimezoneOffMinsFieldNumber = 7,
-    kHzFieldNumber = 3,
+    kLeftFieldNumber = 1,
+    kTopFieldNumber = 2,
+    kRightFieldNumber = 3,
+    kBottomFieldNumber = 4,
   };
-  static constexpr const char* GetName() { return ".perfetto.protos.SystemInfo"; }
+  static constexpr const char* GetName() { return ".perfetto.protos.InsetsProto"; }
 
 
-  using FieldMetadata_Utsname =
+  using FieldMetadata_Left =
     ::protozero::proto_utils::FieldMetadata<
       1,
       ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kMessage,
-      Utsname,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_Utsname kUtsname{};
-  template <typename T = Utsname> T* set_utsname() {
-    return BeginNestedMessage<T>(1);
-  }
-
-
-  using FieldMetadata_AndroidBuildFingerprint =
-    ::protozero::proto_utils::FieldMetadata<
-      2,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidBuildFingerprint kAndroidBuildFingerprint{};
-  void set_android_build_fingerprint(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidBuildFingerprint::kFieldId, data, size);
-  }
-  void set_android_build_fingerprint(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidBuildFingerprint::kFieldId, chars.data, chars.size);
-  }
-  void set_android_build_fingerprint(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidBuildFingerprint::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidDeviceManufacturer =
-    ::protozero::proto_utils::FieldMetadata<
-      14,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidDeviceManufacturer kAndroidDeviceManufacturer{};
-  void set_android_device_manufacturer(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidDeviceManufacturer::kFieldId, data, size);
-  }
-  void set_android_device_manufacturer(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidDeviceManufacturer::kFieldId, chars.data, chars.size);
-  }
-  void set_android_device_manufacturer(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidDeviceManufacturer::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidSocModel =
-    ::protozero::proto_utils::FieldMetadata<
-      9,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidSocModel kAndroidSocModel{};
-  void set_android_soc_model(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidSocModel::kFieldId, data, size);
-  }
-  void set_android_soc_model(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidSocModel::kFieldId, chars.data, chars.size);
-  }
-  void set_android_soc_model(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidSocModel::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidGuestSocModel =
-    ::protozero::proto_utils::FieldMetadata<
-      13,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidGuestSocModel kAndroidGuestSocModel{};
-  void set_android_guest_soc_model(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidGuestSocModel::kFieldId, data, size);
-  }
-  void set_android_guest_soc_model(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidGuestSocModel::kFieldId, chars.data, chars.size);
-  }
-  void set_android_guest_soc_model(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidGuestSocModel::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidHardwareRevision =
-    ::protozero::proto_utils::FieldMetadata<
-      10,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidHardwareRevision kAndroidHardwareRevision{};
-  void set_android_hardware_revision(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidHardwareRevision::kFieldId, data, size);
-  }
-  void set_android_hardware_revision(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidHardwareRevision::kFieldId, chars.data, chars.size);
-  }
-  void set_android_hardware_revision(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidHardwareRevision::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidStorageModel =
-    ::protozero::proto_utils::FieldMetadata<
-      11,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidStorageModel kAndroidStorageModel{};
-  void set_android_storage_model(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidStorageModel::kFieldId, data, size);
-  }
-  void set_android_storage_model(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidStorageModel::kFieldId, chars.data, chars.size);
-  }
-  void set_android_storage_model(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidStorageModel::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidRamModel =
-    ::protozero::proto_utils::FieldMetadata<
-      12,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidRamModel kAndroidRamModel{};
-  void set_android_ram_model(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_AndroidRamModel::kFieldId, data, size);
-  }
-  void set_android_ram_model(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_AndroidRamModel::kFieldId, chars.data, chars.size);
-  }
-  void set_android_ram_model(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidRamModel::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_TracingServiceVersion =
-    ::protozero::proto_utils::FieldMetadata<
-      4,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_TracingServiceVersion kTracingServiceVersion{};
-  void set_tracing_service_version(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_TracingServiceVersion::kFieldId, data, size);
-  }
-  void set_tracing_service_version(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_TracingServiceVersion::kFieldId, chars.data, chars.size);
-  }
-  void set_tracing_service_version(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_TracingServiceVersion::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_AndroidSdkVersion =
-    ::protozero::proto_utils::FieldMetadata<
-      5,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kUint64,
-      uint64_t,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_AndroidSdkVersion kAndroidSdkVersion{};
-  void set_android_sdk_version(uint64_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_AndroidSdkVersion::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint64>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_PageSize =
-    ::protozero::proto_utils::FieldMetadata<
-      6,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kUint32,
-      uint32_t,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_PageSize kPageSize{};
-  void set_page_size(uint32_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_PageSize::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint32>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_NumCpus =
-    ::protozero::proto_utils::FieldMetadata<
-      8,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kUint32,
-      uint32_t,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_NumCpus kNumCpus{};
-  void set_num_cpus(uint32_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_NumCpus::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint32>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_TimezoneOffMins =
-    ::protozero::proto_utils::FieldMetadata<
-      7,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
       ::protozero::proto_utils::ProtoSchemaType::kInt32,
       int32_t,
-      SystemInfo>;
+      InsetsProto>;
 
-  static constexpr FieldMetadata_TimezoneOffMins kTimezoneOffMins{};
-  void set_timezone_off_mins(int32_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_TimezoneOffMins::kFieldId;
+  static constexpr FieldMetadata_Left kLeft{};
+  void set_left(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Left::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -57651,145 +60300,57 @@ class SystemInfo : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
-  using FieldMetadata_Hz =
-    ::protozero::proto_utils::FieldMetadata<
-      3,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kInt64,
-      int64_t,
-      SystemInfo>;
-
-  static constexpr FieldMetadata_Hz kHz{};
-  void set_hz(int64_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_Hz::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kInt64>
-        ::Append(*this, field_id, value);
-  }
-};
-
-class Utsname_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
- public:
-  Utsname_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
-  explicit Utsname_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
-  explicit Utsname_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
-  bool has_sysname() const { return at<1>().valid(); }
-  ::protozero::ConstChars sysname() const { return at<1>().as_string(); }
-  bool has_version() const { return at<2>().valid(); }
-  ::protozero::ConstChars version() const { return at<2>().as_string(); }
-  bool has_release() const { return at<3>().valid(); }
-  ::protozero::ConstChars release() const { return at<3>().as_string(); }
-  bool has_machine() const { return at<4>().valid(); }
-  ::protozero::ConstChars machine() const { return at<4>().as_string(); }
-};
-
-class Utsname : public ::protozero::Message {
- public:
-  using Decoder = Utsname_Decoder;
-  enum : int32_t {
-    kSysnameFieldNumber = 1,
-    kVersionFieldNumber = 2,
-    kReleaseFieldNumber = 3,
-    kMachineFieldNumber = 4,
-  };
-  static constexpr const char* GetName() { return ".perfetto.protos.Utsname"; }
-
-
-  using FieldMetadata_Sysname =
-    ::protozero::proto_utils::FieldMetadata<
-      1,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      Utsname>;
-
-  static constexpr FieldMetadata_Sysname kSysname{};
-  void set_sysname(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_Sysname::kFieldId, data, size);
-  }
-  void set_sysname(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_Sysname::kFieldId, chars.data, chars.size);
-  }
-  void set_sysname(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_Sysname::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_Version =
+  using FieldMetadata_Top =
     ::protozero::proto_utils::FieldMetadata<
       2,
       ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      Utsname>;
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      InsetsProto>;
 
-  static constexpr FieldMetadata_Version kVersion{};
-  void set_version(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_Version::kFieldId, data, size);
-  }
-  void set_version(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_Version::kFieldId, chars.data, chars.size);
-  }
-  void set_version(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_Version::kFieldId;
+  static constexpr FieldMetadata_Top kTop{};
+  void set_top(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Top::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
         ::Append(*this, field_id, value);
   }
 
-  using FieldMetadata_Release =
+  using FieldMetadata_Right =
     ::protozero::proto_utils::FieldMetadata<
       3,
       ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      Utsname>;
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      InsetsProto>;
 
-  static constexpr FieldMetadata_Release kRelease{};
-  void set_release(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_Release::kFieldId, data, size);
-  }
-  void set_release(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_Release::kFieldId, chars.data, chars.size);
-  }
-  void set_release(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_Release::kFieldId;
+  static constexpr FieldMetadata_Right kRight{};
+  void set_right(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Right::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
         ::Append(*this, field_id, value);
   }
 
-  using FieldMetadata_Machine =
+  using FieldMetadata_Bottom =
     ::protozero::proto_utils::FieldMetadata<
       4,
       ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kString,
-      std::string,
-      Utsname>;
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      InsetsProto>;
 
-  static constexpr FieldMetadata_Machine kMachine{};
-  void set_machine(const char* data, size_t size) {
-    AppendBytes(FieldMetadata_Machine::kFieldId, data, size);
-  }
-  void set_machine(::protozero::ConstChars chars) {
-    AppendBytes(FieldMetadata_Machine::kFieldId, chars.data, chars.size);
-  }
-  void set_machine(std::string value) {
-    static constexpr uint32_t field_id = FieldMetadata_Machine::kFieldId;
+  static constexpr FieldMetadata_Bottom kBottom{};
+  void set_bottom(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Bottom::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kString>
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
         ::Append(*this, field_id, value);
   }
 };
@@ -60530,7 +63091,7 @@ class PositionProto : public ::protozero::Message {
   }
 };
 
-class LayerProto_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/59, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class LayerProto_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/60, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   LayerProto_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit LayerProto_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -60653,6 +63214,8 @@ class LayerProto_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=
   uint32_t original_id() const { return at<58>().as_uint32(); }
   bool has_trusted_overlay() const { return at<59>().valid(); }
   int32_t trusted_overlay() const { return at<59>().as_int32(); }
+  bool has_background_blur_scale() const { return at<60>().valid(); }
+  float background_blur_scale() const { return at<60>().as_float(); }
 };
 
 class LayerProto : public ::protozero::Message {
@@ -60718,6 +63281,7 @@ class LayerProto : public ::protozero::Message {
     kDestinationFrameFieldNumber = 57,
     kOriginalIdFieldNumber = 58,
     kTrustedOverlayFieldNumber = 59,
+    kBackgroundBlurScaleFieldNumber = 60,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.LayerProto"; }
 
@@ -61692,6 +64256,24 @@ class LayerProto : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_BackgroundBlurScale =
+    ::protozero::proto_utils::FieldMetadata<
+      60,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kFloat,
+      float,
+      LayerProto>;
+
+  static constexpr FieldMetadata_BackgroundBlurScale kBackgroundBlurScale{};
+  void set_background_blur_scale(float value) {
+    static constexpr uint32_t field_id = FieldMetadata_BackgroundBlurScale::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kFloat>
+        ::Append(*this, field_id, value);
+  }
 };
 
 class LayerProto_MetadataEntry_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
@@ -62385,7 +64967,7 @@ enum ChangesLsb : int32_t {
   eColorTransformChanged = 268435456,
   eHasListenerCallbacksChanged = 536870912,
   eInputInfoChanged = 1073741824,
-  eCornerRadiusChanged = -2147483648,
+  eCornerRadiusChanged = -2147483647 - 1,
 };
 } // namespace perfetto_pbzero_enum_LayerState
 using LayerState_ChangesLsb = perfetto_pbzero_enum_LayerState::ChangesLsb;
@@ -62991,7 +65573,7 @@ class DisplayState : public ::protozero::Message {
   }
 };
 
-class LayerState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/43, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class LayerState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/44, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   LayerState_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit LayerState_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -63082,6 +65664,8 @@ class LayerState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=
   int32_t drop_input_mode() const { return at<42>().as_int32(); }
   bool has_trusted_overlay() const { return at<43>().valid(); }
   int32_t trusted_overlay() const { return at<43>().as_int32(); }
+  bool has_background_blur_scale() const { return at<44>().valid(); }
+  float background_blur_scale() const { return at<44>().as_float(); }
 };
 
 class LayerState : public ::protozero::Message {
@@ -63131,6 +65715,7 @@ class LayerState : public ::protozero::Message {
     kDestinationFrameFieldNumber = 41,
     kDropInputModeFieldNumber = 42,
     kTrustedOverlayFieldNumber = 43,
+    kBackgroundBlurScaleFieldNumber = 44,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.LayerState"; }
 
@@ -63947,6 +66532,24 @@ class LayerState : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_BackgroundBlurScale =
+    ::protozero::proto_utils::FieldMetadata<
+      44,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kFloat,
+      float,
+      LayerState>;
+
+  static constexpr FieldMetadata_BackgroundBlurScale kBackgroundBlurScale{};
+  void set_background_blur_scale(float value) {
+    static constexpr uint32_t field_id = FieldMetadata_BackgroundBlurScale::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kFloat>
+        ::Append(*this, field_id, value);
+  }
 };
 
 class LayerState_WindowInfo_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/12, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
@@ -64597,7 +67200,7 @@ class LayerState_Matrix22 : public ::protozero::Message {
   }
 };
 
-class TransactionState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class TransactionState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/10, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   TransactionState_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit TransactionState_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -64620,6 +67223,8 @@ class TransactionState_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIE
   ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> display_changes() const { return GetRepeated<::protozero::ConstBytes>(8); }
   bool has_merged_transaction_ids() const { return at<9>().valid(); }
   ::protozero::RepeatedFieldIterator<uint64_t> merged_transaction_ids() const { return GetRepeated<uint64_t>(9); }
+  bool has_apply_token() const { return at<10>().valid(); }
+  uint64_t apply_token() const { return at<10>().as_uint64(); }
 };
 
 class TransactionState : public ::protozero::Message {
@@ -64635,6 +67240,7 @@ class TransactionState : public ::protozero::Message {
     kLayerChangesFieldNumber = 7,
     kDisplayChangesFieldNumber = 8,
     kMergedTransactionIdsFieldNumber = 9,
+    kApplyTokenFieldNumber = 10,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.TransactionState"; }
 
@@ -64786,6 +67392,24 @@ class TransactionState : public ::protozero::Message {
   static constexpr FieldMetadata_MergedTransactionIds kMergedTransactionIds{};
   void add_merged_transaction_ids(uint64_t value) {
     static constexpr uint32_t field_id = FieldMetadata_MergedTransactionIds::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ApplyToken =
+    ::protozero::proto_utils::FieldMetadata<
+      10,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TransactionState>;
+
+  static constexpr FieldMetadata_ApplyToken kApplyToken{};
+  void set_apply_token(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ApplyToken::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -66621,6 +69245,533 @@ class AndroidSystemProperty_PropertyValue : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/android/app_wakelock_data.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_APP_WAKELOCK_DATA_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_APP_WAKELOCK_DATA_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+class AppWakelockInfo;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class AppWakelockBundle_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  AppWakelockBundle_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit AppWakelockBundle_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit AppWakelockBundle_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_intern_id() const { return at<1>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t> intern_id(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t>(1, parse_error_ptr); }
+  bool has_encoded_ts() const { return at<2>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t> encoded_ts(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t>(2, parse_error_ptr); }
+  bool has_info() const { return at<3>().valid(); }
+  ::protozero::ConstBytes info() const { return at<3>().as_bytes(); }
+  bool has_acquired() const { return at<4>().valid(); }
+  bool acquired() const { return at<4>().as_bool(); }
+};
+
+class AppWakelockBundle : public ::protozero::Message {
+ public:
+  using Decoder = AppWakelockBundle_Decoder;
+  enum : int32_t {
+    kInternIdFieldNumber = 1,
+    kEncodedTsFieldNumber = 2,
+    kInfoFieldNumber = 3,
+    kAcquiredFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.AppWakelockBundle"; }
+
+
+  using FieldMetadata_InternId =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      AppWakelockBundle>;
+
+  static constexpr FieldMetadata_InternId kInternId{};
+  void set_intern_id(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_InternId::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
+  }
+
+  using FieldMetadata_EncodedTs =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      AppWakelockBundle>;
+
+  static constexpr FieldMetadata_EncodedTs kEncodedTs{};
+  void set_encoded_ts(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_EncodedTs::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
+  }
+
+  using FieldMetadata_Info =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      AppWakelockInfo,
+      AppWakelockBundle>;
+
+  static constexpr FieldMetadata_Info kInfo{};
+  template <typename T = AppWakelockInfo> T* set_info() {
+    return BeginNestedMessage<T>(3);
+  }
+
+
+  using FieldMetadata_Acquired =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      AppWakelockBundle>;
+
+  static constexpr FieldMetadata_Acquired kAcquired{};
+  void set_acquired(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_Acquired::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class AppWakelockInfo_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  AppWakelockInfo_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit AppWakelockInfo_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit AppWakelockInfo_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_iid() const { return at<1>().valid(); }
+  int32_t iid() const { return at<1>().as_int32(); }
+  bool has_tag() const { return at<2>().valid(); }
+  ::protozero::ConstChars tag() const { return at<2>().as_string(); }
+  bool has_flags() const { return at<3>().valid(); }
+  int32_t flags() const { return at<3>().as_int32(); }
+  bool has_owner_pid() const { return at<4>().valid(); }
+  int32_t owner_pid() const { return at<4>().as_int32(); }
+  bool has_owner_uid() const { return at<5>().valid(); }
+  int32_t owner_uid() const { return at<5>().as_int32(); }
+  bool has_work_uid() const { return at<6>().valid(); }
+  int32_t work_uid() const { return at<6>().as_int32(); }
+};
+
+class AppWakelockInfo : public ::protozero::Message {
+ public:
+  using Decoder = AppWakelockInfo_Decoder;
+  enum : int32_t {
+    kIidFieldNumber = 1,
+    kTagFieldNumber = 2,
+    kFlagsFieldNumber = 3,
+    kOwnerPidFieldNumber = 4,
+    kOwnerUidFieldNumber = 5,
+    kWorkUidFieldNumber = 6,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.AppWakelockInfo"; }
+
+
+  using FieldMetadata_Iid =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_Iid kIid{};
+  void set_iid(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Iid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Tag =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_Tag kTag{};
+  void set_tag(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Tag::kFieldId, data, size);
+  }
+  void set_tag(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Tag::kFieldId, chars.data, chars.size);
+  }
+  void set_tag(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Tag::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Flags =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_Flags kFlags{};
+  void set_flags(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Flags::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_OwnerPid =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_OwnerPid kOwnerPid{};
+  void set_owner_pid(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OwnerPid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_OwnerUid =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_OwnerUid kOwnerUid{};
+  void set_owner_uid(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OwnerUid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WorkUid =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      AppWakelockInfo>;
+
+  static constexpr FieldMetadata_WorkUid kWorkUid{};
+  void set_work_uid(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WorkUid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/android/bluetooth_trace.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_BLUETOOTH_TRACE_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_BLUETOOTH_TRACE_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+enum BluetoothTracePacketType : int32_t;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+enum BluetoothTracePacketType : int32_t {
+  HCI_CMD = 1,
+  HCI_EVT = 2,
+  HCI_ACL_RX = 3,
+  HCI_ACL_TX = 4,
+  HCI_SCO_RX = 5,
+  HCI_SCO_TX = 6,
+  HCI_ISO_RX = 7,
+  HCI_ISO_TX = 8,
+};
+
+constexpr BluetoothTracePacketType BluetoothTracePacketType_MIN = BluetoothTracePacketType::HCI_CMD;
+constexpr BluetoothTracePacketType BluetoothTracePacketType_MAX = BluetoothTracePacketType::HCI_ISO_TX;
+
+
+PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
+const char* BluetoothTracePacketType_Name(::perfetto::protos::pbzero::BluetoothTracePacketType value) {
+  switch (value) {
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_CMD:
+    return "HCI_CMD";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_EVT:
+    return "HCI_EVT";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_ACL_RX:
+    return "HCI_ACL_RX";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_ACL_TX:
+    return "HCI_ACL_TX";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_SCO_RX:
+    return "HCI_SCO_RX";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_SCO_TX:
+    return "HCI_SCO_TX";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_ISO_RX:
+    return "HCI_ISO_RX";
+
+  case ::perfetto::protos::pbzero::BluetoothTracePacketType::HCI_ISO_TX:
+    return "HCI_ISO_TX";
+  }
+  return "PBZERO_UNKNOWN_ENUM_VALUE";
+}
+
+class BluetoothTraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  BluetoothTraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit BluetoothTraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit BluetoothTraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_packet_type() const { return at<1>().valid(); }
+  int32_t packet_type() const { return at<1>().as_int32(); }
+  bool has_count() const { return at<2>().valid(); }
+  uint32_t count() const { return at<2>().as_uint32(); }
+  bool has_length() const { return at<3>().valid(); }
+  uint32_t length() const { return at<3>().as_uint32(); }
+  bool has_duration() const { return at<4>().valid(); }
+  uint32_t duration() const { return at<4>().as_uint32(); }
+  bool has_op_code() const { return at<5>().valid(); }
+  uint32_t op_code() const { return at<5>().as_uint32(); }
+  bool has_event_code() const { return at<6>().valid(); }
+  uint32_t event_code() const { return at<6>().as_uint32(); }
+  bool has_subevent_code() const { return at<7>().valid(); }
+  uint32_t subevent_code() const { return at<7>().as_uint32(); }
+  bool has_connection_handle() const { return at<8>().valid(); }
+  uint32_t connection_handle() const { return at<8>().as_uint32(); }
+};
+
+class BluetoothTraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = BluetoothTraceEvent_Decoder;
+  enum : int32_t {
+    kPacketTypeFieldNumber = 1,
+    kCountFieldNumber = 2,
+    kLengthFieldNumber = 3,
+    kDurationFieldNumber = 4,
+    kOpCodeFieldNumber = 5,
+    kEventCodeFieldNumber = 6,
+    kSubeventCodeFieldNumber = 7,
+    kConnectionHandleFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.BluetoothTraceEvent"; }
+
+
+  using FieldMetadata_PacketType =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kEnum,
+      BluetoothTracePacketType,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_PacketType kPacketType{};
+  void set_packet_type(BluetoothTracePacketType value) {
+    static constexpr uint32_t field_id = FieldMetadata_PacketType::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kEnum>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Count =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_Count kCount{};
+  void set_count(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Count::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Duration =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_Duration kDuration{};
+  void set_duration(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Duration::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_OpCode =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_OpCode kOpCode{};
+  void set_op_code(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OpCode::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_EventCode =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_EventCode kEventCode{};
+  void set_event_code(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_EventCode::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_SubeventCode =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_SubeventCode kSubeventCode{};
+  void set_subevent_code(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_SubeventCode::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ConnectionHandle =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      BluetoothTraceEvent>;
+
+  static constexpr FieldMetadata_ConnectionHandle kConnectionHandle{};
+  void set_connection_handle(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ConnectionHandle::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/trace/android/camera_event.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -67541,6 +70692,101 @@ class AndroidCameraFrameEvent_CameraNodeProcessingDetails : public ::protozero::
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kInt64>
         ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/android/cpu_per_uid_data.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_CPU_PER_UID_DATA_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_CPU_PER_UID_DATA_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class CpuPerUidData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  CpuPerUidData_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit CpuPerUidData_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit CpuPerUidData_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_cluster_count() const { return at<1>().valid(); }
+  uint32_t cluster_count() const { return at<1>().as_uint32(); }
+  bool has_uid() const { return at<2>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t> uid(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t>(2, parse_error_ptr); }
+  bool has_total_time_ms() const { return at<3>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t> total_time_ms(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t>(3, parse_error_ptr); }
+};
+
+class CpuPerUidData : public ::protozero::Message {
+ public:
+  using Decoder = CpuPerUidData_Decoder;
+  enum : int32_t {
+    kClusterCountFieldNumber = 1,
+    kUidFieldNumber = 2,
+    kTotalTimeMsFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.CpuPerUidData"; }
+
+
+  using FieldMetadata_ClusterCount =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      CpuPerUidData>;
+
+  static constexpr FieldMetadata_ClusterCount kClusterCount{};
+  void set_cluster_count(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ClusterCount::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Uid =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      CpuPerUidData>;
+
+  static constexpr FieldMetadata_Uid kUid{};
+  void set_uid(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_Uid::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
+  }
+
+  using FieldMetadata_TotalTimeMs =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      CpuPerUidData>;
+
+  static constexpr FieldMetadata_TotalTimeMs kTotalTimeMs{};
+  void set_total_time_ms(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_TotalTimeMs::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
   }
 };
 
@@ -69106,6 +72352,252 @@ class InitialDisplayState : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kDouble>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/android/kernel_wakelock_data.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_KERNEL_WAKELOCK_DATA_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_ANDROID_KERNEL_WAKELOCK_DATA_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+class KernelWakelockData_Wakelock;
+namespace perfetto_pbzero_enum_KernelWakelockData_Wakelock {
+enum Type : int32_t;
+}  // namespace perfetto_pbzero_enum_KernelWakelockData_Wakelock
+using KernelWakelockData_Wakelock_Type = perfetto_pbzero_enum_KernelWakelockData_Wakelock::Type;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+namespace perfetto_pbzero_enum_KernelWakelockData_Wakelock {
+enum Type : int32_t {
+  WAKELOCK_TYPE_UNKNOWN = 0,
+  WAKELOCK_TYPE_KERNEL = 1,
+  WAKELOCK_TYPE_NATIVE = 2,
+};
+} // namespace perfetto_pbzero_enum_KernelWakelockData_Wakelock
+using KernelWakelockData_Wakelock_Type = perfetto_pbzero_enum_KernelWakelockData_Wakelock::Type;
+
+
+constexpr KernelWakelockData_Wakelock_Type KernelWakelockData_Wakelock_Type_MIN = KernelWakelockData_Wakelock_Type::WAKELOCK_TYPE_UNKNOWN;
+constexpr KernelWakelockData_Wakelock_Type KernelWakelockData_Wakelock_Type_MAX = KernelWakelockData_Wakelock_Type::WAKELOCK_TYPE_NATIVE;
+
+
+PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
+const char* KernelWakelockData_Wakelock_Type_Name(::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type value) {
+  switch (value) {
+  case ::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type::WAKELOCK_TYPE_UNKNOWN:
+    return "WAKELOCK_TYPE_UNKNOWN";
+
+  case ::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type::WAKELOCK_TYPE_KERNEL:
+    return "WAKELOCK_TYPE_KERNEL";
+
+  case ::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type::WAKELOCK_TYPE_NATIVE:
+    return "WAKELOCK_TYPE_NATIVE";
+  }
+  return "PBZERO_UNKNOWN_ENUM_VALUE";
+}
+
+class KernelWakelockData_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+ public:
+  KernelWakelockData_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit KernelWakelockData_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit KernelWakelockData_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_wakelock() const { return at<1>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> wakelock() const { return GetRepeated<::protozero::ConstBytes>(1); }
+  bool has_wakelock_id() const { return at<2>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t> wakelock_id(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint32_t>(2, parse_error_ptr); }
+  bool has_time_held_millis() const { return at<3>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t> time_held_millis(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t>(3, parse_error_ptr); }
+  bool has_error_flags() const { return at<4>().valid(); }
+  uint64_t error_flags() const { return at<4>().as_uint64(); }
+};
+
+class KernelWakelockData : public ::protozero::Message {
+ public:
+  using Decoder = KernelWakelockData_Decoder;
+  enum : int32_t {
+    kWakelockFieldNumber = 1,
+    kWakelockIdFieldNumber = 2,
+    kTimeHeldMillisFieldNumber = 3,
+    kErrorFlagsFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.KernelWakelockData"; }
+
+  using Wakelock = ::perfetto::protos::pbzero::KernelWakelockData_Wakelock;
+
+  using FieldMetadata_Wakelock =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      KernelWakelockData_Wakelock,
+      KernelWakelockData>;
+
+  static constexpr FieldMetadata_Wakelock kWakelock{};
+  template <typename T = KernelWakelockData_Wakelock> T* add_wakelock() {
+    return BeginNestedMessage<T>(1);
+  }
+
+
+  using FieldMetadata_WakelockId =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      KernelWakelockData>;
+
+  static constexpr FieldMetadata_WakelockId kWakelockId{};
+  void set_wakelock_id(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_WakelockId::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
+  }
+
+  using FieldMetadata_TimeHeldMillis =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      KernelWakelockData>;
+
+  static constexpr FieldMetadata_TimeHeldMillis kTimeHeldMillis{};
+  void set_time_held_millis(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_TimeHeldMillis::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
+  }
+
+  using FieldMetadata_ErrorFlags =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      KernelWakelockData>;
+
+  static constexpr FieldMetadata_ErrorFlags kErrorFlags{};
+  void set_error_flags(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ErrorFlags::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class KernelWakelockData_Wakelock_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  KernelWakelockData_Wakelock_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit KernelWakelockData_Wakelock_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit KernelWakelockData_Wakelock_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_wakelock_id() const { return at<1>().valid(); }
+  uint32_t wakelock_id() const { return at<1>().as_uint32(); }
+  bool has_wakelock_name() const { return at<2>().valid(); }
+  ::protozero::ConstChars wakelock_name() const { return at<2>().as_string(); }
+  bool has_wakelock_type() const { return at<3>().valid(); }
+  int32_t wakelock_type() const { return at<3>().as_int32(); }
+};
+
+class KernelWakelockData_Wakelock : public ::protozero::Message {
+ public:
+  using Decoder = KernelWakelockData_Wakelock_Decoder;
+  enum : int32_t {
+    kWakelockIdFieldNumber = 1,
+    kWakelockNameFieldNumber = 2,
+    kWakelockTypeFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.KernelWakelockData.Wakelock"; }
+
+
+  using Type = ::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type;
+  static inline const char* Type_Name(Type value) {
+    return ::perfetto::protos::pbzero::KernelWakelockData_Wakelock_Type_Name(value);
+  }
+  static inline const Type WAKELOCK_TYPE_UNKNOWN = Type::WAKELOCK_TYPE_UNKNOWN;
+  static inline const Type WAKELOCK_TYPE_KERNEL = Type::WAKELOCK_TYPE_KERNEL;
+  static inline const Type WAKELOCK_TYPE_NATIVE = Type::WAKELOCK_TYPE_NATIVE;
+
+  using FieldMetadata_WakelockId =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      KernelWakelockData_Wakelock>;
+
+  static constexpr FieldMetadata_WakelockId kWakelockId{};
+  void set_wakelock_id(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WakelockId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WakelockName =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      KernelWakelockData_Wakelock>;
+
+  static constexpr FieldMetadata_WakelockName kWakelockName{};
+  void set_wakelock_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_WakelockName::kFieldId, data, size);
+  }
+  void set_wakelock_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_WakelockName::kFieldId, chars.data, chars.size);
+  }
+  void set_wakelock_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_WakelockName::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WakelockType =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kEnum,
+      KernelWakelockData_Wakelock_Type,
+      KernelWakelockData_Wakelock>;
+
+  static constexpr FieldMetadata_WakelockType kWakelockType{};
+  void set_wakelock_type(KernelWakelockData_Wakelock_Type value) {
+    static constexpr uint32_t field_id = FieldMetadata_WakelockType::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
   }
 };
@@ -73827,7 +77319,7 @@ class InternedV8Isolate_CodeRange : public ::protozero::Message {
   }
 };
 
-class InternedV8JsFunction_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class InternedV8JsFunction_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   InternedV8JsFunction_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit InternedV8JsFunction_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -73844,6 +77336,10 @@ class InternedV8JsFunction_Decoder : public ::protozero::TypedProtoDecoder</*MAX
   int32_t kind() const { return at<5>().as_int32(); }
   bool has_byte_offset() const { return at<6>().valid(); }
   uint32_t byte_offset() const { return at<6>().as_uint32(); }
+  bool has_line() const { return at<7>().valid(); }
+  uint32_t line() const { return at<7>().as_uint32(); }
+  bool has_column() const { return at<8>().valid(); }
+  uint32_t column() const { return at<8>().as_uint32(); }
 };
 
 class InternedV8JsFunction : public ::protozero::Message {
@@ -73856,6 +77352,8 @@ class InternedV8JsFunction : public ::protozero::Message {
     kIsToplevelFieldNumber = 4,
     kKindFieldNumber = 5,
     kByteOffsetFieldNumber = 6,
+    kLineFieldNumber = 7,
+    kColumnFieldNumber = 8,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.InternedV8JsFunction"; }
 
@@ -74000,9 +77498,45 @@ class InternedV8JsFunction : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kUint32>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_Line =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      InternedV8JsFunction>;
+
+  static constexpr FieldMetadata_Line kLine{};
+  void set_line(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Line::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Column =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      InternedV8JsFunction>;
+
+  static constexpr FieldMetadata_Column kColumn{};
+  void set_column(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Column::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
 };
 
-class InternedV8WasmScript_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class InternedV8WasmScript_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   InternedV8WasmScript_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit InternedV8WasmScript_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -74013,6 +77547,8 @@ class InternedV8WasmScript_Decoder : public ::protozero::TypedProtoDecoder</*MAX
   int32_t script_id() const { return at<2>().as_int32(); }
   bool has_url() const { return at<3>().valid(); }
   ::protozero::ConstChars url() const { return at<3>().as_string(); }
+  bool has_wire_bytes() const { return at<4>().valid(); }
+  ::protozero::ConstBytes wire_bytes() const { return at<4>().as_bytes(); }
 };
 
 class InternedV8WasmScript : public ::protozero::Message {
@@ -74022,6 +77558,7 @@ class InternedV8WasmScript : public ::protozero::Message {
     kIidFieldNumber = 1,
     kScriptIdFieldNumber = 2,
     kUrlFieldNumber = 3,
+    kWireBytesFieldNumber = 4,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.InternedV8WasmScript"; }
 
@@ -74083,6 +77620,30 @@ class InternedV8WasmScript : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WireBytes =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBytes,
+      std::string,
+      InternedV8WasmScript>;
+
+  static constexpr FieldMetadata_WireBytes kWireBytes{};
+  void set_wire_bytes(const uint8_t* data, size_t size) {
+    AppendBytes(FieldMetadata_WireBytes::kFieldId, data, size);
+  }
+  void set_wire_bytes(::protozero::ConstBytes bytes) {
+    AppendBytes(FieldMetadata_WireBytes::kFieldId, bytes.data, bytes.size);
+  }
+  void set_wire_bytes(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_WireBytes::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBytes>
         ::Append(*this, field_id, value);
   }
 };
@@ -74782,7 +78343,7 @@ const char* CSwitchEtwEvent_OldThreadState_Name(::perfetto::protos::pbzero::CSwi
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class ReadyThreadEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class ReadyThreadEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   ReadyThreadEtwEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ReadyThreadEtwEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -74791,10 +78352,14 @@ class ReadyThreadEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_
   uint32_t t_thread_id() const { return at<1>().as_uint32(); }
   bool has_adjust_reason() const { return at<2>().valid(); }
   int32_t adjust_reason() const { return at<2>().as_int32(); }
+  bool has_adjust_reason_int() const { return at<5>().valid(); }
+  int32_t adjust_reason_int() const { return at<5>().as_int32(); }
   bool has_adjust_increment() const { return at<3>().valid(); }
   int32_t adjust_increment() const { return at<3>().as_sint32(); }
   bool has_flag() const { return at<4>().valid(); }
   int32_t flag() const { return at<4>().as_int32(); }
+  bool has_flag_int() const { return at<6>().valid(); }
+  int32_t flag_int() const { return at<6>().as_int32(); }
 };
 
 class ReadyThreadEtwEvent : public ::protozero::Message {
@@ -74803,8 +78368,10 @@ class ReadyThreadEtwEvent : public ::protozero::Message {
   enum : int32_t {
     kTThreadIdFieldNumber = 1,
     kAdjustReasonFieldNumber = 2,
+    kAdjustReasonIntFieldNumber = 5,
     kAdjustIncrementFieldNumber = 3,
     kFlagFieldNumber = 4,
+    kFlagIntFieldNumber = 6,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ReadyThreadEtwEvent"; }
 
@@ -74862,6 +78429,24 @@ class ReadyThreadEtwEvent : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
+  using FieldMetadata_AdjustReasonInt =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      ReadyThreadEtwEvent>;
+
+  static constexpr FieldMetadata_AdjustReasonInt kAdjustReasonInt{};
+  void set_adjust_reason_int(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_AdjustReasonInt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
   using FieldMetadata_AdjustIncrement =
     ::protozero::proto_utils::FieldMetadata<
       3,
@@ -74897,9 +78482,27 @@ class ReadyThreadEtwEvent : public ::protozero::Message {
       ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
   }
+
+  using FieldMetadata_FlagInt =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      ReadyThreadEtwEvent>;
+
+  static constexpr FieldMetadata_FlagInt kFlagInt{};
+  void set_flag_int(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FlagInt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
 };
 
-class CSwitchEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/10, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class CSwitchEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/13, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   CSwitchEtwEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit CSwitchEtwEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -74916,10 +78519,16 @@ class CSwitchEtwEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIEL
   uint32_t previous_c_state() const { return at<5>().as_uint32(); }
   bool has_old_thread_wait_reason() const { return at<6>().valid(); }
   int32_t old_thread_wait_reason() const { return at<6>().as_int32(); }
+  bool has_old_thread_wait_reason_int() const { return at<11>().valid(); }
+  int32_t old_thread_wait_reason_int() const { return at<11>().as_int32(); }
   bool has_old_thread_wait_mode() const { return at<7>().valid(); }
   int32_t old_thread_wait_mode() const { return at<7>().as_int32(); }
+  bool has_old_thread_wait_mode_int() const { return at<12>().valid(); }
+  int32_t old_thread_wait_mode_int() const { return at<12>().as_int32(); }
   bool has_old_thread_state() const { return at<8>().valid(); }
   int32_t old_thread_state() const { return at<8>().as_int32(); }
+  bool has_old_thread_state_int() const { return at<13>().valid(); }
+  int32_t old_thread_state_int() const { return at<13>().as_sint32(); }
   bool has_old_thread_wait_ideal_processor() const { return at<9>().valid(); }
   int32_t old_thread_wait_ideal_processor() const { return at<9>().as_sint32(); }
   bool has_new_thread_wait_time() const { return at<10>().valid(); }
@@ -74936,8 +78545,11 @@ class CSwitchEtwEvent : public ::protozero::Message {
     kOldThreadPriorityFieldNumber = 4,
     kPreviousCStateFieldNumber = 5,
     kOldThreadWaitReasonFieldNumber = 6,
+    kOldThreadWaitReasonIntFieldNumber = 11,
     kOldThreadWaitModeFieldNumber = 7,
+    kOldThreadWaitModeIntFieldNumber = 12,
     kOldThreadStateFieldNumber = 8,
+    kOldThreadStateIntFieldNumber = 13,
     kOldThreadWaitIdealProcessorFieldNumber = 9,
     kNewThreadWaitTimeFieldNumber = 10,
   };
@@ -75115,6 +78727,24 @@ class CSwitchEtwEvent : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
+  using FieldMetadata_OldThreadWaitReasonInt =
+    ::protozero::proto_utils::FieldMetadata<
+      11,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      CSwitchEtwEvent>;
+
+  static constexpr FieldMetadata_OldThreadWaitReasonInt kOldThreadWaitReasonInt{};
+  void set_old_thread_wait_reason_int(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OldThreadWaitReasonInt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
   using FieldMetadata_OldThreadWaitMode =
     ::protozero::proto_utils::FieldMetadata<
       7,
@@ -75133,6 +78763,24 @@ class CSwitchEtwEvent : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
+  using FieldMetadata_OldThreadWaitModeInt =
+    ::protozero::proto_utils::FieldMetadata<
+      12,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      CSwitchEtwEvent>;
+
+  static constexpr FieldMetadata_OldThreadWaitModeInt kOldThreadWaitModeInt{};
+  void set_old_thread_wait_mode_int(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OldThreadWaitModeInt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
   using FieldMetadata_OldThreadState =
     ::protozero::proto_utils::FieldMetadata<
       8,
@@ -75148,6 +78796,24 @@ class CSwitchEtwEvent : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kEnum>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_OldThreadStateInt =
+    ::protozero::proto_utils::FieldMetadata<
+      13,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kSint32,
+      int32_t,
+      CSwitchEtwEvent>;
+
+  static constexpr FieldMetadata_OldThreadStateInt kOldThreadStateInt{};
+  void set_old_thread_state_int(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OldThreadStateInt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kSint32>
         ::Append(*this, field_id, value);
   }
 
@@ -75220,7 +78886,7 @@ namespace perfetto {
 namespace protos {
 namespace pbzero {
 
-class EtwTraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class EtwTraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   EtwTraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit EtwTraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -75229,6 +78895,8 @@ class EtwTraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_
   uint64_t timestamp() const { return at<1>().as_uint64(); }
   bool has_cpu() const { return at<4>().valid(); }
   uint32_t cpu() const { return at<4>().as_uint32(); }
+  bool has_thread_id() const { return at<5>().valid(); }
+  uint32_t thread_id() const { return at<5>().as_uint32(); }
   bool has_c_switch() const { return at<2>().valid(); }
   ::protozero::ConstBytes c_switch() const { return at<2>().as_bytes(); }
   bool has_ready_thread() const { return at<3>().valid(); }
@@ -75241,6 +78909,7 @@ class EtwTraceEvent : public ::protozero::Message {
   enum : int32_t {
     kTimestampFieldNumber = 1,
     kCpuFieldNumber = 4,
+    kThreadIdFieldNumber = 5,
     kCSwitchFieldNumber = 2,
     kReadyThreadFieldNumber = 3,
   };
@@ -75276,6 +78945,24 @@ class EtwTraceEvent : public ::protozero::Message {
   static constexpr FieldMetadata_Cpu kCpu{};
   void set_cpu(uint32_t value) {
     static constexpr uint32_t field_id = FieldMetadata_Cpu::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ThreadId =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      EtwTraceEvent>;
+
+  static constexpr FieldMetadata_ThreadId kThreadId{};
+  void set_thread_id(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ThreadId::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -75741,6 +79428,8 @@ class DmaFenceWaitEndFtraceEvent;
 class DmaFenceWaitStartFtraceEvent;
 class DmaHeapStatFtraceEvent;
 class DoSysOpenFtraceEvent;
+class DpuDispDpuUnderrunFtraceEvent;
+class DpuDispVblankIrqEnableFtraceEvent;
 class DpuDsiCmdFifoStatusFtraceEvent;
 class DpuDsiRxFtraceEvent;
 class DpuDsiTxFtraceEvent;
@@ -75753,6 +79442,21 @@ class DrmVblankEventFtraceEvent;
 class DsiCmdFifoStatusFtraceEvent;
 class DsiRxFtraceEvent;
 class DsiTxFtraceEvent;
+class Dwc3AllocRequestFtraceEvent;
+class Dwc3CompleteTrbFtraceEvent;
+class Dwc3CtrlReqFtraceEvent;
+class Dwc3EpDequeueFtraceEvent;
+class Dwc3EpQueueFtraceEvent;
+class Dwc3EventFtraceEvent;
+class Dwc3FreeRequestFtraceEvent;
+class Dwc3GadgetEpCmdFtraceEvent;
+class Dwc3GadgetEpDisableFtraceEvent;
+class Dwc3GadgetEpEnableFtraceEvent;
+class Dwc3GadgetGenericCmdFtraceEvent;
+class Dwc3GadgetGivebackFtraceEvent;
+class Dwc3PrepareTrbFtraceEvent;
+class Dwc3ReadlFtraceEvent;
+class Dwc3WritelFtraceEvent;
 class Ext4AllocDaBlocksFtraceEvent;
 class Ext4AllocateBlocksFtraceEvent;
 class Ext4AllocateInodeFtraceEvent;
@@ -75905,6 +79609,10 @@ class GpuWorkPeriodFtraceEvent;
 class HostHcallFtraceEvent;
 class HostMemAbortFtraceEvent;
 class HostSmcFtraceEvent;
+class HrtimerCancelFtraceEvent;
+class HrtimerExpireEntryFtraceEvent;
+class HrtimerExpireExitFtraceEvent;
+class HrtimerStartFtraceEvent;
 class HypEnterFtraceEvent;
 class HypExitFtraceEvent;
 class I2cReadFtraceEvent;
@@ -75986,8 +79694,11 @@ class KvmUnmapHvaRangeFtraceEvent;
 class KvmUserspaceExitFtraceEvent;
 class KvmVcpuWakeupFtraceEvent;
 class KvmWfxArm64FtraceEvent;
+class LocalTimerEntryFtraceEvent;
+class LocalTimerExitFtraceEvent;
 class LowmemoryKillFtraceEvent;
 class LwisTracingMarkWriteFtraceEvent;
+class MaliGpuPowerStateFtraceEvent;
 class MaliMaliCSFINTERRUPTENDFtraceEvent;
 class MaliMaliCSFINTERRUPTSTARTFtraceEvent;
 class MaliMaliKCPUCQSSETFtraceEvent;
@@ -76142,6 +79853,10 @@ class TcpRetransmitSkbFtraceEvent;
 class ThermalExynosAcpmBulkFtraceEvent;
 class ThermalExynosAcpmHighOverheadFtraceEvent;
 class ThermalTemperatureFtraceEvent;
+class TimerCancelFtraceEvent;
+class TimerExpireEntryFtraceEvent;
+class TimerExpireExitFtraceEvent;
+class TimerStartFtraceEvent;
 class TracingMarkWriteFtraceEvent;
 class TrapRegFtraceEvent;
 class TrustyEnqueueNopFtraceEvent;
@@ -76192,7 +79907,7 @@ namespace perfetto {
 namespace protos {
 namespace pbzero {
 
-class FtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/547, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class FtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/575, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   FtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit FtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -77255,6 +80970,62 @@ class FtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID
   ::protozero::ConstBytes block_io_start() const { return at<546>().as_bytes(); }
   bool has_block_io_done() const { return at<547>().valid(); }
   ::protozero::ConstBytes block_io_done() const { return at<547>().as_bytes(); }
+  bool has_mali_gpu_power_state() const { return at<548>().valid(); }
+  ::protozero::ConstBytes mali_gpu_power_state() const { return at<548>().as_bytes(); }
+  bool has_dpu_disp_dpu_underrun() const { return at<549>().valid(); }
+  ::protozero::ConstBytes dpu_disp_dpu_underrun() const { return at<549>().as_bytes(); }
+  bool has_dpu_disp_vblank_irq_enable() const { return at<550>().valid(); }
+  ::protozero::ConstBytes dpu_disp_vblank_irq_enable() const { return at<550>().as_bytes(); }
+  bool has_hrtimer_start() const { return at<551>().valid(); }
+  ::protozero::ConstBytes hrtimer_start() const { return at<551>().as_bytes(); }
+  bool has_hrtimer_cancel() const { return at<552>().valid(); }
+  ::protozero::ConstBytes hrtimer_cancel() const { return at<552>().as_bytes(); }
+  bool has_hrtimer_expire_entry() const { return at<553>().valid(); }
+  ::protozero::ConstBytes hrtimer_expire_entry() const { return at<553>().as_bytes(); }
+  bool has_hrtimer_expire_exit() const { return at<554>().valid(); }
+  ::protozero::ConstBytes hrtimer_expire_exit() const { return at<554>().as_bytes(); }
+  bool has_timer_start() const { return at<555>().valid(); }
+  ::protozero::ConstBytes timer_start() const { return at<555>().as_bytes(); }
+  bool has_timer_cancel() const { return at<556>().valid(); }
+  ::protozero::ConstBytes timer_cancel() const { return at<556>().as_bytes(); }
+  bool has_timer_expire_entry() const { return at<557>().valid(); }
+  ::protozero::ConstBytes timer_expire_entry() const { return at<557>().as_bytes(); }
+  bool has_timer_expire_exit() const { return at<558>().valid(); }
+  ::protozero::ConstBytes timer_expire_exit() const { return at<558>().as_bytes(); }
+  bool has_local_timer_entry() const { return at<559>().valid(); }
+  ::protozero::ConstBytes local_timer_entry() const { return at<559>().as_bytes(); }
+  bool has_local_timer_exit() const { return at<560>().valid(); }
+  ::protozero::ConstBytes local_timer_exit() const { return at<560>().as_bytes(); }
+  bool has_dwc3_alloc_request() const { return at<561>().valid(); }
+  ::protozero::ConstBytes dwc3_alloc_request() const { return at<561>().as_bytes(); }
+  bool has_dwc3_complete_trb() const { return at<562>().valid(); }
+  ::protozero::ConstBytes dwc3_complete_trb() const { return at<562>().as_bytes(); }
+  bool has_dwc3_ctrl_req() const { return at<563>().valid(); }
+  ::protozero::ConstBytes dwc3_ctrl_req() const { return at<563>().as_bytes(); }
+  bool has_dwc3_ep_dequeue() const { return at<564>().valid(); }
+  ::protozero::ConstBytes dwc3_ep_dequeue() const { return at<564>().as_bytes(); }
+  bool has_dwc3_ep_queue() const { return at<565>().valid(); }
+  ::protozero::ConstBytes dwc3_ep_queue() const { return at<565>().as_bytes(); }
+  bool has_dwc3_event() const { return at<566>().valid(); }
+  ::protozero::ConstBytes dwc3_event() const { return at<566>().as_bytes(); }
+  bool has_dwc3_free_request() const { return at<567>().valid(); }
+  ::protozero::ConstBytes dwc3_free_request() const { return at<567>().as_bytes(); }
+  bool has_dwc3_gadget_ep_cmd() const { return at<568>().valid(); }
+  ::protozero::ConstBytes dwc3_gadget_ep_cmd() const { return at<568>().as_bytes(); }
+  bool has_dwc3_gadget_ep_disable() const { return at<569>().valid(); }
+  ::protozero::ConstBytes dwc3_gadget_ep_disable() const { return at<569>().as_bytes(); }
+  bool has_dwc3_gadget_ep_enable() const { return at<570>().valid(); }
+  ::protozero::ConstBytes dwc3_gadget_ep_enable() const { return at<570>().as_bytes(); }
+  bool has_dwc3_gadget_generic_cmd() const { return at<571>().valid(); }
+  ::protozero::ConstBytes dwc3_gadget_generic_cmd() const { return at<571>().as_bytes(); }
+  bool has_dwc3_gadget_giveback() const { return at<572>().valid(); }
+  ::protozero::ConstBytes dwc3_gadget_giveback() const { return at<572>().as_bytes(); }
+  bool has_dwc3_prepare_trb() const { return at<573>().valid(); }
+  ::protozero::ConstBytes dwc3_prepare_trb() const { return at<573>().as_bytes(); }
+  bool has_dwc3_readl() const { return at<574>().valid(); }
+  ::protozero::ConstBytes dwc3_readl() const { return at<574>().as_bytes(); }
+  bool has_dwc3_writel() const { return at<575>().valid(); }
+  ::protozero::ConstBytes dwc3_writel() const { return at<575>().as_bytes(); }
 };
 
 class FtraceEvent : public ::protozero::Message {
@@ -77790,6 +81561,34 @@ class FtraceEvent : public ::protozero::Message {
     kOpenExecFieldNumber = 545,
     kBlockIoStartFieldNumber = 546,
     kBlockIoDoneFieldNumber = 547,
+    kMaliGpuPowerStateFieldNumber = 548,
+    kDpuDispDpuUnderrunFieldNumber = 549,
+    kDpuDispVblankIrqEnableFieldNumber = 550,
+    kHrtimerStartFieldNumber = 551,
+    kHrtimerCancelFieldNumber = 552,
+    kHrtimerExpireEntryFieldNumber = 553,
+    kHrtimerExpireExitFieldNumber = 554,
+    kTimerStartFieldNumber = 555,
+    kTimerCancelFieldNumber = 556,
+    kTimerExpireEntryFieldNumber = 557,
+    kTimerExpireExitFieldNumber = 558,
+    kLocalTimerEntryFieldNumber = 559,
+    kLocalTimerExitFieldNumber = 560,
+    kDwc3AllocRequestFieldNumber = 561,
+    kDwc3CompleteTrbFieldNumber = 562,
+    kDwc3CtrlReqFieldNumber = 563,
+    kDwc3EpDequeueFieldNumber = 564,
+    kDwc3EpQueueFieldNumber = 565,
+    kDwc3EventFieldNumber = 566,
+    kDwc3FreeRequestFieldNumber = 567,
+    kDwc3GadgetEpCmdFieldNumber = 568,
+    kDwc3GadgetEpDisableFieldNumber = 569,
+    kDwc3GadgetEpEnableFieldNumber = 570,
+    kDwc3GadgetGenericCmdFieldNumber = 571,
+    kDwc3GadgetGivebackFieldNumber = 572,
+    kDwc3PrepareTrbFieldNumber = 573,
+    kDwc3ReadlFieldNumber = 574,
+    kDwc3WritelFieldNumber = 575,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.FtraceEvent"; }
 
@@ -85211,6 +89010,398 @@ class FtraceEvent : public ::protozero::Message {
     return BeginNestedMessage<T>(547);
   }
 
+
+  using FieldMetadata_MaliGpuPowerState =
+    ::protozero::proto_utils::FieldMetadata<
+      548,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      MaliGpuPowerStateFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_MaliGpuPowerState kMaliGpuPowerState{};
+  template <typename T = MaliGpuPowerStateFtraceEvent> T* set_mali_gpu_power_state() {
+    return BeginNestedMessage<T>(548);
+  }
+
+
+  using FieldMetadata_DpuDispDpuUnderrun =
+    ::protozero::proto_utils::FieldMetadata<
+      549,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      DpuDispDpuUnderrunFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_DpuDispDpuUnderrun kDpuDispDpuUnderrun{};
+  template <typename T = DpuDispDpuUnderrunFtraceEvent> T* set_dpu_disp_dpu_underrun() {
+    return BeginNestedMessage<T>(549);
+  }
+
+
+  using FieldMetadata_DpuDispVblankIrqEnable =
+    ::protozero::proto_utils::FieldMetadata<
+      550,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      DpuDispVblankIrqEnableFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_DpuDispVblankIrqEnable kDpuDispVblankIrqEnable{};
+  template <typename T = DpuDispVblankIrqEnableFtraceEvent> T* set_dpu_disp_vblank_irq_enable() {
+    return BeginNestedMessage<T>(550);
+  }
+
+
+  using FieldMetadata_HrtimerStart =
+    ::protozero::proto_utils::FieldMetadata<
+      551,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      HrtimerStartFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_HrtimerStart kHrtimerStart{};
+  template <typename T = HrtimerStartFtraceEvent> T* set_hrtimer_start() {
+    return BeginNestedMessage<T>(551);
+  }
+
+
+  using FieldMetadata_HrtimerCancel =
+    ::protozero::proto_utils::FieldMetadata<
+      552,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      HrtimerCancelFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_HrtimerCancel kHrtimerCancel{};
+  template <typename T = HrtimerCancelFtraceEvent> T* set_hrtimer_cancel() {
+    return BeginNestedMessage<T>(552);
+  }
+
+
+  using FieldMetadata_HrtimerExpireEntry =
+    ::protozero::proto_utils::FieldMetadata<
+      553,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      HrtimerExpireEntryFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_HrtimerExpireEntry kHrtimerExpireEntry{};
+  template <typename T = HrtimerExpireEntryFtraceEvent> T* set_hrtimer_expire_entry() {
+    return BeginNestedMessage<T>(553);
+  }
+
+
+  using FieldMetadata_HrtimerExpireExit =
+    ::protozero::proto_utils::FieldMetadata<
+      554,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      HrtimerExpireExitFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_HrtimerExpireExit kHrtimerExpireExit{};
+  template <typename T = HrtimerExpireExitFtraceEvent> T* set_hrtimer_expire_exit() {
+    return BeginNestedMessage<T>(554);
+  }
+
+
+  using FieldMetadata_TimerStart =
+    ::protozero::proto_utils::FieldMetadata<
+      555,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      TimerStartFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_TimerStart kTimerStart{};
+  template <typename T = TimerStartFtraceEvent> T* set_timer_start() {
+    return BeginNestedMessage<T>(555);
+  }
+
+
+  using FieldMetadata_TimerCancel =
+    ::protozero::proto_utils::FieldMetadata<
+      556,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      TimerCancelFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_TimerCancel kTimerCancel{};
+  template <typename T = TimerCancelFtraceEvent> T* set_timer_cancel() {
+    return BeginNestedMessage<T>(556);
+  }
+
+
+  using FieldMetadata_TimerExpireEntry =
+    ::protozero::proto_utils::FieldMetadata<
+      557,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      TimerExpireEntryFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_TimerExpireEntry kTimerExpireEntry{};
+  template <typename T = TimerExpireEntryFtraceEvent> T* set_timer_expire_entry() {
+    return BeginNestedMessage<T>(557);
+  }
+
+
+  using FieldMetadata_TimerExpireExit =
+    ::protozero::proto_utils::FieldMetadata<
+      558,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      TimerExpireExitFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_TimerExpireExit kTimerExpireExit{};
+  template <typename T = TimerExpireExitFtraceEvent> T* set_timer_expire_exit() {
+    return BeginNestedMessage<T>(558);
+  }
+
+
+  using FieldMetadata_LocalTimerEntry =
+    ::protozero::proto_utils::FieldMetadata<
+      559,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      LocalTimerEntryFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_LocalTimerEntry kLocalTimerEntry{};
+  template <typename T = LocalTimerEntryFtraceEvent> T* set_local_timer_entry() {
+    return BeginNestedMessage<T>(559);
+  }
+
+
+  using FieldMetadata_LocalTimerExit =
+    ::protozero::proto_utils::FieldMetadata<
+      560,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      LocalTimerExitFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_LocalTimerExit kLocalTimerExit{};
+  template <typename T = LocalTimerExitFtraceEvent> T* set_local_timer_exit() {
+    return BeginNestedMessage<T>(560);
+  }
+
+
+  using FieldMetadata_Dwc3AllocRequest =
+    ::protozero::proto_utils::FieldMetadata<
+      561,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3AllocRequestFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3AllocRequest kDwc3AllocRequest{};
+  template <typename T = Dwc3AllocRequestFtraceEvent> T* set_dwc3_alloc_request() {
+    return BeginNestedMessage<T>(561);
+  }
+
+
+  using FieldMetadata_Dwc3CompleteTrb =
+    ::protozero::proto_utils::FieldMetadata<
+      562,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3CompleteTrbFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3CompleteTrb kDwc3CompleteTrb{};
+  template <typename T = Dwc3CompleteTrbFtraceEvent> T* set_dwc3_complete_trb() {
+    return BeginNestedMessage<T>(562);
+  }
+
+
+  using FieldMetadata_Dwc3CtrlReq =
+    ::protozero::proto_utils::FieldMetadata<
+      563,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3CtrlReqFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3CtrlReq kDwc3CtrlReq{};
+  template <typename T = Dwc3CtrlReqFtraceEvent> T* set_dwc3_ctrl_req() {
+    return BeginNestedMessage<T>(563);
+  }
+
+
+  using FieldMetadata_Dwc3EpDequeue =
+    ::protozero::proto_utils::FieldMetadata<
+      564,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3EpDequeueFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3EpDequeue kDwc3EpDequeue{};
+  template <typename T = Dwc3EpDequeueFtraceEvent> T* set_dwc3_ep_dequeue() {
+    return BeginNestedMessage<T>(564);
+  }
+
+
+  using FieldMetadata_Dwc3EpQueue =
+    ::protozero::proto_utils::FieldMetadata<
+      565,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3EpQueueFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3EpQueue kDwc3EpQueue{};
+  template <typename T = Dwc3EpQueueFtraceEvent> T* set_dwc3_ep_queue() {
+    return BeginNestedMessage<T>(565);
+  }
+
+
+  using FieldMetadata_Dwc3Event =
+    ::protozero::proto_utils::FieldMetadata<
+      566,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3EventFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3Event kDwc3Event{};
+  template <typename T = Dwc3EventFtraceEvent> T* set_dwc3_event() {
+    return BeginNestedMessage<T>(566);
+  }
+
+
+  using FieldMetadata_Dwc3FreeRequest =
+    ::protozero::proto_utils::FieldMetadata<
+      567,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3FreeRequestFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3FreeRequest kDwc3FreeRequest{};
+  template <typename T = Dwc3FreeRequestFtraceEvent> T* set_dwc3_free_request() {
+    return BeginNestedMessage<T>(567);
+  }
+
+
+  using FieldMetadata_Dwc3GadgetEpCmd =
+    ::protozero::proto_utils::FieldMetadata<
+      568,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3GadgetEpCmdFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3GadgetEpCmd kDwc3GadgetEpCmd{};
+  template <typename T = Dwc3GadgetEpCmdFtraceEvent> T* set_dwc3_gadget_ep_cmd() {
+    return BeginNestedMessage<T>(568);
+  }
+
+
+  using FieldMetadata_Dwc3GadgetEpDisable =
+    ::protozero::proto_utils::FieldMetadata<
+      569,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3GadgetEpDisableFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3GadgetEpDisable kDwc3GadgetEpDisable{};
+  template <typename T = Dwc3GadgetEpDisableFtraceEvent> T* set_dwc3_gadget_ep_disable() {
+    return BeginNestedMessage<T>(569);
+  }
+
+
+  using FieldMetadata_Dwc3GadgetEpEnable =
+    ::protozero::proto_utils::FieldMetadata<
+      570,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3GadgetEpEnableFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3GadgetEpEnable kDwc3GadgetEpEnable{};
+  template <typename T = Dwc3GadgetEpEnableFtraceEvent> T* set_dwc3_gadget_ep_enable() {
+    return BeginNestedMessage<T>(570);
+  }
+
+
+  using FieldMetadata_Dwc3GadgetGenericCmd =
+    ::protozero::proto_utils::FieldMetadata<
+      571,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3GadgetGenericCmdFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3GadgetGenericCmd kDwc3GadgetGenericCmd{};
+  template <typename T = Dwc3GadgetGenericCmdFtraceEvent> T* set_dwc3_gadget_generic_cmd() {
+    return BeginNestedMessage<T>(571);
+  }
+
+
+  using FieldMetadata_Dwc3GadgetGiveback =
+    ::protozero::proto_utils::FieldMetadata<
+      572,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3GadgetGivebackFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3GadgetGiveback kDwc3GadgetGiveback{};
+  template <typename T = Dwc3GadgetGivebackFtraceEvent> T* set_dwc3_gadget_giveback() {
+    return BeginNestedMessage<T>(572);
+  }
+
+
+  using FieldMetadata_Dwc3PrepareTrb =
+    ::protozero::proto_utils::FieldMetadata<
+      573,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3PrepareTrbFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3PrepareTrb kDwc3PrepareTrb{};
+  template <typename T = Dwc3PrepareTrbFtraceEvent> T* set_dwc3_prepare_trb() {
+    return BeginNestedMessage<T>(573);
+  }
+
+
+  using FieldMetadata_Dwc3Readl =
+    ::protozero::proto_utils::FieldMetadata<
+      574,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3ReadlFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3Readl kDwc3Readl{};
+  template <typename T = Dwc3ReadlFtraceEvent> T* set_dwc3_readl() {
+    return BeginNestedMessage<T>(574);
+  }
+
+
+  using FieldMetadata_Dwc3Writel =
+    ::protozero::proto_utils::FieldMetadata<
+      575,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      Dwc3WritelFtraceEvent,
+      FtraceEvent>;
+
+  static constexpr FieldMetadata_Dwc3Writel kDwc3Writel{};
+  template <typename T = Dwc3WritelFtraceEvent> T* set_dwc3_writel() {
+    return BeginNestedMessage<T>(575);
+  }
+
 };
 
 } // Namespace.
@@ -85238,6 +89429,7 @@ namespace pbzero {
 class FtraceEvent;
 class FtraceEventBundle_CompactSched;
 class FtraceEventBundle_FtraceError;
+class FtraceEventBundle_GenericEventDescriptor;
 enum FtraceClock : int32_t;
 enum FtraceParseStatus : int32_t;
 } // Namespace pbzero.
@@ -85281,7 +89473,7 @@ const char* FtraceClock_Name(::perfetto::protos::pbzero::FtraceClock value) {
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class FtraceEventBundle_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/10, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class FtraceEventBundle_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/512, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   FtraceEventBundle_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit FtraceEventBundle_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -85306,6 +89498,10 @@ class FtraceEventBundle_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FI
   uint64_t last_read_event_timestamp() const { return at<9>().as_uint64(); }
   bool has_previous_bundle_end_timestamp() const { return at<10>().valid(); }
   uint64_t previous_bundle_end_timestamp() const { return at<10>().as_uint64(); }
+  bool has_generic_event_descriptors() const { return at<11>().valid(); }
+  ::protozero::RepeatedFieldIterator<::protozero::ConstBytes> generic_event_descriptors() const { return GetRepeated<::protozero::ConstBytes>(11); }
+  bool has_broken_abi_trace_page() const { return at<512>().valid(); }
+  ::protozero::ConstBytes broken_abi_trace_page() const { return at<512>().as_bytes(); }
 };
 
 class FtraceEventBundle : public ::protozero::Message {
@@ -85322,11 +89518,14 @@ class FtraceEventBundle : public ::protozero::Message {
     kErrorFieldNumber = 8,
     kLastReadEventTimestampFieldNumber = 9,
     kPreviousBundleEndTimestampFieldNumber = 10,
+    kGenericEventDescriptorsFieldNumber = 11,
+    kBrokenAbiTracePageFieldNumber = 512,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.FtraceEventBundle"; }
 
   using CompactSched = ::perfetto::protos::pbzero::FtraceEventBundle_CompactSched;
   using FtraceError = ::perfetto::protos::pbzero::FtraceEventBundle_FtraceError;
+  using GenericEventDescriptor = ::perfetto::protos::pbzero::FtraceEventBundle_GenericEventDescriptor;
 
   using FieldMetadata_Cpu =
     ::protozero::proto_utils::FieldMetadata<
@@ -85493,6 +89692,108 @@ class FtraceEventBundle : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_GenericEventDescriptors =
+    ::protozero::proto_utils::FieldMetadata<
+      11,
+      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kMessage,
+      FtraceEventBundle_GenericEventDescriptor,
+      FtraceEventBundle>;
+
+  static constexpr FieldMetadata_GenericEventDescriptors kGenericEventDescriptors{};
+  template <typename T = FtraceEventBundle_GenericEventDescriptor> T* add_generic_event_descriptors() {
+    return BeginNestedMessage<T>(11);
+  }
+
+
+  using FieldMetadata_BrokenAbiTracePage =
+    ::protozero::proto_utils::FieldMetadata<
+      512,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBytes,
+      std::string,
+      FtraceEventBundle>;
+
+  static constexpr FieldMetadata_BrokenAbiTracePage kBrokenAbiTracePage{};
+  void set_broken_abi_trace_page(const uint8_t* data, size_t size) {
+    AppendBytes(FieldMetadata_BrokenAbiTracePage::kFieldId, data, size);
+  }
+  void set_broken_abi_trace_page(::protozero::ConstBytes bytes) {
+    AppendBytes(FieldMetadata_BrokenAbiTracePage::kFieldId, bytes.data, bytes.size);
+  }
+  void set_broken_abi_trace_page(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_BrokenAbiTracePage::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBytes>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class FtraceEventBundle_GenericEventDescriptor_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  FtraceEventBundle_GenericEventDescriptor_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit FtraceEventBundle_GenericEventDescriptor_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit FtraceEventBundle_GenericEventDescriptor_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_field_id() const { return at<1>().valid(); }
+  int32_t field_id() const { return at<1>().as_int32(); }
+  bool has_event_descriptor() const { return at<2>().valid(); }
+  ::protozero::ConstBytes event_descriptor() const { return at<2>().as_bytes(); }
+};
+
+class FtraceEventBundle_GenericEventDescriptor : public ::protozero::Message {
+ public:
+  using Decoder = FtraceEventBundle_GenericEventDescriptor_Decoder;
+  enum : int32_t {
+    kFieldIdFieldNumber = 1,
+    kEventDescriptorFieldNumber = 2,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.FtraceEventBundle.GenericEventDescriptor"; }
+
+
+  using FieldMetadata_FieldId =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      FtraceEventBundle_GenericEventDescriptor>;
+
+  static constexpr FieldMetadata_FieldId kFieldId{};
+  void set_field_id(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FieldId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_EventDescriptor =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBytes,
+      std::string,
+      FtraceEventBundle_GenericEventDescriptor>;
+
+  static constexpr FieldMetadata_EventDescriptor kEventDescriptor{};
+  void set_event_descriptor(const uint8_t* data, size_t size) {
+    AppendBytes(FieldMetadata_EventDescriptor::kFieldId, data, size);
+  }
+  void set_event_descriptor(::protozero::ConstBytes bytes) {
+    AppendBytes(FieldMetadata_EventDescriptor::kFieldId, bytes.data, bytes.size);
+  }
+  void set_event_descriptor(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_EventDescriptor::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBytes>
         ::Append(*this, field_id, value);
   }
 };
@@ -96348,6 +100649,164 @@ namespace perfetto {
 namespace protos {
 namespace pbzero {
 
+class DpuDispVblankIrqEnableFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  DpuDispVblankIrqEnableFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit DpuDispVblankIrqEnableFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit DpuDispVblankIrqEnableFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_id() const { return at<1>().valid(); }
+  int32_t id() const { return at<1>().as_int32(); }
+  bool has_output_id() const { return at<2>().valid(); }
+  int32_t output_id() const { return at<2>().as_int32(); }
+  bool has_enable() const { return at<3>().valid(); }
+  int32_t enable() const { return at<3>().as_int32(); }
+};
+
+class DpuDispVblankIrqEnableFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = DpuDispVblankIrqEnableFtraceEvent_Decoder;
+  enum : int32_t {
+    kIdFieldNumber = 1,
+    kOutputIdFieldNumber = 2,
+    kEnableFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.DpuDispVblankIrqEnableFtraceEvent"; }
+
+
+  using FieldMetadata_Id =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispVblankIrqEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Id kId{};
+  void set_id(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Id::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_OutputId =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispVblankIrqEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_OutputId kOutputId{};
+  void set_output_id(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_OutputId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Enable =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispVblankIrqEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Enable kEnable{};
+  void set_enable(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Enable::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class DpuDispDpuUnderrunFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  DpuDispDpuUnderrunFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit DpuDispDpuUnderrunFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit DpuDispDpuUnderrunFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_id() const { return at<1>().valid(); }
+  int32_t id() const { return at<1>().as_int32(); }
+  bool has_frames_pending() const { return at<2>().valid(); }
+  int32_t frames_pending() const { return at<2>().as_int32(); }
+  bool has_vsync_count() const { return at<3>().valid(); }
+  int32_t vsync_count() const { return at<3>().as_int32(); }
+};
+
+class DpuDispDpuUnderrunFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = DpuDispDpuUnderrunFtraceEvent_Decoder;
+  enum : int32_t {
+    kIdFieldNumber = 1,
+    kFramesPendingFieldNumber = 2,
+    kVsyncCountFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.DpuDispDpuUnderrunFtraceEvent"; }
+
+
+  using FieldMetadata_Id =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispDpuUnderrunFtraceEvent>;
+
+  static constexpr FieldMetadata_Id kId{};
+  void set_id(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Id::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_FramesPending =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispDpuUnderrunFtraceEvent>;
+
+  static constexpr FieldMetadata_FramesPending kFramesPending{};
+  void set_frames_pending(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FramesPending::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_VsyncCount =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      DpuDispDpuUnderrunFtraceEvent>;
+
+  static constexpr FieldMetadata_VsyncCount kVsyncCount{};
+  void set_vsync_count(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_VsyncCount::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
 class DpuDsiTxFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   DpuDsiTxFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
@@ -96917,6 +101376,2580 @@ class DrmVblankEventFtraceEvent : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/ftrace/dwc3.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_DWC3_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_DWC3_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class Dwc3WritelFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3WritelFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3WritelFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3WritelFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_base() const { return at<1>().valid(); }
+  uint64_t base() const { return at<1>().as_uint64(); }
+  bool has_offset() const { return at<2>().valid(); }
+  uint32_t offset() const { return at<2>().as_uint32(); }
+  bool has_value() const { return at<3>().valid(); }
+  uint32_t value() const { return at<3>().as_uint32(); }
+  bool has_msg() const { return at<4>().valid(); }
+  ::protozero::ConstChars msg() const { return at<4>().as_string(); }
+};
+
+class Dwc3WritelFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3WritelFtraceEvent_Decoder;
+  enum : int32_t {
+    kBaseFieldNumber = 1,
+    kOffsetFieldNumber = 2,
+    kValueFieldNumber = 3,
+    kMsgFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3WritelFtraceEvent"; }
+
+
+  using FieldMetadata_Base =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3WritelFtraceEvent>;
+
+  static constexpr FieldMetadata_Base kBase{};
+  void set_base(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Base::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Offset =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3WritelFtraceEvent>;
+
+  static constexpr FieldMetadata_Offset kOffset{};
+  void set_offset(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Offset::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Value =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3WritelFtraceEvent>;
+
+  static constexpr FieldMetadata_Value kValue{};
+  void set_value(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Value::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Msg =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3WritelFtraceEvent>;
+
+  static constexpr FieldMetadata_Msg kMsg{};
+  void set_msg(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Msg::kFieldId, data, size);
+  }
+  void set_msg(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Msg::kFieldId, chars.data, chars.size);
+  }
+  void set_msg(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Msg::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3ReadlFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3ReadlFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3ReadlFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3ReadlFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_base() const { return at<1>().valid(); }
+  uint64_t base() const { return at<1>().as_uint64(); }
+  bool has_offset() const { return at<2>().valid(); }
+  uint32_t offset() const { return at<2>().as_uint32(); }
+  bool has_value() const { return at<3>().valid(); }
+  uint32_t value() const { return at<3>().as_uint32(); }
+  bool has_msg() const { return at<4>().valid(); }
+  ::protozero::ConstChars msg() const { return at<4>().as_string(); }
+};
+
+class Dwc3ReadlFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3ReadlFtraceEvent_Decoder;
+  enum : int32_t {
+    kBaseFieldNumber = 1,
+    kOffsetFieldNumber = 2,
+    kValueFieldNumber = 3,
+    kMsgFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3ReadlFtraceEvent"; }
+
+
+  using FieldMetadata_Base =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3ReadlFtraceEvent>;
+
+  static constexpr FieldMetadata_Base kBase{};
+  void set_base(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Base::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Offset =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3ReadlFtraceEvent>;
+
+  static constexpr FieldMetadata_Offset kOffset{};
+  void set_offset(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Offset::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Value =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3ReadlFtraceEvent>;
+
+  static constexpr FieldMetadata_Value kValue{};
+  void set_value(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Value::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Msg =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3ReadlFtraceEvent>;
+
+  static constexpr FieldMetadata_Msg kMsg{};
+  void set_msg(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Msg::kFieldId, data, size);
+  }
+  void set_msg(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Msg::kFieldId, chars.data, chars.size);
+  }
+  void set_msg(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Msg::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3PrepareTrbFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/11, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3PrepareTrbFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3PrepareTrbFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3PrepareTrbFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_trb() const { return at<2>().valid(); }
+  uint64_t trb() const { return at<2>().as_uint64(); }
+  bool has_allocated() const { return at<3>().valid(); }
+  uint32_t allocated() const { return at<3>().as_uint32(); }
+  bool has_queued() const { return at<4>().valid(); }
+  uint32_t queued() const { return at<4>().as_uint32(); }
+  bool has_bpl() const { return at<5>().valid(); }
+  uint32_t bpl() const { return at<5>().as_uint32(); }
+  bool has_bph() const { return at<6>().valid(); }
+  uint32_t bph() const { return at<6>().as_uint32(); }
+  bool has_size() const { return at<7>().valid(); }
+  uint32_t size() const { return at<7>().as_uint32(); }
+  bool has_ctrl() const { return at<8>().valid(); }
+  uint32_t ctrl() const { return at<8>().as_uint32(); }
+  bool has_type() const { return at<9>().valid(); }
+  uint32_t type() const { return at<9>().as_uint32(); }
+  bool has_enqueue() const { return at<10>().valid(); }
+  uint32_t enqueue() const { return at<10>().as_uint32(); }
+  bool has_dequeue() const { return at<11>().valid(); }
+  uint32_t dequeue() const { return at<11>().as_uint32(); }
+};
+
+class Dwc3PrepareTrbFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3PrepareTrbFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kTrbFieldNumber = 2,
+    kAllocatedFieldNumber = 3,
+    kQueuedFieldNumber = 4,
+    kBplFieldNumber = 5,
+    kBphFieldNumber = 6,
+    kSizeFieldNumber = 7,
+    kCtrlFieldNumber = 8,
+    kTypeFieldNumber = 9,
+    kEnqueueFieldNumber = 10,
+    kDequeueFieldNumber = 11,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3PrepareTrbFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Trb =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Trb kTrb{};
+  void set_trb(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Trb::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Allocated =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Allocated kAllocated{};
+  void set_allocated(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Allocated::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Queued =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Queued kQueued{};
+  void set_queued(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Queued::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Bpl =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Bpl kBpl{};
+  void set_bpl(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Bpl::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Bph =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Bph kBph{};
+  void set_bph(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Bph::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Size =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Size kSize{};
+  void set_size(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Size::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Ctrl =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Ctrl kCtrl{};
+  void set_ctrl(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Ctrl::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Type =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Type kType{};
+  void set_type(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Type::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Enqueue =
+    ::protozero::proto_utils::FieldMetadata<
+      10,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Enqueue kEnqueue{};
+  void set_enqueue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Enqueue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Dequeue =
+    ::protozero::proto_utils::FieldMetadata<
+      11,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3PrepareTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Dequeue kDequeue{};
+  void set_dequeue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Dequeue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3GadgetGivebackFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3GadgetGivebackFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3GadgetGivebackFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3GadgetGivebackFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_req() const { return at<2>().valid(); }
+  uint64_t req() const { return at<2>().as_uint64(); }
+  bool has_actual() const { return at<3>().valid(); }
+  uint32_t actual() const { return at<3>().as_uint32(); }
+  bool has_length() const { return at<4>().valid(); }
+  uint32_t length() const { return at<4>().as_uint32(); }
+  bool has_status() const { return at<5>().valid(); }
+  int32_t status() const { return at<5>().as_int32(); }
+  bool has_zero() const { return at<6>().valid(); }
+  int32_t zero() const { return at<6>().as_int32(); }
+  bool has_short_not_ok() const { return at<7>().valid(); }
+  int32_t short_not_ok() const { return at<7>().as_int32(); }
+  bool has_no_interrupt() const { return at<8>().valid(); }
+  int32_t no_interrupt() const { return at<8>().as_int32(); }
+};
+
+class Dwc3GadgetGivebackFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3GadgetGivebackFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kReqFieldNumber = 2,
+    kActualFieldNumber = 3,
+    kLengthFieldNumber = 4,
+    kStatusFieldNumber = 5,
+    kZeroFieldNumber = 6,
+    kShortNotOkFieldNumber = 7,
+    kNoInterruptFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3GadgetGivebackFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Req =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Req kReq{};
+  void set_req(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Req::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Actual =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Actual kActual{};
+  void set_actual(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Actual::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Zero =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_Zero kZero{};
+  void set_zero(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Zero::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ShortNotOk =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_ShortNotOk kShortNotOk{};
+  void set_short_not_ok(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ShortNotOk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NoInterrupt =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetGivebackFtraceEvent>;
+
+  static constexpr FieldMetadata_NoInterrupt kNoInterrupt{};
+  void set_no_interrupt(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NoInterrupt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3GadgetGenericCmdFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3GadgetGenericCmdFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3GadgetGenericCmdFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3GadgetGenericCmdFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_cmd() const { return at<1>().valid(); }
+  uint32_t cmd() const { return at<1>().as_uint32(); }
+  bool has_param() const { return at<2>().valid(); }
+  uint32_t param() const { return at<2>().as_uint32(); }
+  bool has_status() const { return at<3>().valid(); }
+  int32_t status() const { return at<3>().as_int32(); }
+};
+
+class Dwc3GadgetGenericCmdFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3GadgetGenericCmdFtraceEvent_Decoder;
+  enum : int32_t {
+    kCmdFieldNumber = 1,
+    kParamFieldNumber = 2,
+    kStatusFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3GadgetGenericCmdFtraceEvent"; }
+
+
+  using FieldMetadata_Cmd =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetGenericCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Cmd kCmd{};
+  void set_cmd(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Cmd::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Param =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetGenericCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Param kParam{};
+  void set_param(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Param::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetGenericCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3GadgetEpEnableFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3GadgetEpEnableFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3GadgetEpEnableFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3GadgetEpEnableFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_maxpacket() const { return at<2>().valid(); }
+  uint32_t maxpacket() const { return at<2>().as_uint32(); }
+  bool has_maxpacket_limit() const { return at<3>().valid(); }
+  uint32_t maxpacket_limit() const { return at<3>().as_uint32(); }
+  bool has_max_streams() const { return at<4>().valid(); }
+  uint32_t max_streams() const { return at<4>().as_uint32(); }
+  bool has_maxburst() const { return at<5>().valid(); }
+  uint32_t maxburst() const { return at<5>().as_uint32(); }
+  bool has_flags() const { return at<6>().valid(); }
+  uint32_t flags() const { return at<6>().as_uint32(); }
+  bool has_direction() const { return at<7>().valid(); }
+  uint32_t direction() const { return at<7>().as_uint32(); }
+  bool has_trb_enqueue() const { return at<8>().valid(); }
+  uint32_t trb_enqueue() const { return at<8>().as_uint32(); }
+  bool has_trb_dequeue() const { return at<9>().valid(); }
+  uint32_t trb_dequeue() const { return at<9>().as_uint32(); }
+};
+
+class Dwc3GadgetEpEnableFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3GadgetEpEnableFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kMaxpacketFieldNumber = 2,
+    kMaxpacketLimitFieldNumber = 3,
+    kMaxStreamsFieldNumber = 4,
+    kMaxburstFieldNumber = 5,
+    kFlagsFieldNumber = 6,
+    kDirectionFieldNumber = 7,
+    kTrbEnqueueFieldNumber = 8,
+    kTrbDequeueFieldNumber = 9,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3GadgetEpEnableFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Maxpacket =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Maxpacket kMaxpacket{};
+  void set_maxpacket(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Maxpacket::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MaxpacketLimit =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_MaxpacketLimit kMaxpacketLimit{};
+  void set_maxpacket_limit(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MaxpacketLimit::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MaxStreams =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_MaxStreams kMaxStreams{};
+  void set_max_streams(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MaxStreams::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Maxburst =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Maxburst kMaxburst{};
+  void set_maxburst(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Maxburst::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Flags =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Flags kFlags{};
+  void set_flags(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Flags::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Direction =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_Direction kDirection{};
+  void set_direction(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Direction::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TrbEnqueue =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_TrbEnqueue kTrbEnqueue{};
+  void set_trb_enqueue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TrbEnqueue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TrbDequeue =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpEnableFtraceEvent>;
+
+  static constexpr FieldMetadata_TrbDequeue kTrbDequeue{};
+  void set_trb_dequeue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TrbDequeue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3GadgetEpDisableFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3GadgetEpDisableFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3GadgetEpDisableFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3GadgetEpDisableFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_maxpacket() const { return at<2>().valid(); }
+  uint32_t maxpacket() const { return at<2>().as_uint32(); }
+  bool has_maxpacket_limit() const { return at<3>().valid(); }
+  uint32_t maxpacket_limit() const { return at<3>().as_uint32(); }
+  bool has_max_streams() const { return at<4>().valid(); }
+  uint32_t max_streams() const { return at<4>().as_uint32(); }
+  bool has_maxburst() const { return at<5>().valid(); }
+  uint32_t maxburst() const { return at<5>().as_uint32(); }
+  bool has_flags() const { return at<6>().valid(); }
+  uint32_t flags() const { return at<6>().as_uint32(); }
+  bool has_direction() const { return at<7>().valid(); }
+  uint32_t direction() const { return at<7>().as_uint32(); }
+  bool has_trb_enqueue() const { return at<8>().valid(); }
+  uint32_t trb_enqueue() const { return at<8>().as_uint32(); }
+  bool has_trb_dequeue() const { return at<9>().valid(); }
+  uint32_t trb_dequeue() const { return at<9>().as_uint32(); }
+};
+
+class Dwc3GadgetEpDisableFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3GadgetEpDisableFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kMaxpacketFieldNumber = 2,
+    kMaxpacketLimitFieldNumber = 3,
+    kMaxStreamsFieldNumber = 4,
+    kMaxburstFieldNumber = 5,
+    kFlagsFieldNumber = 6,
+    kDirectionFieldNumber = 7,
+    kTrbEnqueueFieldNumber = 8,
+    kTrbDequeueFieldNumber = 9,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3GadgetEpDisableFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Maxpacket =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_Maxpacket kMaxpacket{};
+  void set_maxpacket(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Maxpacket::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MaxpacketLimit =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_MaxpacketLimit kMaxpacketLimit{};
+  void set_maxpacket_limit(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MaxpacketLimit::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_MaxStreams =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_MaxStreams kMaxStreams{};
+  void set_max_streams(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_MaxStreams::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Maxburst =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_Maxburst kMaxburst{};
+  void set_maxburst(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Maxburst::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Flags =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_Flags kFlags{};
+  void set_flags(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Flags::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Direction =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_Direction kDirection{};
+  void set_direction(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Direction::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TrbEnqueue =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_TrbEnqueue kTrbEnqueue{};
+  void set_trb_enqueue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TrbEnqueue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_TrbDequeue =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpDisableFtraceEvent>;
+
+  static constexpr FieldMetadata_TrbDequeue kTrbDequeue{};
+  void set_trb_dequeue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_TrbDequeue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3GadgetEpCmdFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3GadgetEpCmdFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3GadgetEpCmdFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3GadgetEpCmdFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_cmd() const { return at<2>().valid(); }
+  uint32_t cmd() const { return at<2>().as_uint32(); }
+  bool has_param0() const { return at<3>().valid(); }
+  uint32_t param0() const { return at<3>().as_uint32(); }
+  bool has_param1() const { return at<4>().valid(); }
+  uint32_t param1() const { return at<4>().as_uint32(); }
+  bool has_param2() const { return at<5>().valid(); }
+  uint32_t param2() const { return at<5>().as_uint32(); }
+  bool has_cmd_status() const { return at<6>().valid(); }
+  int32_t cmd_status() const { return at<6>().as_int32(); }
+};
+
+class Dwc3GadgetEpCmdFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3GadgetEpCmdFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kCmdFieldNumber = 2,
+    kParam0FieldNumber = 3,
+    kParam1FieldNumber = 4,
+    kParam2FieldNumber = 5,
+    kCmdStatusFieldNumber = 6,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3GadgetEpCmdFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Cmd =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Cmd kCmd{};
+  void set_cmd(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Cmd::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Param0 =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Param0 kParam0{};
+  void set_param0(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Param0::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Param1 =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Param1 kParam1{};
+  void set_param1(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Param1::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Param2 =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_Param2 kParam2{};
+  void set_param2(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Param2::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_CmdStatus =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3GadgetEpCmdFtraceEvent>;
+
+  static constexpr FieldMetadata_CmdStatus kCmdStatus{};
+  void set_cmd_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_CmdStatus::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3FreeRequestFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3FreeRequestFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3FreeRequestFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3FreeRequestFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_req() const { return at<2>().valid(); }
+  uint64_t req() const { return at<2>().as_uint64(); }
+  bool has_actual() const { return at<3>().valid(); }
+  uint32_t actual() const { return at<3>().as_uint32(); }
+  bool has_length() const { return at<4>().valid(); }
+  uint32_t length() const { return at<4>().as_uint32(); }
+  bool has_status() const { return at<5>().valid(); }
+  int32_t status() const { return at<5>().as_int32(); }
+  bool has_zero() const { return at<6>().valid(); }
+  int32_t zero() const { return at<6>().as_int32(); }
+  bool has_short_not_ok() const { return at<7>().valid(); }
+  int32_t short_not_ok() const { return at<7>().as_int32(); }
+  bool has_no_interrupt() const { return at<8>().valid(); }
+  int32_t no_interrupt() const { return at<8>().as_int32(); }
+};
+
+class Dwc3FreeRequestFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3FreeRequestFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kReqFieldNumber = 2,
+    kActualFieldNumber = 3,
+    kLengthFieldNumber = 4,
+    kStatusFieldNumber = 5,
+    kZeroFieldNumber = 6,
+    kShortNotOkFieldNumber = 7,
+    kNoInterruptFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3FreeRequestFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Req =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Req kReq{};
+  void set_req(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Req::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Actual =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Actual kActual{};
+  void set_actual(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Actual::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Zero =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Zero kZero{};
+  void set_zero(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Zero::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ShortNotOk =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_ShortNotOk kShortNotOk{};
+  void set_short_not_ok(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ShortNotOk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NoInterrupt =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3FreeRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_NoInterrupt kNoInterrupt{};
+  void set_no_interrupt(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NoInterrupt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3EventFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3EventFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3EventFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3EventFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_event() const { return at<1>().valid(); }
+  uint32_t event() const { return at<1>().as_uint32(); }
+  bool has_ep0state() const { return at<2>().valid(); }
+  uint32_t ep0state() const { return at<2>().as_uint32(); }
+  bool has_str() const { return at<3>().valid(); }
+  ::protozero::ConstChars str() const { return at<3>().as_string(); }
+};
+
+class Dwc3EventFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3EventFtraceEvent_Decoder;
+  enum : int32_t {
+    kEventFieldNumber = 1,
+    kEp0stateFieldNumber = 2,
+    kStrFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3EventFtraceEvent"; }
+
+
+  using FieldMetadata_Event =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EventFtraceEvent>;
+
+  static constexpr FieldMetadata_Event kEvent{};
+  void set_event(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Event::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Ep0state =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EventFtraceEvent>;
+
+  static constexpr FieldMetadata_Ep0state kEp0state{};
+  void set_ep0state(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Ep0state::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Str =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3EventFtraceEvent>;
+
+  static constexpr FieldMetadata_Str kStr{};
+  void set_str(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Str::kFieldId, data, size);
+  }
+  void set_str(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Str::kFieldId, chars.data, chars.size);
+  }
+  void set_str(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Str::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3EpQueueFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3EpQueueFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3EpQueueFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3EpQueueFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_req() const { return at<2>().valid(); }
+  uint64_t req() const { return at<2>().as_uint64(); }
+  bool has_actual() const { return at<3>().valid(); }
+  uint32_t actual() const { return at<3>().as_uint32(); }
+  bool has_length() const { return at<4>().valid(); }
+  uint32_t length() const { return at<4>().as_uint32(); }
+  bool has_status() const { return at<5>().valid(); }
+  int32_t status() const { return at<5>().as_int32(); }
+  bool has_zero() const { return at<6>().valid(); }
+  int32_t zero() const { return at<6>().as_int32(); }
+  bool has_short_not_ok() const { return at<7>().valid(); }
+  int32_t short_not_ok() const { return at<7>().as_int32(); }
+  bool has_no_interrupt() const { return at<8>().valid(); }
+  int32_t no_interrupt() const { return at<8>().as_int32(); }
+};
+
+class Dwc3EpQueueFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3EpQueueFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kReqFieldNumber = 2,
+    kActualFieldNumber = 3,
+    kLengthFieldNumber = 4,
+    kStatusFieldNumber = 5,
+    kZeroFieldNumber = 6,
+    kShortNotOkFieldNumber = 7,
+    kNoInterruptFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3EpQueueFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Req =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Req kReq{};
+  void set_req(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Req::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Actual =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Actual kActual{};
+  void set_actual(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Actual::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Zero =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_Zero kZero{};
+  void set_zero(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Zero::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ShortNotOk =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_ShortNotOk kShortNotOk{};
+  void set_short_not_ok(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ShortNotOk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NoInterrupt =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpQueueFtraceEvent>;
+
+  static constexpr FieldMetadata_NoInterrupt kNoInterrupt{};
+  void set_no_interrupt(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NoInterrupt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3EpDequeueFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3EpDequeueFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3EpDequeueFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3EpDequeueFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_req() const { return at<2>().valid(); }
+  uint64_t req() const { return at<2>().as_uint64(); }
+  bool has_actual() const { return at<3>().valid(); }
+  uint32_t actual() const { return at<3>().as_uint32(); }
+  bool has_length() const { return at<4>().valid(); }
+  uint32_t length() const { return at<4>().as_uint32(); }
+  bool has_status() const { return at<5>().valid(); }
+  int32_t status() const { return at<5>().as_int32(); }
+  bool has_zero() const { return at<6>().valid(); }
+  int32_t zero() const { return at<6>().as_int32(); }
+  bool has_short_not_ok() const { return at<7>().valid(); }
+  int32_t short_not_ok() const { return at<7>().as_int32(); }
+  bool has_no_interrupt() const { return at<8>().valid(); }
+  int32_t no_interrupt() const { return at<8>().as_int32(); }
+};
+
+class Dwc3EpDequeueFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3EpDequeueFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kReqFieldNumber = 2,
+    kActualFieldNumber = 3,
+    kLengthFieldNumber = 4,
+    kStatusFieldNumber = 5,
+    kZeroFieldNumber = 6,
+    kShortNotOkFieldNumber = 7,
+    kNoInterruptFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3EpDequeueFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Req =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Req kReq{};
+  void set_req(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Req::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Actual =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Actual kActual{};
+  void set_actual(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Actual::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Zero =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_Zero kZero{};
+  void set_zero(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Zero::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ShortNotOk =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_ShortNotOk kShortNotOk{};
+  void set_short_not_ok(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ShortNotOk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NoInterrupt =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3EpDequeueFtraceEvent>;
+
+  static constexpr FieldMetadata_NoInterrupt kNoInterrupt{};
+  void set_no_interrupt(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NoInterrupt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3CtrlReqFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/6, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3CtrlReqFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3CtrlReqFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3CtrlReqFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_brequesttype() const { return at<1>().valid(); }
+  uint32_t brequesttype() const { return at<1>().as_uint32(); }
+  bool has_brequest() const { return at<2>().valid(); }
+  uint32_t brequest() const { return at<2>().as_uint32(); }
+  bool has_wvalue() const { return at<3>().valid(); }
+  uint32_t wvalue() const { return at<3>().as_uint32(); }
+  bool has_windex() const { return at<4>().valid(); }
+  uint32_t windex() const { return at<4>().as_uint32(); }
+  bool has_wlength() const { return at<5>().valid(); }
+  uint32_t wlength() const { return at<5>().as_uint32(); }
+  bool has_str() const { return at<6>().valid(); }
+  ::protozero::ConstChars str() const { return at<6>().as_string(); }
+};
+
+class Dwc3CtrlReqFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3CtrlReqFtraceEvent_Decoder;
+  enum : int32_t {
+    kBRequestTypeFieldNumber = 1,
+    kBRequestFieldNumber = 2,
+    kWValueFieldNumber = 3,
+    kWIndexFieldNumber = 4,
+    kWLengthFieldNumber = 5,
+    kStrFieldNumber = 6,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3CtrlReqFtraceEvent"; }
+
+
+  using FieldMetadata_BRequestType =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_BRequestType kBRequestType{};
+  void set_brequesttype(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_BRequestType::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_BRequest =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_BRequest kBRequest{};
+  void set_brequest(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_BRequest::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WValue =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_WValue kWValue{};
+  void set_wvalue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WValue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WIndex =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_WIndex kWIndex{};
+  void set_windex(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WIndex::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_WLength =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_WLength kWLength{};
+  void set_wlength(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_WLength::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Str =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3CtrlReqFtraceEvent>;
+
+  static constexpr FieldMetadata_Str kStr{};
+  void set_str(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Str::kFieldId, data, size);
+  }
+  void set_str(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Str::kFieldId, chars.data, chars.size);
+  }
+  void set_str(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Str::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3CompleteTrbFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/11, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3CompleteTrbFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3CompleteTrbFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3CompleteTrbFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_trb() const { return at<2>().valid(); }
+  uint64_t trb() const { return at<2>().as_uint64(); }
+  bool has_allocated() const { return at<3>().valid(); }
+  uint32_t allocated() const { return at<3>().as_uint32(); }
+  bool has_queued() const { return at<4>().valid(); }
+  uint32_t queued() const { return at<4>().as_uint32(); }
+  bool has_bpl() const { return at<5>().valid(); }
+  uint32_t bpl() const { return at<5>().as_uint32(); }
+  bool has_bph() const { return at<6>().valid(); }
+  uint32_t bph() const { return at<6>().as_uint32(); }
+  bool has_size() const { return at<7>().valid(); }
+  uint32_t size() const { return at<7>().as_uint32(); }
+  bool has_ctrl() const { return at<8>().valid(); }
+  uint32_t ctrl() const { return at<8>().as_uint32(); }
+  bool has_type() const { return at<9>().valid(); }
+  uint32_t type() const { return at<9>().as_uint32(); }
+  bool has_enqueue() const { return at<10>().valid(); }
+  uint32_t enqueue() const { return at<10>().as_uint32(); }
+  bool has_dequeue() const { return at<11>().valid(); }
+  uint32_t dequeue() const { return at<11>().as_uint32(); }
+};
+
+class Dwc3CompleteTrbFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3CompleteTrbFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kTrbFieldNumber = 2,
+    kAllocatedFieldNumber = 3,
+    kQueuedFieldNumber = 4,
+    kBplFieldNumber = 5,
+    kBphFieldNumber = 6,
+    kSizeFieldNumber = 7,
+    kCtrlFieldNumber = 8,
+    kTypeFieldNumber = 9,
+    kEnqueueFieldNumber = 10,
+    kDequeueFieldNumber = 11,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3CompleteTrbFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Trb =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Trb kTrb{};
+  void set_trb(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Trb::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Allocated =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Allocated kAllocated{};
+  void set_allocated(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Allocated::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Queued =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Queued kQueued{};
+  void set_queued(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Queued::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Bpl =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Bpl kBpl{};
+  void set_bpl(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Bpl::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Bph =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Bph kBph{};
+  void set_bph(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Bph::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Size =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Size kSize{};
+  void set_size(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Size::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Ctrl =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Ctrl kCtrl{};
+  void set_ctrl(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Ctrl::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Type =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Type kType{};
+  void set_type(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Type::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Enqueue =
+    ::protozero::proto_utils::FieldMetadata<
+      10,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Enqueue kEnqueue{};
+  void set_enqueue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Enqueue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Dequeue =
+    ::protozero::proto_utils::FieldMetadata<
+      11,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3CompleteTrbFtraceEvent>;
+
+  static constexpr FieldMetadata_Dequeue kDequeue{};
+  void set_dequeue(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Dequeue::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class Dwc3AllocRequestFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  Dwc3AllocRequestFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit Dwc3AllocRequestFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit Dwc3AllocRequestFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_name() const { return at<1>().valid(); }
+  ::protozero::ConstChars name() const { return at<1>().as_string(); }
+  bool has_req() const { return at<2>().valid(); }
+  uint64_t req() const { return at<2>().as_uint64(); }
+  bool has_actual() const { return at<3>().valid(); }
+  uint32_t actual() const { return at<3>().as_uint32(); }
+  bool has_length() const { return at<4>().valid(); }
+  uint32_t length() const { return at<4>().as_uint32(); }
+  bool has_status() const { return at<5>().valid(); }
+  int32_t status() const { return at<5>().as_int32(); }
+  bool has_zero() const { return at<6>().valid(); }
+  int32_t zero() const { return at<6>().as_int32(); }
+  bool has_short_not_ok() const { return at<7>().valid(); }
+  int32_t short_not_ok() const { return at<7>().as_int32(); }
+  bool has_no_interrupt() const { return at<8>().valid(); }
+  int32_t no_interrupt() const { return at<8>().as_int32(); }
+};
+
+class Dwc3AllocRequestFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = Dwc3AllocRequestFtraceEvent_Decoder;
+  enum : int32_t {
+    kNameFieldNumber = 1,
+    kReqFieldNumber = 2,
+    kActualFieldNumber = 3,
+    kLengthFieldNumber = 4,
+    kStatusFieldNumber = 5,
+    kZeroFieldNumber = 6,
+    kShortNotOkFieldNumber = 7,
+    kNoInterruptFieldNumber = 8,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.Dwc3AllocRequestFtraceEvent"; }
+
+
+  using FieldMetadata_Name =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Name kName{};
+  void set_name(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Name::kFieldId, data, size);
+  }
+  void set_name(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Name::kFieldId, chars.data, chars.size);
+  }
+  void set_name(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Name::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Req =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Req kReq{};
+  void set_req(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Req::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Actual =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Actual kActual{};
+  void set_actual(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Actual::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Length =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Length kLength{};
+  void set_length(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Length::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Status =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Status kStatus{};
+  void set_status(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Status::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Zero =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_Zero kZero{};
+  void set_zero(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Zero::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ShortNotOk =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_ShortNotOk kShortNotOk{};
+  void set_short_not_ok(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ShortNotOk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_NoInterrupt =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      Dwc3AllocRequestFtraceEvent>;
+
+  static constexpr FieldMetadata_NoInterrupt kNoInterrupt{};
+  void set_no_interrupt(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_NoInterrupt::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
         ::Append(*this, field_id, value);
   }
 };
@@ -119030,6 +126063,104 @@ class SoftirqEntryFtraceEvent : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/ftrace/irq_vectors.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_IRQ_VECTORS_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_IRQ_VECTORS_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class LocalTimerExitFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  LocalTimerExitFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit LocalTimerExitFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit LocalTimerExitFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_vector() const { return at<1>().valid(); }
+  int32_t vector() const { return at<1>().as_int32(); }
+};
+
+class LocalTimerExitFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = LocalTimerExitFtraceEvent_Decoder;
+  enum : int32_t {
+    kVectorFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.LocalTimerExitFtraceEvent"; }
+
+
+  using FieldMetadata_Vector =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      LocalTimerExitFtraceEvent>;
+
+  static constexpr FieldMetadata_Vector kVector{};
+  void set_vector(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Vector::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class LocalTimerEntryFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  LocalTimerEntryFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit LocalTimerEntryFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit LocalTimerEntryFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_vector() const { return at<1>().valid(); }
+  int32_t vector() const { return at<1>().as_int32(); }
+};
+
+class LocalTimerEntryFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = LocalTimerEntryFtraceEvent_Decoder;
+  enum : int32_t {
+    kVectorFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.LocalTimerEntryFtraceEvent"; }
+
+
+  using FieldMetadata_Vector =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      LocalTimerEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Vector kVector{};
+  void set_vector(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Vector::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/trace/ftrace/kgsl.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -126735,6 +133866,85 @@ class LwisTracingMarkWriteFtraceEvent : public ::protozero::Message {
 namespace perfetto {
 namespace protos {
 namespace pbzero {
+
+class MaliGpuPowerStateFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  MaliGpuPowerStateFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit MaliGpuPowerStateFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit MaliGpuPowerStateFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_change_ns() const { return at<1>().valid(); }
+  uint64_t change_ns() const { return at<1>().as_uint64(); }
+  bool has_from_state() const { return at<2>().valid(); }
+  int32_t from_state() const { return at<2>().as_int32(); }
+  bool has_to_state() const { return at<3>().valid(); }
+  int32_t to_state() const { return at<3>().as_int32(); }
+};
+
+class MaliGpuPowerStateFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = MaliGpuPowerStateFtraceEvent_Decoder;
+  enum : int32_t {
+    kChangeNsFieldNumber = 1,
+    kFromStateFieldNumber = 2,
+    kToStateFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.MaliGpuPowerStateFtraceEvent"; }
+
+
+  using FieldMetadata_ChangeNs =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      MaliGpuPowerStateFtraceEvent>;
+
+  static constexpr FieldMetadata_ChangeNs kChangeNs{};
+  void set_change_ns(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ChangeNs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_FromState =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      MaliGpuPowerStateFtraceEvent>;
+
+  static constexpr FieldMetadata_FromState kFromState{};
+  void set_from_state(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FromState::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_ToState =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      MaliGpuPowerStateFtraceEvent>;
+
+  static constexpr FieldMetadata_ToState kToState{};
+  void set_to_state(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_ToState::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
 
 class MaliMaliPMMCURESETWAITFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
@@ -141259,6 +148469,641 @@ class ThermalExynosAcpmBulkFtraceEvent : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/ftrace/timer.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_TIMER_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_FTRACE_TIMER_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class TimerExpireExitFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  TimerExpireExitFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit TimerExpireExitFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit TimerExpireExitFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_timer() const { return at<1>().valid(); }
+  uint64_t timer() const { return at<1>().as_uint64(); }
+};
+
+class TimerExpireExitFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = TimerExpireExitFtraceEvent_Decoder;
+  enum : int32_t {
+    kTimerFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.TimerExpireExitFtraceEvent"; }
+
+
+  using FieldMetadata_Timer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerExpireExitFtraceEvent>;
+
+  static constexpr FieldMetadata_Timer kTimer{};
+  void set_timer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Timer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class TimerExpireEntryFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  TimerExpireEntryFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit TimerExpireEntryFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit TimerExpireEntryFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_timer() const { return at<1>().valid(); }
+  uint64_t timer() const { return at<1>().as_uint64(); }
+  bool has_now() const { return at<2>().valid(); }
+  uint64_t now() const { return at<2>().as_uint64(); }
+  bool has_function() const { return at<3>().valid(); }
+  uint64_t function() const { return at<3>().as_uint64(); }
+  bool has_baseclk() const { return at<4>().valid(); }
+  uint64_t baseclk() const { return at<4>().as_uint64(); }
+};
+
+class TimerExpireEntryFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = TimerExpireEntryFtraceEvent_Decoder;
+  enum : int32_t {
+    kTimerFieldNumber = 1,
+    kNowFieldNumber = 2,
+    kFunctionFieldNumber = 3,
+    kBaseclkFieldNumber = 4,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.TimerExpireEntryFtraceEvent"; }
+
+
+  using FieldMetadata_Timer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Timer kTimer{};
+  void set_timer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Timer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Now =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Now kNow{};
+  void set_now(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Now::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Function =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Function kFunction{};
+  void set_function(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Function::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Baseclk =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Baseclk kBaseclk{};
+  void set_baseclk(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Baseclk::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class TimerCancelFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  TimerCancelFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit TimerCancelFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit TimerCancelFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_timer() const { return at<1>().valid(); }
+  uint64_t timer() const { return at<1>().as_uint64(); }
+};
+
+class TimerCancelFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = TimerCancelFtraceEvent_Decoder;
+  enum : int32_t {
+    kTimerFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.TimerCancelFtraceEvent"; }
+
+
+  using FieldMetadata_Timer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerCancelFtraceEvent>;
+
+  static constexpr FieldMetadata_Timer kTimer{};
+  void set_timer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Timer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class TimerStartFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/7, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  TimerStartFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit TimerStartFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit TimerStartFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_timer() const { return at<1>().valid(); }
+  uint64_t timer() const { return at<1>().as_uint64(); }
+  bool has_function() const { return at<2>().valid(); }
+  uint64_t function() const { return at<2>().as_uint64(); }
+  bool has_expires() const { return at<3>().valid(); }
+  uint64_t expires() const { return at<3>().as_uint64(); }
+  bool has_now() const { return at<4>().valid(); }
+  uint64_t now() const { return at<4>().as_uint64(); }
+  bool has_deferrable() const { return at<5>().valid(); }
+  uint32_t deferrable() const { return at<5>().as_uint32(); }
+  bool has_flags() const { return at<6>().valid(); }
+  uint32_t flags() const { return at<6>().as_uint32(); }
+  bool has_bucket_expiry() const { return at<7>().valid(); }
+  uint64_t bucket_expiry() const { return at<7>().as_uint64(); }
+};
+
+class TimerStartFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = TimerStartFtraceEvent_Decoder;
+  enum : int32_t {
+    kTimerFieldNumber = 1,
+    kFunctionFieldNumber = 2,
+    kExpiresFieldNumber = 3,
+    kNowFieldNumber = 4,
+    kDeferrableFieldNumber = 5,
+    kFlagsFieldNumber = 6,
+    kBucketExpiryFieldNumber = 7,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.TimerStartFtraceEvent"; }
+
+
+  using FieldMetadata_Timer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Timer kTimer{};
+  void set_timer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Timer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Function =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Function kFunction{};
+  void set_function(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Function::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Expires =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Expires kExpires{};
+  void set_expires(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Expires::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Now =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Now kNow{};
+  void set_now(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Now::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Deferrable =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Deferrable kDeferrable{};
+  void set_deferrable(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Deferrable::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Flags =
+    ::protozero::proto_utils::FieldMetadata<
+      6,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Flags kFlags{};
+  void set_flags(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Flags::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_BucketExpiry =
+    ::protozero::proto_utils::FieldMetadata<
+      7,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      TimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_BucketExpiry kBucketExpiry{};
+  void set_bucket_expiry(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_BucketExpiry::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class HrtimerExpireExitFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  HrtimerExpireExitFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit HrtimerExpireExitFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit HrtimerExpireExitFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_hrtimer() const { return at<1>().valid(); }
+  uint64_t hrtimer() const { return at<1>().as_uint64(); }
+};
+
+class HrtimerExpireExitFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = HrtimerExpireExitFtraceEvent_Decoder;
+  enum : int32_t {
+    kHrtimerFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.HrtimerExpireExitFtraceEvent"; }
+
+
+  using FieldMetadata_Hrtimer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerExpireExitFtraceEvent>;
+
+  static constexpr FieldMetadata_Hrtimer kHrtimer{};
+  void set_hrtimer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Hrtimer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class HrtimerExpireEntryFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/3, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  HrtimerExpireEntryFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit HrtimerExpireEntryFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit HrtimerExpireEntryFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_hrtimer() const { return at<1>().valid(); }
+  uint64_t hrtimer() const { return at<1>().as_uint64(); }
+  bool has_now() const { return at<2>().valid(); }
+  int64_t now() const { return at<2>().as_int64(); }
+  bool has_function() const { return at<3>().valid(); }
+  uint64_t function() const { return at<3>().as_uint64(); }
+};
+
+class HrtimerExpireEntryFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = HrtimerExpireEntryFtraceEvent_Decoder;
+  enum : int32_t {
+    kHrtimerFieldNumber = 1,
+    kNowFieldNumber = 2,
+    kFunctionFieldNumber = 3,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.HrtimerExpireEntryFtraceEvent"; }
+
+
+  using FieldMetadata_Hrtimer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Hrtimer kHrtimer{};
+  void set_hrtimer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Hrtimer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Now =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      HrtimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Now kNow{};
+  void set_now(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Now::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Function =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerExpireEntryFtraceEvent>;
+
+  static constexpr FieldMetadata_Function kFunction{};
+  void set_function(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Function::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class HrtimerCancelFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/1, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  HrtimerCancelFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit HrtimerCancelFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit HrtimerCancelFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_hrtimer() const { return at<1>().valid(); }
+  uint64_t hrtimer() const { return at<1>().as_uint64(); }
+};
+
+class HrtimerCancelFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = HrtimerCancelFtraceEvent_Decoder;
+  enum : int32_t {
+    kHrtimerFieldNumber = 1,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.HrtimerCancelFtraceEvent"; }
+
+
+  using FieldMetadata_Hrtimer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerCancelFtraceEvent>;
+
+  static constexpr FieldMetadata_Hrtimer kHrtimer{};
+  void set_hrtimer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Hrtimer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class HrtimerStartFtraceEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  HrtimerStartFtraceEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit HrtimerStartFtraceEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit HrtimerStartFtraceEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_hrtimer() const { return at<1>().valid(); }
+  uint64_t hrtimer() const { return at<1>().as_uint64(); }
+  bool has_function() const { return at<2>().valid(); }
+  uint64_t function() const { return at<2>().as_uint64(); }
+  bool has_expires() const { return at<3>().valid(); }
+  int64_t expires() const { return at<3>().as_int64(); }
+  bool has_softexpires() const { return at<4>().valid(); }
+  int64_t softexpires() const { return at<4>().as_int64(); }
+  bool has_mode() const { return at<5>().valid(); }
+  uint32_t mode() const { return at<5>().as_uint32(); }
+};
+
+class HrtimerStartFtraceEvent : public ::protozero::Message {
+ public:
+  using Decoder = HrtimerStartFtraceEvent_Decoder;
+  enum : int32_t {
+    kHrtimerFieldNumber = 1,
+    kFunctionFieldNumber = 2,
+    kExpiresFieldNumber = 3,
+    kSoftexpiresFieldNumber = 4,
+    kModeFieldNumber = 5,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.HrtimerStartFtraceEvent"; }
+
+
+  using FieldMetadata_Hrtimer =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Hrtimer kHrtimer{};
+  void set_hrtimer(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Hrtimer::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Function =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HrtimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Function kFunction{};
+  void set_function(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Function::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Expires =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      HrtimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Expires kExpires{};
+  void set_expires(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Expires::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Softexpires =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      HrtimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Softexpires kSoftexpires{};
+  void set_softexpires(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Softexpires::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Mode =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint32,
+      uint32_t,
+      HrtimerStartFtraceEvent>;
+
+  static constexpr FieldMetadata_Mode kMode{};
+  void set_mode(uint32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Mode::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/trace/ftrace/trusty.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -147106,6 +154951,380 @@ class WorkqueueActivateWorkFtraceEvent : public ::protozero::Message {
 } // Namespace.
 } // Namespace.
 #endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/generic_kernel/generic_power.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_GENERIC_KERNEL_GENERIC_POWER_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_GENERIC_KERNEL_GENERIC_POWER_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+class GenericKernelCpuFrequencyEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  GenericKernelCpuFrequencyEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit GenericKernelCpuFrequencyEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit GenericKernelCpuFrequencyEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_cpu() const { return at<1>().valid(); }
+  int32_t cpu() const { return at<1>().as_int32(); }
+  bool has_freq_hz() const { return at<2>().valid(); }
+  int64_t freq_hz() const { return at<2>().as_int64(); }
+};
+
+class GenericKernelCpuFrequencyEvent : public ::protozero::Message {
+ public:
+  using Decoder = GenericKernelCpuFrequencyEvent_Decoder;
+  enum : int32_t {
+    kCpuFieldNumber = 1,
+    kFreqHzFieldNumber = 2,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.GenericKernelCpuFrequencyEvent"; }
+
+
+  using FieldMetadata_Cpu =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      GenericKernelCpuFrequencyEvent>;
+
+  static constexpr FieldMetadata_Cpu kCpu{};
+  void set_cpu(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Cpu::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_FreqHz =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      GenericKernelCpuFrequencyEvent>;
+
+  static constexpr FieldMetadata_FreqHz kFreqHz{};
+  void set_freq_hz(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_FreqHz::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
+// gen_amalgamated begin header: gen/protos/perfetto/trace/generic_kernel/generic_task.pbzero.h
+// Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
+
+#ifndef PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_GENERIC_KERNEL_GENERIC_TASK_PROTO_H_
+#define PERFETTO_PROTOS_PROTOS_PERFETTO_TRACE_GENERIC_KERNEL_GENERIC_TASK_PROTO_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+// gen_amalgamated expanded: #include "perfetto/protozero/field_writer.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/message.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/packed_repeated_fields.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_decoder.h"
+// gen_amalgamated expanded: #include "perfetto/protozero/proto_utils.h"
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+namespace perfetto_pbzero_enum_GenericKernelTaskStateEvent {
+enum TaskStateEnum : int32_t;
+}  // namespace perfetto_pbzero_enum_GenericKernelTaskStateEvent
+using GenericKernelTaskStateEvent_TaskStateEnum = perfetto_pbzero_enum_GenericKernelTaskStateEvent::TaskStateEnum;
+} // Namespace pbzero.
+} // Namespace protos.
+} // Namespace perfetto.
+
+namespace perfetto {
+namespace protos {
+namespace pbzero {
+
+namespace perfetto_pbzero_enum_GenericKernelTaskStateEvent {
+enum TaskStateEnum : int32_t {
+  TASK_STATE_UNKNOWN = 0,
+  TASK_STATE_CREATED = 1,
+  TASK_STATE_RUNNABLE = 2,
+  TASK_STATE_RUNNING = 3,
+  TASK_STATE_INTERRUPTIBLE_SLEEP = 4,
+  TASK_STATE_UNINTERRUPTIBLE_SLEEP = 5,
+  TASK_STATE_STOPPED = 6,
+  TASK_STATE_DEAD = 7,
+  TASK_STATE_DESTROYED = 8,
+};
+} // namespace perfetto_pbzero_enum_GenericKernelTaskStateEvent
+using GenericKernelTaskStateEvent_TaskStateEnum = perfetto_pbzero_enum_GenericKernelTaskStateEvent::TaskStateEnum;
+
+
+constexpr GenericKernelTaskStateEvent_TaskStateEnum GenericKernelTaskStateEvent_TaskStateEnum_MIN = GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_UNKNOWN;
+constexpr GenericKernelTaskStateEvent_TaskStateEnum GenericKernelTaskStateEvent_TaskStateEnum_MAX = GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_DESTROYED;
+
+
+PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
+const char* GenericKernelTaskStateEvent_TaskStateEnum_Name(::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum value) {
+  switch (value) {
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_UNKNOWN:
+    return "TASK_STATE_UNKNOWN";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_CREATED:
+    return "TASK_STATE_CREATED";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_RUNNABLE:
+    return "TASK_STATE_RUNNABLE";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_RUNNING:
+    return "TASK_STATE_RUNNING";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_INTERRUPTIBLE_SLEEP:
+    return "TASK_STATE_INTERRUPTIBLE_SLEEP";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_UNINTERRUPTIBLE_SLEEP:
+    return "TASK_STATE_UNINTERRUPTIBLE_SLEEP";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_STOPPED:
+    return "TASK_STATE_STOPPED";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_DEAD:
+    return "TASK_STATE_DEAD";
+
+  case ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum::TASK_STATE_DESTROYED:
+    return "TASK_STATE_DESTROYED";
+  }
+  return "PBZERO_UNKNOWN_ENUM_VALUE";
+}
+
+class GenericKernelTaskRenameEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  GenericKernelTaskRenameEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit GenericKernelTaskRenameEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit GenericKernelTaskRenameEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_tid() const { return at<1>().valid(); }
+  int64_t tid() const { return at<1>().as_int64(); }
+  bool has_comm() const { return at<2>().valid(); }
+  ::protozero::ConstChars comm() const { return at<2>().as_string(); }
+};
+
+class GenericKernelTaskRenameEvent : public ::protozero::Message {
+ public:
+  using Decoder = GenericKernelTaskRenameEvent_Decoder;
+  enum : int32_t {
+    kTidFieldNumber = 1,
+    kCommFieldNumber = 2,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.GenericKernelTaskRenameEvent"; }
+
+
+  using FieldMetadata_Tid =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      GenericKernelTaskRenameEvent>;
+
+  static constexpr FieldMetadata_Tid kTid{};
+  void set_tid(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Tid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Comm =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      GenericKernelTaskRenameEvent>;
+
+  static constexpr FieldMetadata_Comm kComm{};
+  void set_comm(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Comm::kFieldId, data, size);
+  }
+  void set_comm(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Comm::kFieldId, chars.data, chars.size);
+  }
+  void set_comm(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Comm::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+};
+
+class GenericKernelTaskStateEvent_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+ public:
+  GenericKernelTaskStateEvent_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
+  explicit GenericKernelTaskStateEvent_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
+  explicit GenericKernelTaskStateEvent_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
+  bool has_cpu() const { return at<1>().valid(); }
+  int32_t cpu() const { return at<1>().as_int32(); }
+  bool has_comm() const { return at<2>().valid(); }
+  ::protozero::ConstChars comm() const { return at<2>().as_string(); }
+  bool has_tid() const { return at<3>().valid(); }
+  int64_t tid() const { return at<3>().as_int64(); }
+  bool has_state() const { return at<4>().valid(); }
+  int32_t state() const { return at<4>().as_int32(); }
+  bool has_prio() const { return at<5>().valid(); }
+  int32_t prio() const { return at<5>().as_int32(); }
+};
+
+class GenericKernelTaskStateEvent : public ::protozero::Message {
+ public:
+  using Decoder = GenericKernelTaskStateEvent_Decoder;
+  enum : int32_t {
+    kCpuFieldNumber = 1,
+    kCommFieldNumber = 2,
+    kTidFieldNumber = 3,
+    kStateFieldNumber = 4,
+    kPrioFieldNumber = 5,
+  };
+  static constexpr const char* GetName() { return ".perfetto.protos.GenericKernelTaskStateEvent"; }
+
+
+  using TaskStateEnum = ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum;
+  static inline const char* TaskStateEnum_Name(TaskStateEnum value) {
+    return ::perfetto::protos::pbzero::GenericKernelTaskStateEvent_TaskStateEnum_Name(value);
+  }
+  static inline const TaskStateEnum TASK_STATE_UNKNOWN = TaskStateEnum::TASK_STATE_UNKNOWN;
+  static inline const TaskStateEnum TASK_STATE_CREATED = TaskStateEnum::TASK_STATE_CREATED;
+  static inline const TaskStateEnum TASK_STATE_RUNNABLE = TaskStateEnum::TASK_STATE_RUNNABLE;
+  static inline const TaskStateEnum TASK_STATE_RUNNING = TaskStateEnum::TASK_STATE_RUNNING;
+  static inline const TaskStateEnum TASK_STATE_INTERRUPTIBLE_SLEEP = TaskStateEnum::TASK_STATE_INTERRUPTIBLE_SLEEP;
+  static inline const TaskStateEnum TASK_STATE_UNINTERRUPTIBLE_SLEEP = TaskStateEnum::TASK_STATE_UNINTERRUPTIBLE_SLEEP;
+  static inline const TaskStateEnum TASK_STATE_STOPPED = TaskStateEnum::TASK_STATE_STOPPED;
+  static inline const TaskStateEnum TASK_STATE_DEAD = TaskStateEnum::TASK_STATE_DEAD;
+  static inline const TaskStateEnum TASK_STATE_DESTROYED = TaskStateEnum::TASK_STATE_DESTROYED;
+
+  using FieldMetadata_Cpu =
+    ::protozero::proto_utils::FieldMetadata<
+      1,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      GenericKernelTaskStateEvent>;
+
+  static constexpr FieldMetadata_Cpu kCpu{};
+  void set_cpu(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Cpu::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Comm =
+    ::protozero::proto_utils::FieldMetadata<
+      2,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kString,
+      std::string,
+      GenericKernelTaskStateEvent>;
+
+  static constexpr FieldMetadata_Comm kComm{};
+  void set_comm(const char* data, size_t size) {
+    AppendBytes(FieldMetadata_Comm::kFieldId, data, size);
+  }
+  void set_comm(::protozero::ConstChars chars) {
+    AppendBytes(FieldMetadata_Comm::kFieldId, chars.data, chars.size);
+  }
+  void set_comm(std::string value) {
+    static constexpr uint32_t field_id = FieldMetadata_Comm::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kString>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Tid =
+    ::protozero::proto_utils::FieldMetadata<
+      3,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      GenericKernelTaskStateEvent>;
+
+  static constexpr FieldMetadata_Tid kTid{};
+  void set_tid(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Tid::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_State =
+    ::protozero::proto_utils::FieldMetadata<
+      4,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kEnum,
+      GenericKernelTaskStateEvent_TaskStateEnum,
+      GenericKernelTaskStateEvent>;
+
+  static constexpr FieldMetadata_State kState{};
+  void set_state(GenericKernelTaskStateEvent_TaskStateEnum value) {
+    static constexpr uint32_t field_id = FieldMetadata_State::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kEnum>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_Prio =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt32,
+      int32_t,
+      GenericKernelTaskStateEvent>;
+
+  static constexpr FieldMetadata_Prio kPrio{};
+  void set_prio(int32_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Prio::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt32>
+        ::Append(*this, field_id, value);
+  }
+};
+
+} // Namespace.
+} // Namespace.
+} // Namespace.
+#endif  // Include guard.
 // gen_amalgamated begin header: gen/protos/perfetto/trace/gpu/gpu_counter_event.pbzero.h
 // Autogenerated by the ProtoZero compiler plugin. DO NOT EDIT.
 
@@ -149997,7 +158216,7 @@ class HeapGraph : public ::protozero::Message {
   }
 };
 
-class HeapGraphObject_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class HeapGraphObject_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/10, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   HeapGraphObject_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit HeapGraphObject_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -150020,6 +158239,8 @@ class HeapGraphObject_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIEL
   int64_t native_allocation_registry_size_field() const { return at<8>().as_int64(); }
   bool has_heap_type_delta() const { return at<9>().valid(); }
   int32_t heap_type_delta() const { return at<9>().as_int32(); }
+  bool has_runtime_internal_object_id() const { return at<10>().valid(); }
+  ::protozero::PackedRepeatedFieldIterator<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t> runtime_internal_object_id(bool* parse_error_ptr) const { return GetPackedRepeated<::protozero::proto_utils::ProtoWireType::kVarInt, uint64_t>(10, parse_error_ptr); }
 };
 
 class HeapGraphObject : public ::protozero::Message {
@@ -150035,6 +158256,7 @@ class HeapGraphObject : public ::protozero::Message {
     kReferenceObjectIdFieldNumber = 5,
     kNativeAllocationRegistrySizeFieldFieldNumber = 8,
     kHeapTypeDeltaFieldNumber = 9,
+    kRuntimeInternalObjectIdFieldNumber = 10,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.HeapGraphObject"; }
 
@@ -150200,6 +158422,20 @@ class HeapGraphObject : public ::protozero::Message {
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kEnum>
         ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_RuntimeInternalObjectId =
+    ::protozero::proto_utils::FieldMetadata<
+      10,
+      ::protozero::proto_utils::RepetitionType::kRepeatedPacked,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      HeapGraphObject>;
+
+  static constexpr FieldMetadata_RuntimeInternalObjectId kRuntimeInternalObjectId{};
+  void set_runtime_internal_object_id(const ::protozero::PackedVarInt& packed_buffer) {
+    AppendBytes(FieldMetadata_RuntimeInternalObjectId::kFieldId, packed_buffer.data(),
+                packed_buffer.size());
   }
 };
 
@@ -151086,106 +159322,6 @@ class Line : public ::protozero::Message {
   }
 };
 
-class ProfiledFrameSymbols_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
- public:
-  ProfiledFrameSymbols_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
-  explicit ProfiledFrameSymbols_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
-  explicit ProfiledFrameSymbols_Decoder(const ::protozero::ConstBytes& raw) : TypedProtoDecoder(raw.data, raw.size) {}
-  bool has_frame_iid() const { return at<1>().valid(); }
-  uint64_t frame_iid() const { return at<1>().as_uint64(); }
-  bool has_function_name_id() const { return at<2>().valid(); }
-  ::protozero::RepeatedFieldIterator<uint64_t> function_name_id() const { return GetRepeated<uint64_t>(2); }
-  bool has_file_name_id() const { return at<3>().valid(); }
-  ::protozero::RepeatedFieldIterator<uint64_t> file_name_id() const { return GetRepeated<uint64_t>(3); }
-  bool has_line_number() const { return at<4>().valid(); }
-  ::protozero::RepeatedFieldIterator<uint32_t> line_number() const { return GetRepeated<uint32_t>(4); }
-};
-
-class ProfiledFrameSymbols : public ::protozero::Message {
- public:
-  using Decoder = ProfiledFrameSymbols_Decoder;
-  enum : int32_t {
-    kFrameIidFieldNumber = 1,
-    kFunctionNameIdFieldNumber = 2,
-    kFileNameIdFieldNumber = 3,
-    kLineNumberFieldNumber = 4,
-  };
-  static constexpr const char* GetName() { return ".perfetto.protos.ProfiledFrameSymbols"; }
-
-
-  using FieldMetadata_FrameIid =
-    ::protozero::proto_utils::FieldMetadata<
-      1,
-      ::protozero::proto_utils::RepetitionType::kNotRepeated,
-      ::protozero::proto_utils::ProtoSchemaType::kUint64,
-      uint64_t,
-      ProfiledFrameSymbols>;
-
-  static constexpr FieldMetadata_FrameIid kFrameIid{};
-  void set_frame_iid(uint64_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_FrameIid::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint64>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_FunctionNameId =
-    ::protozero::proto_utils::FieldMetadata<
-      2,
-      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
-      ::protozero::proto_utils::ProtoSchemaType::kUint64,
-      uint64_t,
-      ProfiledFrameSymbols>;
-
-  static constexpr FieldMetadata_FunctionNameId kFunctionNameId{};
-  void add_function_name_id(uint64_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_FunctionNameId::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint64>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_FileNameId =
-    ::protozero::proto_utils::FieldMetadata<
-      3,
-      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
-      ::protozero::proto_utils::ProtoSchemaType::kUint64,
-      uint64_t,
-      ProfiledFrameSymbols>;
-
-  static constexpr FieldMetadata_FileNameId kFileNameId{};
-  void add_file_name_id(uint64_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_FileNameId::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint64>
-        ::Append(*this, field_id, value);
-  }
-
-  using FieldMetadata_LineNumber =
-    ::protozero::proto_utils::FieldMetadata<
-      4,
-      ::protozero::proto_utils::RepetitionType::kRepeatedNotPacked,
-      ::protozero::proto_utils::ProtoSchemaType::kUint32,
-      uint32_t,
-      ProfiledFrameSymbols>;
-
-  static constexpr FieldMetadata_LineNumber kLineNumber{};
-  void add_line_number(uint32_t value) {
-    static constexpr uint32_t field_id = FieldMetadata_LineNumber::kFieldId;
-    // Call the appropriate protozero::Message::Append(field_id, ...)
-    // method based on the type of the field.
-    ::protozero::internal::FieldWriter<
-      ::protozero::proto_utils::ProtoSchemaType::kUint32>
-        ::Append(*this, field_id, value);
-  }
-};
-
 class InternedString_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/2, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   InternedString_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
@@ -151318,13 +159454,14 @@ enum SampleSkipReason : int32_t {
   PROFILER_SKIP_READ_STAGE = 1,
   PROFILER_SKIP_UNWIND_STAGE = 2,
   PROFILER_SKIP_UNWIND_ENQUEUE = 3,
+  PROFILER_SKIP_NOT_IN_SCOPE = 4,
 };
 } // namespace perfetto_pbzero_enum_PerfSample
 using PerfSample_SampleSkipReason = perfetto_pbzero_enum_PerfSample::SampleSkipReason;
 
 
 constexpr PerfSample_SampleSkipReason PerfSample_SampleSkipReason_MIN = PerfSample_SampleSkipReason::PROFILER_SKIP_UNKNOWN;
-constexpr PerfSample_SampleSkipReason PerfSample_SampleSkipReason_MAX = PerfSample_SampleSkipReason::PROFILER_SKIP_UNWIND_ENQUEUE;
+constexpr PerfSample_SampleSkipReason PerfSample_SampleSkipReason_MAX = PerfSample_SampleSkipReason::PROFILER_SKIP_NOT_IN_SCOPE;
 
 
 PERFETTO_PROTOZERO_CONSTEXPR14_OR_INLINE
@@ -151341,6 +159478,9 @@ const char* PerfSample_SampleSkipReason_Name(::perfetto::protos::pbzero::PerfSam
 
   case ::perfetto::protos::pbzero::PerfSample_SampleSkipReason::PROFILER_SKIP_UNWIND_ENQUEUE:
     return "PROFILER_SKIP_UNWIND_ENQUEUE";
+
+  case ::perfetto::protos::pbzero::PerfSample_SampleSkipReason::PROFILER_SKIP_NOT_IN_SCOPE:
+    return "PROFILER_SKIP_NOT_IN_SCOPE";
   }
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
@@ -151670,6 +159810,7 @@ class PerfSample : public ::protozero::Message {
   static inline const SampleSkipReason PROFILER_SKIP_READ_STAGE = SampleSkipReason::PROFILER_SKIP_READ_STAGE;
   static inline const SampleSkipReason PROFILER_SKIP_UNWIND_STAGE = SampleSkipReason::PROFILER_SKIP_UNWIND_STAGE;
   static inline const SampleSkipReason PROFILER_SKIP_UNWIND_ENQUEUE = SampleSkipReason::PROFILER_SKIP_UNWIND_ENQUEUE;
+  static inline const SampleSkipReason PROFILER_SKIP_NOT_IN_SCOPE = SampleSkipReason::PROFILER_SKIP_NOT_IN_SCOPE;
 
   using FieldMetadata_Cpu =
     ::protozero::proto_utils::FieldMetadata<
@@ -156858,7 +164999,7 @@ const char* ChromeFrameReporter_FrameType_Name(::perfetto::protos::pbzero::Chrom
   return "PBZERO_UNKNOWN_ENUM_VALUE";
 }
 
-class ChromeFrameReporter_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/16, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class ChromeFrameReporter_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/18, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   ChromeFrameReporter_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ChromeFrameReporter_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -156895,6 +165036,10 @@ class ChromeFrameReporter_Decoder : public ::protozero::TypedProtoDecoder</*MAX_
   bool checkerboarded_needs_raster() const { return at<15>().as_bool(); }
   bool has_checkerboarded_needs_record() const { return at<16>().valid(); }
   bool checkerboarded_needs_record() const { return at<16>().as_bool(); }
+  bool has_surface_frame_trace_id() const { return at<17>().valid(); }
+  int64_t surface_frame_trace_id() const { return at<17>().as_int64(); }
+  bool has_display_trace_id() const { return at<18>().valid(); }
+  int64_t display_trace_id() const { return at<18>().as_int64(); }
 };
 
 class ChromeFrameReporter : public ::protozero::Message {
@@ -156917,6 +165062,8 @@ class ChromeFrameReporter : public ::protozero::Message {
     kHighLatencyContributionStageFieldNumber = 14,
     kCheckerboardedNeedsRasterFieldNumber = 15,
     kCheckerboardedNeedsRecordFieldNumber = 16,
+    kSurfaceFrameTraceIdFieldNumber = 17,
+    kDisplayTraceIdFieldNumber = 18,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ChromeFrameReporter"; }
 
@@ -157247,6 +165394,42 @@ class ChromeFrameReporter : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_SurfaceFrameTraceId =
+    ::protozero::proto_utils::FieldMetadata<
+      17,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      ChromeFrameReporter>;
+
+  static constexpr FieldMetadata_SurfaceFrameTraceId kSurfaceFrameTraceId{};
+  void set_surface_frame_trace_id(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_SurfaceFrameTraceId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_DisplayTraceId =
+    ::protozero::proto_utils::FieldMetadata<
+      18,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kInt64,
+      int64_t,
+      ChromeFrameReporter>;
+
+  static constexpr FieldMetadata_DisplayTraceId kDisplayTraceId{};
+  void set_display_trace_id(int64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_DisplayTraceId::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kInt64>
         ::Append(*this, field_id, value);
   }
 };
@@ -162916,7 +171099,7 @@ class ProcessTree : public ::protozero::Message {
   }
 };
 
-class ProcessTree_Process_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/7, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class ProcessTree_Process_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   ProcessTree_Process_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit ProcessTree_Process_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -162927,12 +171110,16 @@ class ProcessTree_Process_Decoder : public ::protozero::TypedProtoDecoder</*MAX_
   int32_t ppid() const { return at<2>().as_int32(); }
   bool has_cmdline() const { return at<3>().valid(); }
   ::protozero::RepeatedFieldIterator<::protozero::ConstChars> cmdline() const { return GetRepeated<::protozero::ConstChars>(3); }
+  bool has_cmdline_is_comm() const { return at<9>().valid(); }
+  bool cmdline_is_comm() const { return at<9>().as_bool(); }
   bool has_uid() const { return at<5>().valid(); }
   int32_t uid() const { return at<5>().as_int32(); }
   bool has_nspid() const { return at<6>().valid(); }
   ::protozero::RepeatedFieldIterator<int32_t> nspid() const { return GetRepeated<int32_t>(6); }
   bool has_process_start_from_boot() const { return at<7>().valid(); }
   uint64_t process_start_from_boot() const { return at<7>().as_uint64(); }
+  bool has_is_kthread() const { return at<8>().valid(); }
+  bool is_kthread() const { return at<8>().as_bool(); }
 };
 
 class ProcessTree_Process : public ::protozero::Message {
@@ -162942,9 +171129,11 @@ class ProcessTree_Process : public ::protozero::Message {
     kPidFieldNumber = 1,
     kPpidFieldNumber = 2,
     kCmdlineFieldNumber = 3,
+    kCmdlineIsCommFieldNumber = 9,
     kUidFieldNumber = 5,
     kNspidFieldNumber = 6,
     kProcessStartFromBootFieldNumber = 7,
+    kIsKthreadFieldNumber = 8,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.ProcessTree.Process"; }
 
@@ -163009,6 +171198,24 @@ class ProcessTree_Process : public ::protozero::Message {
         ::Append(*this, field_id, value);
   }
 
+  using FieldMetadata_CmdlineIsComm =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      ProcessTree_Process>;
+
+  static constexpr FieldMetadata_CmdlineIsComm kCmdlineIsComm{};
+  void set_cmdline_is_comm(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_CmdlineIsComm::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
+        ::Append(*this, field_id, value);
+  }
+
   using FieldMetadata_Uid =
     ::protozero::proto_utils::FieldMetadata<
       5,
@@ -163060,6 +171267,24 @@ class ProcessTree_Process : public ::protozero::Message {
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
       ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_IsKthread =
+    ::protozero::proto_utils::FieldMetadata<
+      8,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kBool,
+      bool,
+      ProcessTree_Process>;
+
+  static constexpr FieldMetadata_IsKthread kIsKthread{};
+  void set_is_kthread(bool value) {
+    static constexpr uint32_t field_id = FieldMetadata_IsKthread::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kBool>
         ::Append(*this, field_id, value);
   }
 };
@@ -164404,7 +172629,7 @@ class SysStats_InterruptCount : public ::protozero::Message {
   }
 };
 
-class SysStats_CpuTimes_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/8, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
+class SysStats_CpuTimes_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/9, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
  public:
   SysStats_CpuTimes_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit SysStats_CpuTimes_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -164425,6 +172650,8 @@ class SysStats_CpuTimes_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FI
   uint64_t irq_ns() const { return at<7>().as_uint64(); }
   bool has_softirq_ns() const { return at<8>().valid(); }
   uint64_t softirq_ns() const { return at<8>().as_uint64(); }
+  bool has_steal_ns() const { return at<9>().valid(); }
+  uint64_t steal_ns() const { return at<9>().as_uint64(); }
 };
 
 class SysStats_CpuTimes : public ::protozero::Message {
@@ -164439,6 +172666,7 @@ class SysStats_CpuTimes : public ::protozero::Message {
     kIoWaitNsFieldNumber = 6,
     kIrqNsFieldNumber = 7,
     kSoftirqNsFieldNumber = 8,
+    kStealNsFieldNumber = 9,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.SysStats.CpuTimes"; }
 
@@ -164580,6 +172808,24 @@ class SysStats_CpuTimes : public ::protozero::Message {
   static constexpr FieldMetadata_SoftirqNs kSoftirqNs{};
   void set_softirq_ns(uint64_t value) {
     static constexpr uint32_t field_id = FieldMetadata_SoftirqNs::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
+
+  using FieldMetadata_StealNs =
+    ::protozero::proto_utils::FieldMetadata<
+      9,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      SysStats_CpuTimes>;
+
+  static constexpr FieldMetadata_StealNs kStealNs{};
+  void set_steal_ns(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_StealNs::kFieldId;
     // Call the appropriate protozero::Message::Append(field_id, ...)
     // method based on the type of the field.
     ::protozero::internal::FieldWriter<
@@ -164771,7 +173017,7 @@ class CpuInfo : public ::protozero::Message {
 
 };
 
-class CpuInfo_Cpu_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/4, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
+class CpuInfo_Cpu_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/true> {
  public:
   CpuInfo_Cpu_Decoder(const uint8_t* data, size_t len) : TypedProtoDecoder(data, len) {}
   explicit CpuInfo_Cpu_Decoder(const std::string& raw) : TypedProtoDecoder(reinterpret_cast<const uint8_t*>(raw.data()), raw.size()) {}
@@ -164784,6 +173030,8 @@ class CpuInfo_Cpu_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID
   uint32_t capacity() const { return at<3>().as_uint32(); }
   bool has_arm_identifier() const { return at<4>().valid(); }
   ::protozero::ConstBytes arm_identifier() const { return at<4>().as_bytes(); }
+  bool has_features() const { return at<5>().valid(); }
+  uint64_t features() const { return at<5>().as_uint64(); }
 };
 
 class CpuInfo_Cpu : public ::protozero::Message {
@@ -164794,6 +173042,7 @@ class CpuInfo_Cpu : public ::protozero::Message {
     kFrequenciesFieldNumber = 2,
     kCapacityFieldNumber = 3,
     kArmIdentifierFieldNumber = 4,
+    kFeaturesFieldNumber = 5,
   };
   static constexpr const char* GetName() { return ".perfetto.protos.CpuInfo.Cpu"; }
 
@@ -164871,6 +173120,24 @@ class CpuInfo_Cpu : public ::protozero::Message {
     return BeginNestedMessage<T>(4);
   }
 
+
+  using FieldMetadata_Features =
+    ::protozero::proto_utils::FieldMetadata<
+      5,
+      ::protozero::proto_utils::RepetitionType::kNotRepeated,
+      ::protozero::proto_utils::ProtoSchemaType::kUint64,
+      uint64_t,
+      CpuInfo_Cpu>;
+
+  static constexpr FieldMetadata_Features kFeatures{};
+  void set_features(uint64_t value) {
+    static constexpr uint32_t field_id = FieldMetadata_Features::kFieldId;
+    // Call the appropriate protozero::Message::Append(field_id, ...)
+    // method based on the type of the field.
+    ::protozero::internal::FieldWriter<
+      ::protozero::proto_utils::ProtoSchemaType::kUint64>
+        ::Append(*this, field_id, value);
+  }
 };
 
 class CpuInfo_ArmCpuIdentifier_Decoder : public ::protozero::TypedProtoDecoder</*MAX_FIELD_ID=*/5, /*HAS_NONPACKED_REPEATED_FIELDS=*/false> {
@@ -168975,6 +177242,8 @@ class PERFETTO_EXPORT_COMPONENT ChromeFrameReporter : public ::protozero::CppMes
     kHighLatencyContributionStageFieldNumber = 14,
     kCheckerboardedNeedsRasterFieldNumber = 15,
     kCheckerboardedNeedsRecordFieldNumber = 16,
+    kSurfaceFrameTraceIdFieldNumber = 17,
+    kDisplayTraceIdFieldNumber = 18,
   };
 
   ChromeFrameReporter();
@@ -169058,6 +177327,14 @@ class PERFETTO_EXPORT_COMPONENT ChromeFrameReporter : public ::protozero::CppMes
   bool checkerboarded_needs_record() const { return checkerboarded_needs_record_; }
   void set_checkerboarded_needs_record(bool value) { checkerboarded_needs_record_ = value; _has_field_.set(16); }
 
+  bool has_surface_frame_trace_id() const { return _has_field_[17]; }
+  int64_t surface_frame_trace_id() const { return surface_frame_trace_id_; }
+  void set_surface_frame_trace_id(int64_t value) { surface_frame_trace_id_ = value; _has_field_.set(17); }
+
+  bool has_display_trace_id() const { return _has_field_[18]; }
+  int64_t display_trace_id() const { return display_trace_id_; }
+  void set_display_trace_id(int64_t value) { display_trace_id_ = value; _has_field_.set(18); }
+
  private:
   ChromeFrameReporter_State state_{};
   ChromeFrameReporter_FrameDropReason reason_{};
@@ -169075,12 +177352,14 @@ class PERFETTO_EXPORT_COMPONENT ChromeFrameReporter : public ::protozero::CppMes
   std::vector<std::string> high_latency_contribution_stage_;
   bool checkerboarded_needs_raster_{};
   bool checkerboarded_needs_record_{};
+  int64_t surface_frame_trace_id_{};
+  int64_t display_trace_id_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<17> _has_field_{};
+  std::bitset<19> _has_field_{};
 };
 
 }  // namespace perfetto
@@ -171587,6 +179866,9 @@ class PERFETTO_EXPORT_COMPONENT TrackEvent : public ::protozero::CppMessageObj {
     kFlowIdsFieldNumber = 47,
     kTerminatingFlowIdsOldFieldNumber = 42,
     kTerminatingFlowIdsFieldNumber = 48,
+    kCorrelationIdFieldNumber = 52,
+    kCorrelationIdStrFieldNumber = 53,
+    kCorrelationIdStrIidFieldNumber = 54,
     kDebugAnnotationsFieldNumber = 4,
     kTaskExecutionFieldNumber = 5,
     kLogMessageFieldNumber = 21,
@@ -171724,6 +180006,18 @@ class PERFETTO_EXPORT_COMPONENT TrackEvent : public ::protozero::CppMessageObj {
   void add_terminating_flow_ids(uint64_t value) { terminating_flow_ids_.emplace_back(value); }
   uint64_t* add_terminating_flow_ids() { terminating_flow_ids_.emplace_back(); return &terminating_flow_ids_.back(); }
 
+  bool has_correlation_id() const { return _has_field_[52]; }
+  uint64_t correlation_id() const { return correlation_id_; }
+  void set_correlation_id(uint64_t value) { correlation_id_ = value; _has_field_.set(52); }
+
+  bool has_correlation_id_str() const { return _has_field_[53]; }
+  const std::string& correlation_id_str() const { return correlation_id_str_; }
+  void set_correlation_id_str(const std::string& value) { correlation_id_str_ = value; _has_field_.set(53); }
+
+  bool has_correlation_id_str_iid() const { return _has_field_[54]; }
+  uint64_t correlation_id_str_iid() const { return correlation_id_str_iid_; }
+  void set_correlation_id_str_iid(uint64_t value) { correlation_id_str_iid_ = value; _has_field_.set(54); }
+
   const std::vector<DebugAnnotation>& debug_annotations() const { return debug_annotations_; }
   std::vector<DebugAnnotation>* mutable_debug_annotations() { return &debug_annotations_; }
   int debug_annotations_size() const;
@@ -171851,6 +180145,9 @@ class PERFETTO_EXPORT_COMPONENT TrackEvent : public ::protozero::CppMessageObj {
   std::vector<uint64_t> flow_ids_;
   std::vector<uint64_t> terminating_flow_ids_old_;
   std::vector<uint64_t> terminating_flow_ids_;
+  uint64_t correlation_id_{};
+  std::string correlation_id_str_{};
+  uint64_t correlation_id_str_iid_{};
   std::vector<DebugAnnotation> debug_annotations_;
   ::protozero::CopyablePtr<TaskExecution> task_execution_;
   ::protozero::CopyablePtr<LogMessage> log_message_;
@@ -171883,7 +180180,7 @@ class PERFETTO_EXPORT_COMPONENT TrackEvent : public ::protozero::CppMessageObj {
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<51> _has_field_{};
+  std::bitset<55> _has_field_{};
 };
 
 
@@ -172126,6 +180423,7 @@ enum TraceConfig_TraceFilter_StringFilterPolicy : int;
 enum TraceConfig_TriggerConfig_TriggerMode : int;
 enum BuiltinClock : int;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 enum TraceConfig_BufferConfig_FillPolicy : int;
@@ -172205,6 +180503,7 @@ class PERFETTO_EXPORT_COMPONENT CloneSessionRequest : public ::protozero::CppMes
     kCloneTriggerProducerNameFieldNumber = 6,
     kCloneTriggerTrustedProducerUidFieldNumber = 7,
     kCloneTriggerBootTimeNsFieldNumber = 8,
+    kCloneTriggerDelayMsFieldNumber = 9,
   };
 
   CloneSessionRequest();
@@ -172253,6 +180552,10 @@ class PERFETTO_EXPORT_COMPONENT CloneSessionRequest : public ::protozero::CppMes
   uint64_t clone_trigger_boot_time_ns() const { return clone_trigger_boot_time_ns_; }
   void set_clone_trigger_boot_time_ns(uint64_t value) { clone_trigger_boot_time_ns_ = value; _has_field_.set(8); }
 
+  bool has_clone_trigger_delay_ms() const { return _has_field_[9]; }
+  uint64_t clone_trigger_delay_ms() const { return clone_trigger_delay_ms_; }
+  void set_clone_trigger_delay_ms(uint64_t value) { clone_trigger_delay_ms_ = value; _has_field_.set(9); }
+
  private:
   uint64_t session_id_{};
   std::string unique_session_name_{};
@@ -172262,12 +180565,13 @@ class PERFETTO_EXPORT_COMPONENT CloneSessionRequest : public ::protozero::CppMes
   std::string clone_trigger_producer_name_{};
   int32_t clone_trigger_trusted_producer_uid_{};
   uint64_t clone_trigger_boot_time_ns_{};
+  uint64_t clone_trigger_delay_ms_{};
 
   // Allows to preserve unknown protobuf fields for compatibility
   // with future versions of .proto files.
   std::string unknown_fields_;
 
-  std::bitset<9> _has_field_{};
+  std::bitset<10> _has_field_{};
 };
 
 
@@ -173314,6 +181618,7 @@ class RegisterDataSourceRequest;
 class InitializeConnectionResponse;
 class InitializeConnectionRequest;
 enum DataSourceConfig_SessionInitiator : int;
+enum DataSourceConfig_BufferExhaustedPolicy : int;
 enum ConsoleConfig_Output : int;
 enum ChromeConfig_ClientPriority : int;
 enum InitializeConnectionRequest_ProducerSMBScrapingMode : int;
@@ -174443,6 +182748,10 @@ namespace gen {
 class SyncClockResponse;
 class SyncClockRequest;
 class SyncClockRequest_Clock;
+class InitRelayResponse;
+class InitRelayRequest;
+class SystemInfo;
+class Utsname;
 enum SyncClockRequest_Phase : int;
 }  // namespace perfetto
 }  // namespace protos
@@ -174576,6 +182885,70 @@ class PERFETTO_EXPORT_COMPONENT SyncClockRequest_Clock : public ::protozero::Cpp
   std::string unknown_fields_;
 
   std::bitset<3> _has_field_{};
+};
+
+
+class PERFETTO_EXPORT_COMPONENT InitRelayResponse : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+  };
+
+  InitRelayResponse();
+  ~InitRelayResponse() override;
+  InitRelayResponse(InitRelayResponse&&) noexcept;
+  InitRelayResponse& operator=(InitRelayResponse&&);
+  InitRelayResponse(const InitRelayResponse&);
+  InitRelayResponse& operator=(const InitRelayResponse&);
+  bool operator==(const InitRelayResponse&) const;
+  bool operator!=(const InitRelayResponse& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+ private:
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<2> _has_field_{};
+};
+
+
+class PERFETTO_EXPORT_COMPONENT InitRelayRequest : public ::protozero::CppMessageObj {
+ public:
+  enum FieldNumbers {
+    kSystemInfoFieldNumber = 1,
+  };
+
+  InitRelayRequest();
+  ~InitRelayRequest() override;
+  InitRelayRequest(InitRelayRequest&&) noexcept;
+  InitRelayRequest& operator=(InitRelayRequest&&);
+  InitRelayRequest(const InitRelayRequest&);
+  InitRelayRequest& operator=(const InitRelayRequest&);
+  bool operator==(const InitRelayRequest&) const;
+  bool operator!=(const InitRelayRequest& other) const { return !(*this == other); }
+
+  bool ParseFromArray(const void*, size_t) override;
+  std::string SerializeAsString() const override;
+  std::vector<uint8_t> SerializeAsArray() const override;
+  void Serialize(::protozero::Message*) const;
+
+  bool has_system_info() const { return _has_field_[1]; }
+  const SystemInfo& system_info() const { return *system_info_; }
+  SystemInfo* mutable_system_info() { _has_field_.set(1); return system_info_.get(); }
+
+ private:
+  ::protozero::CopyablePtr<SystemInfo> system_info_;
+
+  // Allows to preserve unknown protobuf fields for compatibility
+  // with future versions of .proto files.
+  std::string unknown_fields_;
+
+  std::bitset<2> _has_field_{};
 };
 
 }  // namespace perfetto

@@ -1,7 +1,11 @@
 # ==================================================================================================
 # CMake
 # ==================================================================================================
-cmake_minimum_required(VERSION 3.19)
+cmake_minimum_required(VERSION 3.22.1)
+
+# Note: we set the main CMakeLists.txt's minimum cmake version to the maximum of all the
+# cmake_minimum_required versions for the full build (building for all backends, and for
+# both release and debug).
 
 # ==================================================================================================
 # Toolchain configuration
@@ -22,7 +26,6 @@ project(TNT)
 option(FILAMENT_USE_EXTERNAL_GLES3 "Experimental: Compile Filament against OpenGL ES 3" OFF)
 
 option(FILAMENT_ENABLE_LTO "Enable link-time optimizations if supported by the compiler" OFF)
-
 option(FILAMENT_SKIP_SAMPLES "Don't build samples" OFF)
 
 option(FILAMENT_SUPPORTS_XCB "Include XCB support in Linux builds" ON)
@@ -41,6 +44,8 @@ option(FILAMENT_ENABLE_ASAN_UBSAN "Enable Address and Undefined Behavior Sanitiz
 
 option(FILAMENT_ENABLE_TSAN "Enable Thread Sanitizer" OFF)
 
+option(FILAMENT_ENABLE_COVERAGE "Enable LLVM code coverage" OFF)
+
 option(FILAMENT_ENABLE_FEATURE_LEVEL_0 "Enable Feature Level 0" ON)
 
 option(FILAMENT_ENABLE_MULTIVIEW "Enable multiview for Filament" OFF)
@@ -50,6 +55,8 @@ option(FILAMENT_SUPPORTS_OSMESA "Enable OSMesa (headless GL context) for Filamen
 option(FILAMENT_ENABLE_FGVIEWER "Enable the frame graph viewer" OFF)
 
 option(FILAMENT_USE_ABSEIL_LOGGING "Use Abseil to log, may increase binary size" OFF)
+
+option(FILAMENT_ENABLE_EXPERIMENTAL_GCC_SUPPORT "Enable GCC support (unsupported)" OFF)
 
 # This is to disable GTAO for the short-term while we investigate a way to better manage size increases.
 # On the regular filament build (where size is of less concern), we enable GTAO by default.
@@ -290,15 +297,10 @@ set(TOOLS ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 # ==================================================================================================
 set(MIN_CLANG_VERSION "6.0")
 
-if (CMAKE_C_COMPILER_ID MATCHES "Clang")
-    if (CMAKE_C_COMPILER_VERSION VERSION_LESS MIN_CLANG_VERSION)
-        message(FATAL_ERROR "Detected C compiler Clang ${CMAKE_C_COMPILER_VERSION} < ${MIN_CLANG_VERSION}")
-    endif()
-elseif (NOT MSVC)
-    message(FATAL_ERROR "Detected C compiler ${CMAKE_C_COMPILER_ID} is unsupported")
-endif()
-
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+set(FILAMENT_USING_GCC OFF)
+if (CMAKE_C_COMPILER_ID MATCHES "GNU" AND FILAMENT_ENABLE_EXPERIMENTAL_GCC_SUPPORT)
+    set(FILAMENT_USING_GCC ON)
+elseif (CMAKE_C_COMPILER_ID MATCHES "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS MIN_CLANG_VERSION)
         message(FATAL_ERROR "Detected CXX compiler Clang ${CMAKE_CXX_COMPILER_VERSION} < ${MIN_CLANG_VERSION}")
     endif()
@@ -330,23 +332,27 @@ endif()
 # ==================================================================================================
 # General compiler flags
 # ==================================================================================================
-set(CXX_STANDARD "-std=c++17")
+set(CXX_STANDARD "-std=c++20")
 if (WIN32)
-    set(CXX_STANDARD "/std:c++17")
+    set(CXX_STANDARD "/std:c++20")
 endif()
 
 if (MSVC)
     set(CXX_STANDARD "/std:c++latest")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} /W0 /Zc:__cplusplus")
 else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} -fstrict-aliasing -Wno-unknown-pragmas -Wno-unused-function -Wno-deprecated-declarations")
+    if(FILAMENT_USING_GCC)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} -Wno-changes-meaning -Wno-return-type -Wno-attributes -Wno-unknown-pragmas -Wno-class-memaccess -Wno-multichar -Wno-deprecated-declarations -Wno-subobject-linkage -Wno-invalid-constexpr")
+    else()
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_STANDARD} -fstrict-aliasing -Wno-unknown-pragmas -Wno-unused-function -Wno-deprecated-declarations")
+    endif()
     if (APPLE)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nullability-extension")
     endif()
 endif()
 
 if (FILAMENT_USE_EXTERNAL_GLES3)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_EXTERNAL_GLES3")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFILAMENT_USE_EXTERNAL_GLES3")
 endif()
 
 if (FILAMENT_SUPPORTS_EGL_ON_LINUX)
@@ -360,10 +366,14 @@ endif()
 if (LINUX)
     option(USE_STATIC_LIBCXX "Link against the static runtime libraries." ON)
     if (${USE_STATIC_LIBCXX})
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-        link_libraries("-static-libgcc -static-libstdc++")
-        link_libraries(libc++.a)
-        link_libraries(libc++abi.a)
+        if (FILAMENT_USING_GCC)
+            link_libraries("-static-libgcc -static-libstdc++")
+        else ()
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+            link_libraries("-static-libgcc -static-libstdc++")
+            link_libraries(libc++.a)
+            link_libraries(libc++abi.a)
+        endif()
     endif()
 
     # Only linux, clang doesn't want to use a shared library that is not PIC.
@@ -388,8 +398,8 @@ if (MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE")
 endif()
 
-# Add colors to ninja builds
-if (UNIX AND CMAKE_GENERATOR STREQUAL "Ninja")
+# Add colors to ninja builds (when not using gcc)
+if (UNIX AND CMAKE_GENERATOR STREQUAL "Ninja" AND NOT FILAMENT_USING_GCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcolor-diagnostics")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcolor-diagnostics")
 endif()
@@ -460,6 +470,10 @@ if (NOT MSVC AND NOT WEBGL)
 endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${EXTRA_SANITIZE_OPTIONS}")
 
+if (FILAMENT_ENABLE_COVERAGE)
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fprofile-instr-generate -fcoverage-mapping")
+endif()
+
 # Disable the stack check for macOS to workaround a known issue in clang 11.0.0.
 # See: https://forums.developer.apple.com/thread/121887
 if (APPLE)
@@ -523,6 +537,15 @@ if (FILAMENT_SUPPORTS_OPENGL)
     add_definitions(-DFILAMENT_SUPPORTS_OPENGL)
 endif()
 
+if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
+    option(FILAMENT_ENABLE_PERFETTO "Enable perfetto SDK on Android" OFF)
+else()
+    option(FILAMENT_ENABLE_PERFETTO "Enable perfetto SDK on Android" ON)
+endif()
+if (FILAMENT_ENABLE_PERFETTO)
+    add_definitions(-DFILAMENT_ENABLE_PERFETTO)
+endif()
+
 # By default, build with Vulkan support on desktop platforms, although clients must request to use
 # it at run time.
 if (WIN32 OR WEBGL OR IOS)
@@ -535,7 +558,6 @@ if (FILAMENT_SUPPORTS_VULKAN)
 endif()
 
 if (FILAMENT_SUPPORTS_WEBGPU)
-    message(AUTHOR_WARNING "WebGPU is in development stage and broken at this stage. Its support is very limited.")
     add_definitions(-DFILAMENT_SUPPORTS_WEBGPU)
 endif()
 
@@ -625,7 +647,7 @@ endif()
 # With WebGPU, Tint does not support ClipDistance which is used in Stereo.  Mentioned in comment
 # https://github.com/google/dawn/blob/855d17b08abdf02f9142bf5a8f14d0ea088810a4/src/tint/lang/spirv/reader/ast_parser/function.cc#L4434
 if (FILAMENT_SUPPORTS_WEBGPU)
-    set(MATC_API_FLAGS ${MATC_API_FLAGS} -a webgpu --variant-filter=skinning,stereo)
+    set(MATC_API_FLAGS ${MATC_API_FLAGS} -a webgpu --variant-filter=stereo)
 endif()
 
 # Disable ESSL 1.0 code generation.
@@ -786,6 +808,7 @@ add_subdirectory(${LIBRARIES}/filabridge)
 add_subdirectory(${LIBRARIES}/filaflat)
 add_subdirectory(${LIBRARIES}/filagui)
 add_subdirectory(${LIBRARIES}/filameshio)
+add_subdirectory(${LIBRARIES}/generatePrefilterMipmap)
 add_subdirectory(${LIBRARIES}/gltfio)
 add_subdirectory(${LIBRARIES}/ibl)
 add_subdirectory(${LIBRARIES}/iblprefilter)
@@ -812,6 +835,7 @@ add_subdirectory(${EXTERNAL}/jsmn/tnt)
 add_subdirectory(${EXTERNAL}/stb/tnt)
 add_subdirectory(${EXTERNAL}/getopt)
 add_subdirectory(${EXTERNAL}/perfetto/tnt)
+add_subdirectory(${EXTERNAL}/zstd/tnt)
 
 # Note that this has to be placed after mikktspace in order for combine_static_libs to work.
 add_subdirectory(${LIBRARIES}/geometry)
@@ -864,6 +888,7 @@ if (IS_HOST_PLATFORM)
       add_subdirectory(${LIBRARIES}/filamentapp)
     endif()
     add_subdirectory(${LIBRARIES}/imageio)
+    add_subdirectory(${LIBRARIES}/filament-matp)
 
     add_subdirectory(${FILAMENT}/samples)
 

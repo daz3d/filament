@@ -101,6 +101,16 @@ static constexpr uint64_t SWAP_CHAIN_HAS_STENCIL_BUFFER         = SWAP_CHAIN_CON
  */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_PROTECTED_CONTENT   = 0x40;
 
+/**
+ * Indicates that the SwapChain is configured to use Multi-Sample Anti-Aliasing (MSAA) with the
+ * given sample points within each pixel. Only supported when isMSAASwapChainSupported(4) is
+ * true.
+ *
+ * This is only supported by EGL(Android). Other GL platforms (GLX, WGL, etc) don't support it
+ * because the swapchain MSAA settings must be configured before window creation.
+ */
+static constexpr uint64_t SWAP_CHAIN_CONFIG_MSAA_4_SAMPLES      = 0x80;
+
 static constexpr size_t MAX_VERTEX_ATTRIBUTE_COUNT  = 16;   // This is guaranteed by OpenGL ES.
 static constexpr size_t MAX_SAMPLER_COUNT           = 62;   // Maximum needed at feature level 3.
 static constexpr size_t MAX_VERTEX_BUFFER_COUNT     = 16;   // Max number of bound buffer objects.
@@ -119,8 +129,8 @@ static constexpr struct {
     const size_t MAX_FRAGMENT_SAMPLER_COUNT;
 } FEATURE_LEVEL_CAPS[4] = {
         {  0,  0 }, // do not use
-        { 16, 16 }, // guaranteed by OpenGL ES, Vulkan and Metal
-        { 16, 16 }, // guaranteed by OpenGL ES, Vulkan and Metal
+        { 16, 16 }, // guaranteed by OpenGL ES, Vulkan, Metal And WebGPU
+        { 16, 16 }, // guaranteed by OpenGL ES, Vulkan, Metal And WebGPU
         { 31, 31 }, // guaranteed by Metal
 };
 
@@ -187,6 +197,7 @@ constexpr std::string_view to_string(Backend const backend) noexcept {
  * - The Metal backend can prefer precompiled Metal libraries, while falling back to MSL.
  */
 enum class ShaderLanguage {
+    UNSPECIFIED = -1,
     ESSL1 = 0,
     ESSL3 = 1,
     SPIRV = 2,
@@ -209,6 +220,8 @@ constexpr const char* shaderLanguageToString(ShaderLanguage shaderLanguage) noex
             return "Metal precompiled library";
         case ShaderLanguage::WGSL:
             return "WGSL";
+        case ShaderLanguage::UNSPECIFIED:
+            return "Unspecified";
     }
     return "UNKNOWN";
 }
@@ -474,7 +487,12 @@ constexpr std::string_view to_string(DescriptorType type) noexcept {
 
 enum class DescriptorFlags : uint8_t {
     NONE = 0x00,
-    DYNAMIC_OFFSET = 0x01
+
+    // Indicate a UNIFORM_BUFFER will have dynamic offsets.
+    DYNAMIC_OFFSET = 0x01,
+
+    // To indicate a texture/sampler type should be unfiltered.
+    UNFILTERABLE = 0x02,
 };
 
 using descriptor_set_t = uint8_t;
@@ -495,18 +513,12 @@ struct DescriptorSetLayoutBinding {
     DescriptorFlags flags = DescriptorFlags::NONE;
     uint16_t count = 0;
 
-    //  TODO: uncomment when needed.  Note that this class is used as hash key.  We need to ensure
-    //  no uninitialized padding bytes.
-    //    uint8_t externalSamplerDataIndex = EXTERNAL_SAMPLER_DATA_INDEX_UNUSED;
-
     friend bool operator==(DescriptorSetLayoutBinding const& lhs,
             DescriptorSetLayoutBinding const& rhs) noexcept {
         return lhs.type == rhs.type &&
                lhs.flags == rhs.flags &&
                lhs.count == rhs.count &&
                lhs.stageFlags == rhs.stageFlags;
-//               lhs.stageFlags == rhs.stageFlags &&
-//               lhs.externalSamplerDataIndex == rhs.externalSamplerDataIndex;
     }
 };
 
@@ -547,12 +559,21 @@ constexpr TargetBufferFlags getTargetBufferFlagsAt(size_t index) noexcept {
 }
 
 /**
- * Frequency at which a buffer is expected to be modified and used. This is used as an hint
- * for the driver to make better decisions about managing memory internally.
+ * How the buffer will be used.
  */
 enum class BufferUsage : uint8_t {
-    STATIC,      //!< content modified once, used many times
-    DYNAMIC,     //!< content modified frequently, used many times
+    STATIC              = 0,    //!< (legacy) content modified once, used many times
+    DYNAMIC             = 1,    //!< (legacy) content modified frequently, used many times
+    DYNAMIC_BIT         = 0x1,  //!< buffer can be modified frequently, used many times
+    SHARED_WRITE_BIT    = 0x04, //!< buffer can be memory mapped for write operations
+};
+
+/**
+ * How the buffer will be mapped.
+ */
+enum class MapBufferAccessFlags : uint8_t {
+    WRITE_BIT               = 0x2,  //!< buffer is mapped from writing
+    INVALIDATE_RANGE_BIT    = 0x4,  //!< the mapped range content is lost
 };
 
 /**
@@ -618,6 +639,15 @@ enum class ShaderModel : uint8_t {
 };
 static constexpr size_t SHADER_MODEL_COUNT = 2;
 
+constexpr std::string_view to_string(ShaderModel model) noexcept {
+    switch (model) {
+        case ShaderModel::MOBILE:
+            return "mobile";
+        case ShaderModel::DESKTOP:
+            return "desktop";
+    }
+}
+
 /**
  * Primitive types
  */
@@ -629,6 +659,18 @@ enum class PrimitiveType : uint8_t {
     TRIANGLES      = 4,    //!< triangles
     TRIANGLE_STRIP = 5     //!< triangle strip
 };
+
+[[nodiscard]] constexpr bool isStripPrimitiveType(const PrimitiveType type) {
+    switch (type) {
+        case PrimitiveType::POINTS:
+        case PrimitiveType::LINES:
+        case PrimitiveType::TRIANGLES:
+            return false;
+        case PrimitiveType::LINE_STRIP:
+        case PrimitiveType::TRIANGLE_STRIP:
+            return true;
+    }
+}
 
 /**
  * Supported uniform types
@@ -671,11 +713,29 @@ enum class Precision : uint8_t {
     DEFAULT
 };
 
+union ConstantValue {
+    int32_t i;
+    float f;
+    bool b;
+};
+
 /**
  * Shader compiler priority queue
+ *
+ * On platforms which support parallel shader compilation, compilation requests will be processed in
+ * order of priority, then insertion order. See Material::compile().
  */
 enum class CompilerPriorityQueue : uint8_t {
+    /** We need this program NOW.
+     *
+     * When passed as an argument to Material::compile(), if the platform doesn't support parallel
+     * compilation, but does support amortized shader compilation, the given shader program will be
+     * synchronously compiled.
+     */
+    CRITICAL,
+    /** We will need this program soon. */
     HIGH,
+    /** We will need this program eventually. */
     LOW
 };
 
@@ -1057,6 +1117,7 @@ enum class TextureUsage : uint16_t {
     BLIT_SRC            = 0x0040,            //!< Texture can be used the source of a blit()
     BLIT_DST            = 0x0080,            //!< Texture can be used the destination of a blit()
     PROTECTED           = 0x0100,            //!< Texture can be used for protected content
+    GEN_MIPMAPPABLE     = 0x0200,            //!< Texture can be used with generateMipmaps()
     DEFAULT             = UPLOADABLE | SAMPLEABLE,   //!< Default texture usage
     ALL_ATTACHMENTS     = COLOR_ATTACHMENT | DEPTH_ATTACHMENT | STENCIL_ATTACHMENT | SUBPASS_INPUT,   //!< Mask of all attachments
 };
@@ -1254,26 +1315,6 @@ enum class SamplerCompareFunc : uint8_t {
     N           //!< Never. The depth / stencil test always fails.
 };
 
-//! this API is copied from (and only applies to) the Vulkan spec.
-//! These specify YUV to RGB conversions.
-enum class SamplerYcbcrModelConversion : uint8_t {
-    RGB_IDENTITY = 0,
-    YCBCR_IDENTITY = 1,
-    YCBCR_709 = 2,
-    YCBCR_601 = 3,
-    YCBCR_2020 = 4,
-};
-
-enum class SamplerYcbcrRange : uint8_t {
-    ITU_FULL = 0,
-    ITU_NARROW = 1,
-};
-
-enum class ChromaLocation : uint8_t {
-    COSITED_EVEN = 0,
-    MIDPOINT = 1,
-};
-
 //! Sampler parameters
 struct SamplerParams {             // NOLINT
     SamplerMagFilter filterMag      : 1;    //!< magnification filter (NEAREST)
@@ -1342,94 +1383,9 @@ static_assert(sizeof(SamplerParams) == 4);
 static_assert(sizeof(SamplerParams) <= sizeof(uint64_t),
         "SamplerParams must be no more than 64 bits");
 
-//! Sampler parameters
-struct SamplerYcbcrConversion {// NOLINT
-    SamplerYcbcrModelConversion ycbcrModel : 4;
-    TextureSwizzle r : 4;
-    TextureSwizzle g : 4;
-    TextureSwizzle b : 4;
-    TextureSwizzle a : 4;
-    SamplerYcbcrRange ycbcrRange : 1;
-    ChromaLocation xChromaOffset : 1;
-    ChromaLocation yChromaOffset : 1;
-    SamplerMagFilter chromaFilter : 1;
-    uint8_t padding;
-
-    struct Hasher {
-        size_t operator()(const SamplerYcbcrConversion p) const noexcept {
-            // we don't use std::hash<> here, so we don't have to include <functional>
-            return *reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&p));
-        }
-    };
-
-    struct EqualTo {
-        bool operator()(SamplerYcbcrConversion lhs, SamplerYcbcrConversion rhs) const noexcept {
-            assert_invariant(lhs.padding == 0);
-            auto* pLhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&lhs));
-            auto* pRhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&rhs));
-            return *pLhs == *pRhs;
-        }
-    };
-
-    struct LessThan {
-        bool operator()(SamplerYcbcrConversion lhs, SamplerYcbcrConversion rhs) const noexcept {
-            assert_invariant(lhs.padding == 0);
-            auto* pLhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&lhs));
-            auto* pRhs = reinterpret_cast<uint32_t const*>(reinterpret_cast<char const*>(&rhs));
-            return *pLhs < *pRhs;
-        }
-    };
-
-private:
-    friend bool operator == (SamplerYcbcrConversion lhs, SamplerYcbcrConversion rhs)
-            noexcept {
-        return SamplerYcbcrConversion::EqualTo{}(lhs, rhs);
-    }
-    friend bool operator != (SamplerYcbcrConversion lhs, SamplerYcbcrConversion rhs)
-            noexcept {
-        return  !SamplerYcbcrConversion::EqualTo{}(lhs, rhs);
-    }
-    friend bool operator < (SamplerYcbcrConversion lhs, SamplerYcbcrConversion rhs)
-            noexcept {
-        return SamplerYcbcrConversion::LessThan{}(lhs, rhs);
-    }
-};
-
-static_assert(sizeof(SamplerYcbcrConversion) == 4);
-
-static_assert(sizeof(SamplerYcbcrConversion) <= sizeof(uint64_t),
-        "SamplerYcbcrConversion must be no more than 64 bits");
-
-struct ExternalSamplerDatum {
-    ExternalSamplerDatum(SamplerYcbcrConversion ycbcr, SamplerParams spm, uint32_t extFmt)
-        : YcbcrConversion(ycbcr),
-          samplerParams(spm),
-          externalFormat(extFmt) {}
-    bool operator==(ExternalSamplerDatum const& rhs) const {
-        return (YcbcrConversion == rhs.YcbcrConversion && samplerParams == rhs.samplerParams &&
-                externalFormat == rhs.externalFormat);
-    }
-    struct EqualTo {
-        bool operator()(const ExternalSamplerDatum& lhs,
-                const ExternalSamplerDatum& rhs) const noexcept {
-            return (lhs.YcbcrConversion == rhs.YcbcrConversion &&
-                lhs.samplerParams == rhs.samplerParams &&
-                lhs.externalFormat == rhs.externalFormat);
-        }
-    };
-    SamplerYcbcrConversion YcbcrConversion;
-    SamplerParams samplerParams;
-    uint32_t externalFormat;
-};
-// No implicit padding allowed due to it being a hash key.
-static_assert(sizeof(ExternalSamplerDatum) == 12);
-
 struct DescriptorSetLayout {
     std::variant<utils::StaticString, utils::CString, std::monostate> label;
     utils::FixedCapacityVector<DescriptorSetLayoutBinding> bindings;
-
-//  TODO: uncomment when needed
-//    utils::FixedCapacityVector<ExternalSamplerDatum> externalSamplerData;
 };
 
 //! blending equation function
@@ -1725,7 +1681,7 @@ static_assert(sizeof(StencilState::StencilOperations) == 5u,
 static_assert(sizeof(StencilState) == 12u,
         "StencilState size not what was intended");
 
-using FrameScheduledCallback = utils::Invocable<void(backend::PresentCallable)>;
+using FrameScheduledCallback = utils::Invocable<void(PresentCallable)>;
 
 enum class Workaround : uint16_t {
     // The EASU pass must split because shader compiler flattens early-exit branch
@@ -1747,9 +1703,15 @@ enum class Workaround : uint16_t {
     // prevents these stutters by not precaching depth variants of the default material for those
     // particular browsers.
     DISABLE_DEPTH_PRECACHE_FOR_DEFAULT_MATERIAL,
+    // Emulate an sRGB swapchain in shader code.
+    EMULATE_SRGB_SWAPCHAIN,
 };
 
-using StereoscopicType = backend::Platform::StereoscopicType;
+using StereoscopicType = Platform::StereoscopicType;
+
+using FrameTimestamps = Platform::FrameTimestamps;
+
+using CompositorTiming = Platform::CompositorTiming;
 
 } // namespace filament::backend
 
@@ -1763,6 +1725,11 @@ template<> struct utils::EnableBitMaskOperators<filament::backend::TextureUsage>
         : public std::true_type {};
 template<> struct utils::EnableBitMaskOperators<filament::backend::StencilFace>
         : public std::true_type {};
+template<> struct utils::EnableBitMaskOperators<filament::backend::BufferUsage>
+        : public std::true_type {};
+template<> struct utils::EnableBitMaskOperators<filament::backend::MapBufferAccessFlags>
+        : public std::true_type {};
+
 template<> struct utils::EnableIntegerOperators<filament::backend::TextureCubemapFace>
         : public std::true_type {};
 template<> struct utils::EnableIntegerOperators<filament::backend::FeatureLevel>

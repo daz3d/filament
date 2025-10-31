@@ -113,13 +113,7 @@ bool MetalShaderCompiler::isParallelShaderCompileSupported() const noexcept {
             case ShaderLanguage::MSL: {
                 // By default, Metal uses the most recent language version.
                 MTLCompileOptions* options = [MTLCompileOptions new];
-
-                // Disable Fast Math optimizations.
-                // This ensures that operations adhere to IEEE standards for floating-point
-                // arithmetic, which is crucial for half precision floats in scenarios where fast
-                // math optimizations lead to inaccuracies, such as in handling special values like
-                // NaN or Infinity.
-                options.fastMathEnabled = NO;
+                options.fastMathEnabled = YES;
 
                 assert_invariant(source[source.size() - 1] == '\0');
                 // the shader string is null terminated and the length includes the null character
@@ -140,6 +134,7 @@ bool MetalShaderCompiler::isParallelShaderCompileSupported() const noexcept {
             case ShaderLanguage::ESSL3:
             case ShaderLanguage::SPIRV:
             case ShaderLanguage::WGSL:
+            case ShaderLanguage::UNSPECIFIED:
                 break;
         }
 
@@ -158,14 +153,15 @@ bool MetalShaderCompiler::isParallelShaderCompileSupported() const noexcept {
 
         MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
         auto const& specializationConstants = program.getSpecializationConstants();
-        for (auto const& sc : specializationConstants) {
+        for (size_t i = 0; i < specializationConstants.size(); i++) {
+            auto const& sc = specializationConstants[i];
             const std::array<MTLDataType, 3> types{
                     MTLDataTypeInt, MTLDataTypeFloat, MTLDataTypeBool };
-            std::visit([&sc, constants, type = types[sc.value.index()]](auto&& arg) {
+            std::visit([i, constants, type = types[sc.index()]](auto&& arg) {
                 [constants setConstantValue:&arg
                                        type:type
-                                    atIndex:sc.id];
-            }, sc.value);
+                                    atIndex:i];
+            }, sc);
         }
 
         id<MTLFunction> function = [library newFunctionWithName:@"main0"

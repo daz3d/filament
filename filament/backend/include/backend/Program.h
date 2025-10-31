@@ -20,7 +20,6 @@
 #include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
 #include <utils/Invocable.h>
-#include <utils/bitset.h>
 
 #include <backend/DriverEnums.h>
 
@@ -51,11 +50,7 @@ public:
         descriptor_binding_t binding;
     };
 
-    struct SpecializationConstant {
-        using Type = std::variant<int32_t, float, bool>;
-        uint32_t id;    // id set in glsl
-        Type value;     // value and type
-    };
+    using SpecializationConstant = std::variant<int32_t, float, bool>;
 
     struct Uniform { // For ES2 support
         utils::CString name;    // full qualified name of the uniform field
@@ -67,7 +62,6 @@ public:
     using DescriptorBindingsInfo = utils::FixedCapacityVector<Descriptor>;
     using DescriptorSetInfo = std::array<DescriptorBindingsInfo, MAX_DESCRIPTOR_SET_COUNT>;
     using SpecializationConstantsInfo = utils::FixedCapacityVector<SpecializationConstant>;
-    using MutableSpecConstantsInfo = utils::bitset8;
     using ShaderBlob = utils::FixedCapacityVector<uint8_t>;
     using ShaderSource = std::array<ShaderBlob, SHADER_TYPE_COUNT>;
 
@@ -82,7 +76,7 @@ public:
     Program& operator=(const Program& rhs) = delete;
 
     Program(Program&& rhs) noexcept;
-    Program& operator=(Program&& rhs) noexcept = delete;
+    Program& operator=(Program&& rhs) noexcept;
 
     ~Program() noexcept;
 
@@ -90,7 +84,8 @@ public:
 
     // sets the material name and variant for diagnostic purposes only
     Program& diagnostics(utils::CString const& name,
-            utils::Invocable<utils::io::ostream&(utils::io::ostream& out)>&& logger);
+            utils::Invocable<utils::io::ostream&(utils::CString const& name,
+                    utils::io::ostream& out)>&& logger);
 
     // Sets one of the program's shader (e.g. vertex, fragment)
     // string-based shaders are null terminated, consequently the size parameter must include the
@@ -104,8 +99,7 @@ public:
     Program& descriptorBindings(backend::descriptor_set_t set,
             DescriptorBindingsInfo descriptorBindings) noexcept;
 
-    Program& specializationConstants(SpecializationConstantsInfo specConstants,
-            uint32_t firstMutableId, MutableSpecConstantsInfo mutableSpecConstants) noexcept;
+    Program& specializationConstants(SpecializationConstantsInfo specConstants) noexcept;
 
     struct PushConstant {
         utils::CString name;
@@ -120,7 +114,7 @@ public:
     Program& multiview(bool multiview) noexcept;
 
     // For ES2 support only...
-    Program& uniforms(uint32_t index, utils::CString name, UniformInfo uniforms) noexcept;
+    Program& uniforms(uint32_t index, utils::CString name, UniformInfo uniforms);
     Program& attributes(AttributesInfo attributes) noexcept;
 
     //
@@ -176,7 +170,8 @@ private:
     utils::CString mName;
     uint64_t mCacheId{};
     CompilerPriorityQueue mPriorityQueue = CompilerPriorityQueue::HIGH;
-    utils::Invocable<utils::io::ostream&(utils::io::ostream& out)> mLogger;
+    utils::Invocable<utils::io::ostream&(utils::CString const& name, utils::io::ostream& out)>
+            mLogger;
     SpecializationConstantsInfo mSpecializationConstants;
     std::array<utils::FixedCapacityVector<PushConstant>, SHADER_TYPE_COUNT> mPushConstants;
     DescriptorSetInfo mDescriptorBindings;

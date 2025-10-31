@@ -38,14 +38,17 @@
 #include <utils/compiler.h>
 #include <utils/CString.h>
 #include <utils/FixedCapacityVector.h>
+#include <utils/Hash.h>
 
 #include <array>
+#include <atomic>
 #include <optional>
 #include <tuple>
 #include <utility>
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 using namespace utils;
 using namespace filament::backend;
@@ -68,6 +71,8 @@ constexpr std::pair<ChunkType, ChunkType> shaderLanguageToTags(ShaderLanguage co
             return { MaterialSpirv, DictionarySpirv };
         case ShaderLanguage::METAL_LIBRARY:
             return { MaterialMetalLibrary, DictionaryMetalLibrary };
+        case ShaderLanguage::UNSPECIFIED:
+            return {};
     }
 }
 
@@ -105,6 +110,24 @@ MaterialParser::MaterialParserDetails::ManagedBuffer::~ManagedBuffer() noexcept 
 }
 
 // ------------------------------------------------------------------------------------------------
+
+bool MaterialParser::operator==(MaterialParser const& rhs) const noexcept {
+    if (this == &rhs) {
+        return true;
+    }
+    if (mImpl.mManagedBuffer.size() != rhs.mImpl.mManagedBuffer.size()) {
+        return false;
+    }
+    std::optional<uint32_t> lhsCrc32 = getPrecomputedCrc32();
+    if (lhsCrc32) {
+        std::optional<uint32_t> rhsCrc32 = rhs.getPrecomputedCrc32();
+        if (rhsCrc32 && *lhsCrc32 != *rhsCrc32) {
+            return false;
+        }
+    }
+    return !memcmp(mImpl.mManagedBuffer.data(), rhs.mImpl.mManagedBuffer.data(),
+            mImpl.mManagedBuffer.size());
+}
 
 template<typename T>
 bool MaterialParser::get(typename T::Container* container) const noexcept {
@@ -160,6 +183,38 @@ MaterialParser::ParseResult MaterialParser::parse() noexcept {
 
     mImpl.mChosenLanguage = chosenLanguage;
     return ParseResult::SUCCESS;
+}
+
+uint32_t MaterialParser::computeCrc32() const noexcept {
+    uint32_t crc32 = mCrc32.load(std::memory_order_relaxed);
+    if (crc32) {
+        return crc32;
+    }
+
+    const size_t size = mImpl.mManagedBuffer.size();
+    const void* const UTILS_NONNULL payload = mImpl.mManagedBuffer.data();
+
+    constexpr size_t crc32ChunkSize = sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint32_t);
+    const size_t originalSize = size - crc32ChunkSize;
+    assert_invariant(size > crc32ChunkSize);
+
+    std::vector<uint32_t> crc32Table;
+    utils::hash::crc32GenerateTable(crc32Table);
+    crc32 = utils::hash::crc32Update(0, payload, originalSize, crc32Table);
+    mCrc32.store(crc32, std::memory_order_relaxed);
+    return crc32;
+}
+
+std::optional<uint32_t> MaterialParser::getPrecomputedCrc32() const noexcept {
+    std::optional<uint32_t> cachedCrc32 = mCrc32.load(std::memory_order_relaxed);
+    if (cachedCrc32) {
+        return cachedCrc32;
+    }
+    uint32_t parsedCrc32;
+    if (getMaterialCrc32(&parsedCrc32)) {
+        return parsedCrc32;
+    }
+    return std::nullopt;
 }
 
 ShaderLanguage MaterialParser::getShaderLanguage() const noexcept {
@@ -227,11 +282,6 @@ bool MaterialParser::getDescriptorSetLayout(DescriptorSetLayoutContainer* contai
 
 bool MaterialParser::getConstants(FixedCapacityVector<MaterialConstant>* container) const noexcept {
     return get<ChunkMaterialConstants>(container);
-}
-
-bool MaterialParser::getMutableConstants(
-        FixedCapacityVector<MaterialMutableConstant>* container) const noexcept {
-    return get<ChunkMaterialMutableConstants>(container);
 }
 
 bool MaterialParser::getPushConstants(CString* structVarName,
@@ -368,6 +418,10 @@ bool MaterialParser::getStereoscopicType(StereoscopicType* value) const noexcept
     return mImpl.getFromSimpleChunk(MaterialStereoscopicType, reinterpret_cast<uint8_t*>(value));
 }
 
+bool MaterialParser::getMaterialCrc32(uint32_t* value) const noexcept {
+    return mImpl.getFromSimpleChunk(MaterialCrc32, value);
+}
+
 bool MaterialParser::getRequiredAttributes(AttributeBitset* value) const noexcept {
     uint32_t rawAttributes = 0;
     if (!mImpl.getFromSimpleChunk(MaterialRequiredAttributes, &rawAttributes)) {
@@ -397,7 +451,7 @@ bool MaterialParser::getReflectionMode(ReflectionMode* value) const noexcept {
 }
 
 bool MaterialParser::getShader(ShaderContent& shader,
-        ShaderModel const shaderModel, Variant const variant, ShaderStage const stage) noexcept {
+        ShaderModel const shaderModel, Variant const variant, ShaderStage const stage) const noexcept {
     return mImpl.mMaterialChunk.getShader(shader,
             mImpl.mBlobDictionary, shaderModel, variant, stage);
 }
@@ -486,7 +540,9 @@ bool ChunkSamplerInterfaceBlock::unflatten(Unflattener& unflattener,
         uint8_t fieldType = 0;
         uint8_t fieldFormat = 0;
         uint8_t fieldPrecision = 0;
+        bool fieldFilterable = false;
         bool fieldMultisample = false;
+        CString fieldTransformName;
 
         if (!unflattener.read(&fieldName)) {
             return false;
@@ -508,7 +564,15 @@ bool ChunkSamplerInterfaceBlock::unflatten(Unflattener& unflattener,
             return false;
         }
 
+        if (!unflattener.read(&fieldFilterable)) {
+            return false;
+        }
+
         if (!unflattener.read(&fieldMultisample)) {
+            return false;
+        }
+
+        if (!unflattener.read(&fieldTransformName)) {
             return false;
         }
 
@@ -517,7 +581,9 @@ bool ChunkSamplerInterfaceBlock::unflatten(Unflattener& unflattener,
                 SamplerInterfaceBlock::Type(fieldType),
                 SamplerInterfaceBlock::Format(fieldFormat),
                 SamplerInterfaceBlock::Precision(fieldPrecision),
-                fieldMultisample);
+                fieldFilterable,
+                fieldMultisample,
+                { fieldTransformName.data(), fieldTransformName.size() });
     }
 
     *sib = builder.build();
@@ -740,6 +806,7 @@ bool ChunkMaterialConstants::unflatten(Unflattener& unflattener,
     for (uint64_t i = 0; i < numConstants; i++) {
         CString constantName;
         uint8_t constantType = 0;
+        ConstantValue defaultValue;
 
         if (!unflattener.read(&constantName)) {
             return false;
@@ -749,39 +816,12 @@ bool ChunkMaterialConstants::unflatten(Unflattener& unflattener,
             return false;
         }
 
+        if (!unflattener.read(&defaultValue.i)) {
+            return false;
+        }
+
         (*materialConstants)[i].name = constantName;
         (*materialConstants)[i].type = static_cast<ConstantType>(constantType);
-    }
-
-    return true;
-}
-
-bool ChunkMaterialMutableConstants::unflatten(Unflattener& unflattener,
-        FixedCapacityVector<MaterialMutableConstant>* materialConstants) {
-    assert_invariant(materialConstants);
-
-    // Read number of constants.
-    uint64_t numConstants = 0;
-    if (!unflattener.read(&numConstants)) {
-        return false;
-    }
-
-    materialConstants->reserve(numConstants);
-    materialConstants->resize(numConstants);
-
-    for (uint64_t i = 0; i < numConstants; i++) {
-        CString constantName;
-        bool defaultValue;
-
-        if (!unflattener.read(&constantName)) {
-            return false;
-        }
-
-        if (!unflattener.read(&defaultValue)) {
-            return false;
-        }
-
-        (*materialConstants)[i].name = std::move(constantName);
         (*materialConstants)[i].defaultValue = defaultValue;
     }
 
