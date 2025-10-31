@@ -27,14 +27,14 @@
 #include <backend/DriverEnums.h>
 #include <backend/BufferDescriptor.h>
 
+#include <utils/CString.h>
+#include <utils/Logger.h>
+#include <utils/Panic.h>
+#include <utils/StaticString.h>
 #include <utils/bitset.h>
 #include <utils/compiler.h>
-#include <utils/CString.h>
-#include <utils/StaticString.h>
 #include <utils/debug.h>
-#include <utils/Log.h>
 #include <utils/ostream.h>
-#include <utils/Panic.h>
 
 #include <algorithm>
 #include <array>
@@ -46,6 +46,13 @@
 #include <stdint.h>
 
 namespace filament {
+
+namespace {
+
+// TODO: reconcile this value (defined in VertexBuffer.h) with DriverEnums' MAX_VERTEX_BUFFER_COUNT
+constexpr size_t DOCUMENTED_MAX_VERTEX_BUFFER_COUNT = 8;
+
+} // anonymous
 
 using namespace backend;
 using namespace filament::math;
@@ -113,8 +120,8 @@ VertexBuffer::Builder& VertexBuffer::Builder::attribute(VertexAttribute const at
 
         mImpl->mDeclaredAttributes.set(attribute);
     } else {
-        utils::slog.w << "Ignoring VertexBuffer attribute, the limit of " <<
-                MAX_VERTEX_ATTRIBUTE_COUNT << " attributes has been exceeded" << utils::io::endl;
+        LOG(WARNING) << "Ignoring VertexBuffer attribute, the limit of "
+                     << MAX_VERTEX_ATTRIBUTE_COUNT << " attributes has been exceeded";
     }
     return *this;
 }
@@ -148,8 +155,14 @@ VertexBuffer::Builder& VertexBuffer::Builder::name(utils::StaticString const& na
 VertexBuffer* VertexBuffer::Builder::build(Engine& engine) {
     FILAMENT_CHECK_PRECONDITION(mImpl->mVertexCount > 0) << "vertexCount cannot be 0";
     FILAMENT_CHECK_PRECONDITION(mImpl->mBufferCount > 0) << "bufferCount cannot be 0";
-    FILAMENT_CHECK_PRECONDITION(mImpl->mBufferCount <= MAX_VERTEX_BUFFER_COUNT)
-            << "bufferCount cannot be more than " << MAX_VERTEX_BUFFER_COUNT;
+
+    static_assert(DOCUMENTED_MAX_VERTEX_BUFFER_COUNT <= MAX_VERTEX_BUFFER_COUNT);
+
+    auto const& featureFlags = static_cast<FEngine*>(&engine)->features.engine.debug;
+    FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION(
+            mImpl->mBufferCount <= DOCUMENTED_MAX_VERTEX_BUFFER_COUNT,
+            featureFlags.assert_vertex_buffer_count_exceeds_8)
+            << "bufferCount cannot be more than " << DOCUMENTED_MAX_VERTEX_BUFFER_COUNT;
 
     // Next we check if any unused buffer slots have been allocated. This helps prevent errors
     // because uploading to an unused slot can trigger undefined behavior in the backend.
@@ -163,8 +176,9 @@ VertexBuffer* VertexBuffer::Builder::build(Engine& engine) {
                 << "attribute " << j << " offset=" << attributes[j].offset
                 << " is not multiple of 4";
 
-        FILAMENT_CHECK_PRECONDITION((attributes[j].stride & 0x3u) == 0)
-                << "attribute " << j << " stride=" << attributes[j].stride
+        FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION((attributes[j].stride & 0x3u) == 0,
+                featureFlags.assert_vertex_buffer_attribute_stride_mult_of_4)
+                << "attribute " << j << " stride=" << +attributes[j].stride
                 << " is not multiple of 4";
 
         if (engine.getActiveFeatureLevel() == FeatureLevel::FEATURE_LEVEL_0) {
@@ -266,10 +280,8 @@ FVertexBuffer::FVertexBuffer(FEngine& engine, const Builder& builder)
     mVertexBufferInfoHandle = engine.getVertexBufferInfoFactory().create(driver,
             mBufferCount, mDeclaredAttributes.count(), mAttributes);
 
-    mHandle = driver.createVertexBuffer(mVertexCount, mVertexBufferInfoHandle);
-    if (auto name = builder.getName(); !name.empty()) {
-        driver.setDebugTag(mHandle.getId(), std::move(name));
-    }
+    mHandle = driver.createVertexBuffer(mVertexCount, mVertexBufferInfoHandle,
+            utils::ImmutableCString{ builder.getName() });
 
     // calculate buffer sizes
     size_t bufferSizes[MAX_VERTEX_BUFFER_COUNT] = {};
@@ -296,10 +308,8 @@ FVertexBuffer::FVertexBuffer(FEngine& engine, const Builder& builder)
                 assert_invariant(bufferSizes[i] > 0);
                 if (!mBufferObjects[i]) {
                     BufferObjectHandle const bo = driver.createBufferObject(bufferSizes[i],
-                            BufferObjectBinding::VERTEX, BufferUsage::STATIC);
-                    if (auto name = builder.getName(); !name.empty()) {
-                        driver.setDebugTag(bo.getId(), std::move(name));
-                    }
+                            BufferObjectBinding::VERTEX, BufferUsage::STATIC,
+                            utils::ImmutableCString{ builder.getName() });
                     driver.setVertexBufferObject(mHandle, i, bo);
                     mBufferObjects[i] = bo;
                 }
@@ -315,10 +325,8 @@ FVertexBuffer::FVertexBuffer(FEngine& engine, const Builder& builder)
                 assert_invariant(bufferSizes[i] > 0);
                 if (!mBufferObjects[i]) {
                     BufferObjectHandle const bo = driver.createBufferObject(bufferSizes[i],
-                            BufferObjectBinding::VERTEX, BufferUsage::STATIC);
-                    if (auto name = builder.getName(); !name.empty()) {
-                        driver.setDebugTag(bo.getId(), std::move(name));
-                    }
+                            BufferObjectBinding::VERTEX, BufferUsage::STATIC,
+                            utils::ImmutableCString{ builder.getName() });
                     driver.setVertexBufferObject(mHandle, i, bo);
                     mBufferObjects[i] = bo;
                 }

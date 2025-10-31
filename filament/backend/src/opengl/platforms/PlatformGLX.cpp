@@ -16,7 +16,7 @@
 
 #include <backend/platforms/PlatformGLX.h>
 
-#include <utils/Log.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
 
 #include <X11/Xlib.h>
@@ -31,6 +31,7 @@
 // Function pointer types for X11 functions
 typedef Display* (* X11_OPEN_DISPLAY)(const char*);
 typedef Display* (* X11_CLOSE_DISPLAY)(Display*);
+typedef int (* X11_FREE)(void*);
 
 // Function pointer types for GLX functions
 typedef void (* GLX_DESTROY_CONTEXT)(Display*, GLXContext);
@@ -43,7 +44,7 @@ struct GLXFunctions {
     PFNGLXDESTROYPBUFFERPROC destroyPbuffer;
     PFNGLXMAKECONTEXTCURRENTPROC setCurrentContext;
 
-    /* 
+    /*
        When creating a shared GL context, we query the used
        GLX_FBCONFIG_ID to make sure our display framebuffer
        attributes match; otherwise making our context current
@@ -52,7 +53,7 @@ struct GLXFunctions {
     */
     PFNGLXQUERYCONTEXTPROC queryContext;
 
-    /* 
+    /*
        When creating a shared GL context, we select the matching
        GLXFBConfig that is used by the shared GL context. `getFBConfigs`
        will return all the available GLXFBConfigs.
@@ -76,6 +77,7 @@ struct GLXFunctions {
 struct X11Functions {
     X11_OPEN_DISPLAY openDisplay;
     X11_CLOSE_DISPLAY closeDisplay;
+    X11_FREE free;
     void* library;
 } g_x11;
 
@@ -84,7 +86,7 @@ static PFNGLXGETPROCADDRESSPROC getProcAddress;
 static bool loadLibraries() {
     g_glx.library = dlopen(LIBRARY_GLX, RTLD_LOCAL | RTLD_NOW);
     if (!g_glx.library) {
-        utils::slog.e << "Could not find library " << LIBRARY_GLX << utils::io::endl;
+        LOG(ERROR) << "Could not find library " << LIBRARY_GLX;
         return false;
     }
 
@@ -115,12 +117,13 @@ static bool loadLibraries() {
 
     g_x11.library = dlopen(LIBRARY_X11, RTLD_LOCAL | RTLD_NOW);
     if (!g_x11.library) {
-        utils::slog.e << "Could not find library " << LIBRARY_X11 << utils::io::endl;
+        LOG(ERROR) << "Could not find library " << LIBRARY_X11;
         return false;
     }
 
     g_x11.openDisplay = (X11_OPEN_DISPLAY)dlsym(g_x11.library, "XOpenDisplay");
     g_x11.closeDisplay = (X11_CLOSE_DISPLAY)dlsym(g_x11.library, "XCloseDisplay");
+    g_x11.free = (X11_FREE)dlsym(g_x11.library, "XFree");
     return true;
 }
 
@@ -129,12 +132,12 @@ namespace filament::backend {
 using namespace backend;
 
 Driver* PlatformGLX::createDriver(void* sharedGLContext,
-        const DriverConfig& driverConfig) noexcept {
+        const DriverConfig& driverConfig) {
     loadLibraries();
     // Get the display device
     mGLXDisplay = g_x11.openDisplay(NULL);
     if (mGLXDisplay == nullptr) {
-        utils::slog.e << "Failed to open X display. (exiting)." << utils::io::endl;
+        LOG(ERROR) << "Failed to open X display. (exiting).";
         exit(1);
     }
 
@@ -145,43 +148,37 @@ Driver* PlatformGLX::createDriver(void* sharedGLContext,
 
         r = g_glx.queryContext(mGLXDisplay, sharedCtx, GLX_FBCONFIG_ID, &usedFbId);
         if (r != 0) {
-            utils::slog.e << "Failed to get GLX_FBCONFIG_ID from shared GL context."
-                          << utils::io::endl;
+            LOG(ERROR) << "Failed to get GLX_FBCONFIG_ID from shared GL context.";
             return nullptr;
         }
 
         int numConfigs = 0;
         GLXFBConfig* fbConfigs = g_glx.getFbConfigs(mGLXDisplay, 0, &numConfigs);
-
         if (fbConfigs == nullptr) {
-            utils::slog.e << "Failed to get the available GLXFBConfigs." << utils::io::endl;
+            LOG(ERROR) << "Failed to get the available GLXFBConfigs.";
             return nullptr;
         }
 
-        int fbId = 0;
-        int fbIndex = -1;
-
         for (int i = 0; i < numConfigs; ++i) {
+            int fbId = 0;
             r = g_glx.getFbConfigAttrib(mGLXDisplay, fbConfigs[i], GLX_FBCONFIG_ID, &fbId);
             if (r != 0) {
-                utils::slog.e << "Failed to get GLX_FBCONFIG_ID for entry " << i << "."
-                              << utils::io::endl;
+                LOG(ERROR) << "Failed to get GLX_FBCONFIG_ID for entry " << i << ".";
                 continue;
             }
 
             if (fbId == usedFbId) {
-                fbIndex = i;
+                mGLXConfig = fbConfigs[i];
                 break;
             }
         }
 
-        if (fbIndex < 0) {
-            utils::slog.e << "Failed to find an `GLXFBConfig` with the requested ID."
-                          << utils::io::endl;
+        g_x11.free(fbConfigs);
+
+        if (!mGLXConfig) {
+            LOG(ERROR) << "Failed to find an `GLXFBConfig` with the requested ID.";
             return nullptr;
         }
-
-        mGLXConfig = fbConfigs + fbIndex;
     } else {
         // Create a context
         static int attribs[] = {
@@ -191,19 +188,18 @@ Driver* PlatformGLX::createDriver(void* sharedGLContext,
         };
 
         int configCount = 0;
-        mGLXConfig = g_glx.chooseFbConfig(mGLXDisplay, DefaultScreen(mGLXDisplay),
+        GLXFBConfig* fbConfigs = g_glx.chooseFbConfig(mGLXDisplay, DefaultScreen(mGLXDisplay),
                 attribs, &configCount);
-        if (mGLXConfig == nullptr || configCount == 0) {
+        if (fbConfigs == nullptr || configCount == 0) {
             return nullptr;
         }
+
+        mGLXConfig = fbConfigs[0];
+        g_x11.free(fbConfigs);
     }
 
-    PFNGLXCREATECONTEXTATTRIBSARBPROC glXCreateContextAttribs = (PFNGLXCREATECONTEXTATTRIBSARBPROC)
-            getProcAddress((GLubyte*)"glXCreateContextAttribsARB");
-
-    if (glXCreateContextAttribs == nullptr) {
-        utils::slog.i << "Unable to retrieve function pointer for `glXCreateContextAttribs()`."
-                      << utils::io::endl;
+    if (g_glx.createContext == nullptr) {
+        LOG(INFO) << "Unable to retrieve function pointer for `glXCreateContextAttribs()`.";
         return nullptr;
     }
 
@@ -213,7 +209,7 @@ Driver* PlatformGLX::createDriver(void* sharedGLContext,
             GL_NONE
     };
 
-    mGLXContext = g_glx.createContext(mGLXDisplay, mGLXConfig[0],
+    mGLXContext = g_glx.createContext(mGLXDisplay, mGLXConfig,
             (GLXContext)sharedGLContext, True, contextAttribs);
 
     int pbufferAttribs[] = {
@@ -222,7 +218,7 @@ Driver* PlatformGLX::createDriver(void* sharedGLContext,
             GL_NONE
     };
 
-    mDummySurface = g_glx.createPbuffer(mGLXDisplay, mGLXConfig[0], pbufferAttribs);
+    mDummySurface = g_glx.createPbuffer(mGLXDisplay, mGLXConfig, pbufferAttribs);
     g_glx.setCurrentContext(mGLXDisplay, mDummySurface, mDummySurface, mGLXContext);
 
     int result = bluegl::bind();
@@ -250,7 +246,7 @@ Platform::SwapChain* PlatformGLX::createSwapChain(
             GLX_PBUFFER_HEIGHT, int(height),
             GL_NONE
     };
-    GLXPbuffer sur = g_glx.createPbuffer(mGLXDisplay, mGLXConfig[0], pbufferAttribs);
+    GLXPbuffer sur = g_glx.createPbuffer(mGLXDisplay, mGLXConfig, pbufferAttribs);
     if (sur) {
         mPBuffers.push_back(sur);
     }

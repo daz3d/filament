@@ -22,6 +22,7 @@
 #include "SharedShaders.h"
 #include "Skip.h"
 #include "TrianglePrimitive.h"
+#include "Workarounds.h"
 
 namespace test {
 
@@ -70,7 +71,7 @@ TEST_F(BufferUpdatesTest, VertexBufferUpdate) {
 
         Shader shader = createShader();
 
-        auto defaultRenderTarget = cleanup.add(api.createDefaultRenderTarget(0));
+        auto defaultRenderTarget = cleanup.add(api.createDefaultRenderTarget());
 
         // To test large buffers (which exercise a different code path) create an extra large
         // buffer. Only the first 3 vertices will be used.
@@ -148,15 +149,11 @@ TEST_F(BufferUpdatesTest, VertexBufferUpdate) {
 
         api.stopCapture(0);
     }
-
-    executeCommands();
 }
 
 // This test renders two triangles in two separate draw calls. Between the draw calls, a uniform
 // buffer object is partially updated.
 TEST_F(BufferUpdatesTest, BufferObjectUpdateWithOffset) {
-    NONFATAL_FAIL_IF(SkipEnvironment(OperatingSystem::APPLE, Backend::VULKAN),
-            "All values including alpha are written as 0, see b/417254943");
 
     auto& api = getDriverApi();
     Cleanup cleanup(api);
@@ -179,11 +176,11 @@ TEST_F(BufferUpdatesTest, BufferObjectUpdateWithOffset) {
     shader.bindUniform<SimpleMaterialParams>(api, ubuffer, kBindingConfig);
 
     // Create a render target.
-    auto colorTexture =
-            cleanup.add(api.createTexture(SamplerType::SAMPLER_2D, 1, TextureFormat::RGBA8, 1,
-                    screenWidth(), screenHeight(), 1, TextureUsage::COLOR_ATTACHMENT));
+    auto colorTexture = cleanup.add(
+            api.createTexture(SamplerType::SAMPLER_2D, 1, TextureFormat::RGBA8, 1, screenWidth(),
+                    screenHeight(), 1, TextureUsage::COLOR_ATTACHMENT TEXTURE_USAGE_READ_PIXELS));
     auto renderTarget = cleanup.add(api.createRenderTarget(TargetBufferFlags::COLOR0, screenWidth(),
-            screenHeight(), 1, 0, { { colorTexture } }, {}, {}));
+            screenHeight(), 1, 1, { { colorTexture } }, {}, {}));
 
     // Upload uniforms for the first triangle.
     // Upload the uniform, but with an offset to accommodate the padding in the shader's
@@ -234,23 +231,12 @@ TEST_F(BufferUpdatesTest, BufferObjectUpdateWithOffset) {
         api.bindRenderPrimitive(triangle.getRenderPrimitive());
         api.draw2(0, 3, 1);
         api.endRenderPass();
+        api.commit(swapChain);
+        api.endFrame(0);
     }
 
-
-    EXPECT_IMAGE(renderTarget, getExpectations(),
-            ScreenshotParams(screenWidth(), screenHeight(), "BufferObjectUpdateWithOffset",
-                    2320747245));
-
-    api.flush();
-    api.commit(swapChain);
-    api.endFrame(0);
-
-    // This ensures all driver commands have finished before exiting the test.
-    api.finish();
-
-    executeCommands();
-
-    getDriver().purge();
+    EXPECT_IMAGE(renderTarget, ScreenshotParams(screenWidth(), screenHeight(),
+                                       "BufferObjectUpdateWithOffset", 2320747245));
 }
 
 } // namespace test

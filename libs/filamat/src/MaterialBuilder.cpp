@@ -71,7 +71,6 @@
 #include <atomic>
 #include <fstream>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -232,6 +231,11 @@ MaterialBuilder& MaterialBuilder::fileName(const char* name) noexcept {
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::compilationParameters(const char* params) noexcept {
+    mCompilationParameters = CString(params);
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::material(const char* code, size_t const line) noexcept {
     mMaterialFragmentCode.setUnresolved(CString(code));
     mMaterialFragmentCode.setLineOffset(line);
@@ -290,8 +294,7 @@ MaterialBuilder& MaterialBuilder::variable(Variable v,
 
 MaterialBuilder& MaterialBuilder::parameter(const char* name, size_t size, UniformType type,
         ParameterPrecision precision) {
-    FILAMENT_CHECK_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT) << "Too many parameters";
-    mParameters[mParameterCount++] = { name, type, size, precision };
+    mParameters.emplace_back(name, type, size, precision );
     return *this;
 }
 
@@ -300,26 +303,25 @@ MaterialBuilder& MaterialBuilder::parameter(const char* name, UniformType const 
     return parameter(name, 1, type, precision);
 }
 
-
 MaterialBuilder& MaterialBuilder::parameter(const char* name, SamplerType samplerType,
-        SamplerFormat format, ParameterPrecision precision, bool multisample,
-        const char* transformName, ShaderStageFlags stages) {
-    FILAMENT_CHECK_PRECONDITION(!multisample ||
-            (format != SamplerFormat::SHADOW &&
-                    (samplerType == SamplerType::SAMPLER_2D ||
-                            samplerType == SamplerType::SAMPLER_2D_ARRAY)))
+        SamplerFormat format, ParameterPrecision precision, bool filterable, bool multisample,
+        const char* transformName, std::optional<ShaderStageFlags> stages) {
+    FILAMENT_CHECK_PRECONDITION(
+            !multisample || (format != SamplerFormat::SHADOW &&
+                                    (samplerType == SamplerType::SAMPLER_2D ||
+                                            samplerType == SamplerType::SAMPLER_2D_ARRAY)))
             << "multisample samplers only possible with SAMPLER_2D or SAMPLER_2D_ARRAY,"
                " as long as type is not SHADOW";
 
-    FILAMENT_CHECK_POSTCONDITION(mParameterCount < MAX_PARAMETERS_COUNT) << "Too many parameters";
-    mParameters[mParameterCount++] = { name, samplerType, format, precision, multisample, transformName, stages };
+    mParameters.emplace_back( name, samplerType, format, precision, filterable,
+        multisample, transformName, stages );
     return *this;
 }
 
 template<typename T, typename>
 MaterialBuilder& MaterialBuilder::constant(const char* name, ConstantType const type, T defaultValue) {
     auto result = std::find_if(mConstants.begin(), mConstants.end(), [name](const Constant& c) {
-        return c.name == CString(name);
+        return !strcmp(c.name.c_str(), name);
     });
     FILAMENT_CHECK_POSTCONDITION(result == mConstants.end())
             << "There is already a constant parameter present with the name " << name << ".";
@@ -354,7 +356,7 @@ MaterialBuilder& MaterialBuilder::constant(const char* name, ConstantType const 
         assert_invariant(false);
     }
 
-    mConstants.push_back(constant);
+    mConstants.push_back(std::move(constant));
     return *this;
 }
 template MaterialBuilder& MaterialBuilder::constant<int32_t>(
@@ -401,6 +403,11 @@ MaterialBuilder& MaterialBuilder::require(VertexAttribute const attribute) noexc
 
 MaterialBuilder& MaterialBuilder::groupSize(math::uint3 const groupSize) noexcept {
     mGroupSize = groupSize;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::useDefaultDepthVariant() noexcept {
+    mUseDefaultDepthVariant = true;
     return *this;
 }
 
@@ -539,6 +546,16 @@ MaterialBuilder& MaterialBuilder::flipUV(bool const flipUV) noexcept {
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::linearFog(bool const enabled) noexcept {
+    mLinearFog = enabled;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::shadowFarAttenuation(bool const enabled) noexcept {
+    mShadowFarAttenuation = enabled;
+    return *this;
+}
+
 MaterialBuilder& MaterialBuilder::customSurfaceShading(bool const customSurfaceShading) noexcept {
     mCustomSurfaceShading = customSurfaceShading;
     return *this;
@@ -565,7 +582,6 @@ MaterialBuilder& MaterialBuilder::stereoscopicType(StereoscopicType const stereo
     mStereoscopicType = stereoscopicType;
     return *this;
 }
-
 MaterialBuilder& MaterialBuilder::stereoscopicEyeCount(uint8_t const eyeCount) noexcept {
     mStereoscopicEyeCount = eyeCount;
     return *this;
@@ -588,6 +604,11 @@ MaterialBuilder& MaterialBuilder::targetApi(TargetApi const targetApi) noexcept 
 
 MaterialBuilder& MaterialBuilder::optimization(Optimization const optimization) noexcept {
     mOptimization = optimization;
+    return *this;
+}
+
+MaterialBuilder& MaterialBuilder::workarounds(Workarounds const workarounds) noexcept {
+    mWorkarounds = workarounds;
     return *this;
 }
 
@@ -617,7 +638,7 @@ MaterialBuilder& MaterialBuilder::shaderDefine(const char* name, const char* val
 }
 
 bool MaterialBuilder::hasSamplerType(SamplerType const samplerType) const noexcept {
-    for (size_t i = 0, c = mParameterCount; i < c; i++) {
+    for (size_t i = 0, c = mParameters.size(); i < c; i++) {
         auto const& param = mParameters[i];
         if (param.isSampler() && param.samplerType == samplerType) {
             return  true;
@@ -629,20 +650,33 @@ bool MaterialBuilder::hasSamplerType(SamplerType const samplerType) const noexce
 void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
     prepare(mEnableFramebufferFetch, mFeatureLevel);
 
+    const bool hasEmptyVertexCode = mMaterialVertexCode.getResolved().empty();
+    const bool isPostProcessMaterial = mMaterialDomain == MaterialDomain::POST_PROCESS;
+    // TODO: Currently, for surface materials, we rely on the presence of a custom vertex shader to
+    // infer the default shader stages. We could do better by analyzing the AST of the vertex shader
+    // to see if the sampler is actually used.
+    const ShaderStageFlags defaultShaderStages =
+            isPostProcessMaterial || hasEmptyVertexCode
+                    ? (ShaderStageFlags::FRAGMENT)
+                    : (ShaderStageFlags::FRAGMENT | ShaderStageFlags::VERTEX);
+
     // Build the per-material sampler block and uniform block.
     SamplerInterfaceBlock::Builder sbb;
     BufferInterfaceBlock::Builder ibb;
     // sampler bindings start at 1, 0 is the ubo
     uint16_t binding = 1;
-    for (size_t i = 0, c = mParameterCount; i < c; i++) {
+    for (size_t i = 0, c = mParameters.size(); i < c; i++) {
         auto const& param = mParameters[i];
         assert_invariant(!param.isSubpass());
         if (param.isSampler()) {
+            ShaderStageFlags stages = param.stages.value_or(defaultShaderStages);
             sbb.add({ param.name.data(), param.name.size() }, binding, param.samplerType,
-                    param.format, param.precision, param.multisample, param.stages);
+                    param.format, param.precision, param.filterable, param.multisample,
+                    stages);
             if (!param.transformName.empty()) {
-                ibb.add({{{ param.transformName.data(), param.transformName.size() }, uint8_t(binding),
-                          0, UniformType::MAT3, Precision::DEFAULT, FeatureLevel::FEATURE_LEVEL_0 }});
+                ibb.add({ { { param.transformName.data(), param.transformName.size() },
+                    uint8_t(binding), 0, UniformType::MAT3, Precision::DEFAULT,
+                    FeatureLevel::FEATURE_LEVEL_0 } });
             }
             binding++;
         } else if (param.isUniform()) {
@@ -695,6 +729,8 @@ void MaterialBuilder::prepareToBuild(MaterialInfo& info) noexcept {
     info.specularAntiAliasing = mSpecularAntiAliasing;
     info.clearCoatIorChange = mClearCoatIorChange;
     info.flipUV = mFlipUV;
+    info.linearFog = mLinearFog;
+    info.shadowFarAttenuation = mShadowFarAttenuation;
     info.requiredAttributes = mRequiredAttributes;
     info.blendingMode = mBlendingMode;
     info.postLightingBlendingMode = mPostLightingBlendingMode;
@@ -894,7 +930,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
     uint32_t flags = 0;
     flags |= mPrintShaders ? GLSLPostProcessor::PRINT_SHADERS : 0;
     flags |= mGenerateDebugInfo ? GLSLPostProcessor::GENERATE_DEBUG_INFO : 0;
-    GLSLPostProcessor postProcessor(mOptimization, flags);
+    GLSLPostProcessor postProcessor(mOptimization, mWorkarounds, flags);
 
     // Start: must be protected by lock
     Mutex entriesLock;
@@ -912,7 +948,8 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
             mMaterialVertexCode.getResolved(), mMaterialVertexCode.getLineOffset(),
             mMaterialDomain);
 
-    container.emplace<bool>(MaterialHasCustomDepthShader, needsStandardDepthProgram());
+    container.emplace<bool>(MaterialHasCustomDepthShader,
+            needsStandardDepthProgram() && !mUseDefaultDepthVariant);
 
     std::atomic_bool cancelJobs(false);
     bool firstJob = true;
@@ -1023,6 +1060,7 @@ bool MaterialBuilder::generateShaders(JobSystem& jobSystem, const std::vector<Va
                         .variantFilter = mVariantFilter,
                         .targetApi = targetApi,
                         .targetLanguage = targetLanguage,
+                        .workarounds = mWorkarounds,
                         .shaderType = v.stage,
                         .shaderModel = shaderModel,
                         .featureLevel = featureLevel,
@@ -1361,10 +1399,25 @@ error:
         goto error;
     }
 
-    // Flatten all chunks in the container into a Package.
-    Package package(container.getSize());
+    // Flatten all container chunks into a single package and compute its CRC32 value, storing it as
+    // a separate chunk.
+    constexpr size_t crc32ChunkSize = sizeof(uint64_t) + sizeof(uint32_t) + sizeof(uint32_t);
+    const size_t originalContainerSize = container.getSize();
+    const size_t signedContainerSize = originalContainerSize + crc32ChunkSize;
+
+    Package package(signedContainerSize);
     Flattener f{ package.getData() };
-    container.flatten(f);
+    size_t flattenSize = container.flatten(f);
+
+    std::vector<uint32_t> crc32Table;
+    hash::crc32GenerateTable(crc32Table);
+    uint32_t crc = hash::crc32Update(0, f.getStartPtr(), flattenSize, crc32Table);
+    f.writeUint64(static_cast<uint64_t>(MaterialCrc32));
+    f.writeUint32(static_cast<uint32_t>(sizeof(crc)));
+    f.writeUint32(static_cast<uint32_t>(crc));
+
+    assert_invariant(flattenSize == originalContainerSize);
+    assert_invariant(signedContainerSize == f.getBytesWritten());
 
     return package;
 }
@@ -1548,6 +1601,8 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
     container.emplace<uint32_t>(MaterialVersion, MATERIAL_VERSION);
     container.emplace<uint8_t>(MaterialFeatureLevel, (uint8_t)info.featureLevel);
     container.emplace<const char*>(MaterialName, mMaterialName.c_str_safe());
+    container.emplace<const char*>(MaterialCompilationParameters,
+            mCompilationParameters.c_str_safe());
     container.emplace<uint32_t>(MaterialShaderModels, mShaderModels.getValue());
     container.emplace<uint8_t>(ChunkType::MaterialDomain, static_cast<uint8_t>(mMaterialDomain));
 
@@ -1618,7 +1673,7 @@ void MaterialBuilder::writeCommonChunks(ChunkContainer& container, MaterialInfo&
     // User constant parameters
     FixedCapacityVector<MaterialConstant> constantsEntry(mConstants.size());
     std::transform(mConstants.begin(), mConstants.end(), constantsEntry.begin(),
-            [](Constant const& c) { return MaterialConstant(c.name.c_str(), c.type); });
+            [](Constant const& c) { return MaterialConstant(c.name, c.type, c.defaultValue); });
     container.push<MaterialConstantParametersChunk>(std::move(constantsEntry));
 
     FixedCapacityVector<MaterialPushConstant> pushConstantsEntry(mPushConstants.size());

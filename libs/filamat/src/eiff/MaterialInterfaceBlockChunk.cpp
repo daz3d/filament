@@ -77,6 +77,7 @@ void MaterialSamplerInterfaceBlockChunk::flatten(Flattener& f) {
         f.writeUint8(static_cast<uint8_t>(sInfo.type));
         f.writeUint8(static_cast<uint8_t>(sInfo.format));
         f.writeUint8(static_cast<uint8_t>(sInfo.precision));
+        f.writeBool(sInfo.filterable);
         f.writeBool(sInfo.multisample);
     }
 }
@@ -112,6 +113,7 @@ void MaterialConstantParametersChunk::flatten(Flattener& f) {
     for (const auto& constant : mConstants) {
         f.writeString(constant.name.c_str());
         f.writeUint8(static_cast<uint8_t>(constant.type));
+        f.writeUint32(static_cast<uint32_t>(constant.defaultValue.i));
     }
 }
 
@@ -230,7 +232,11 @@ void MaterialDescriptorSetLayoutChunk::flatten(Flattener& f) {
         f.writeUint8(uint8_t(descriptor_sets::getDescriptorType(entry.type, entry.format)));
         f.writeUint8(uint8_t(entry.stages));
         f.writeUint8(entry.binding);
-        f.writeUint8(uint8_t(DescriptorFlags::NONE));
+        if (!entry.filterable) {
+            f.writeUint8(uint8_t(DescriptorFlags::UNFILTERABLE));
+        } else {
+            f.writeUint8(uint8_t(DescriptorFlags::NONE));
+        }
         f.writeUint16(0);
     }
 }

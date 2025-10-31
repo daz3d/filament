@@ -25,12 +25,12 @@
 #include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 
+#include <utils/Logger.h>
+#include <utils/Panic.h>
+#include <utils/StaticString.h>
 #include <utils/compiler.h>
 #include <utils/debug.h>
-#include <utils/Log.h>
-#include <utils/Panic.h>
 #include <utils/ostream.h>
-#include <utils/StaticString.h>
 
 #include <utility>
 #include <limits>
@@ -66,14 +66,15 @@ DescriptorSet& DescriptorSet::operator=(DescriptorSet&& rhs) noexcept {
         mDirty = rhs.mDirty;
         mValid = rhs.mValid;
         mSetAfterCommitWarning = rhs.mSetAfterCommitWarning;
+        mSetUndefinedParameterWarning = rhs.mSetUndefinedParameterWarning;
+        mName = rhs.mName;
     }
     return *this;
 }
 
 void DescriptorSet::terminate(FEngine::DriverApi& driver) noexcept {
     if (mDescriptorSetHandle) {
-        driver.destroyDescriptorSet(mDescriptorSetHandle);
-        mDescriptorSetHandle.clear();
+        driver.destroyDescriptorSet(std::move(mDescriptorSetHandle));
     }
 }
 
@@ -88,7 +89,7 @@ void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
         // point later.
         driver.destroyDescriptorSet(mDescriptorSetHandle);
     }
-    mDescriptorSetHandle = driver.createDescriptorSet(layout.getHandle());
+    mDescriptorSetHandle = driver.createDescriptorSet(layout.getHandle(), mName);
     mValid.forEachSetBit([&layout, &driver,
             dsh = mDescriptorSetHandle, descriptors = mDescriptors.data()]
             (backend::descriptor_binding_t const binding) {
@@ -106,12 +107,12 @@ void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
     });
 
     auto const unsetValidDescriptors = layout.getValidDescriptors() & ~mValid;
-    if (UTILS_VERY_UNLIKELY(!unsetValidDescriptors.empty())) {
+    if (UTILS_VERY_UNLIKELY(!unsetValidDescriptors.empty() && !mSetUndefinedParameterWarning)) {
         unsetValidDescriptors.forEachSetBit([&](auto i) {
-            slog.w << (layout.isSampler(i) ? "Sampler" : "Buffer")
-                    << " descriptor " << i << " of " << mName.c_str() << " is not set. "
-                       "Please report this issue." << io::endl;
+            LOG(WARNING) << (layout.isSampler(i) ? "Sampler" : "Buffer") << " descriptor " << i
+                         << " of " << mName.c_str() << " is not set. Please report this issue.";
         });
+        mSetUndefinedParameterWarning = true;
     }
 }
 
@@ -131,13 +132,17 @@ void DescriptorSet::bind(FEngine::DriverApi& driver, DescriptorSetBindingPoints 
     // assert_invariant(mDirty.none());
     if (UTILS_VERY_UNLIKELY(mDirty.any() && !mSetAfterCommitWarning)) {
         mDirty.forEachSetBit([&](uint8_t const binding) {
-            utils::slog.w << "Descriptor set (handle=" << mDescriptorSetHandle.getId()
-                          << ") binding=" << (int) binding
-                          << " was set between begin/endRenderPass" << utils::io::endl;
+            LOG(WARNING) << "Descriptor set (handle=" << mDescriptorSetHandle.getId()
+                         << ") binding=" << (int) binding << " was set between begin/endRenderPass";
         });
         mSetAfterCommitWarning = true;
     }
     driver.bindDescriptorSet(mDescriptorSetHandle, +set, std::move(dynamicOffsets));
+}
+
+void DescriptorSet::unbind(backend::DriverApi& driver,
+        DescriptorSetBindingPoints set) noexcept {
+    driver.bindDescriptorSet({}, +set, {});
 }
 
 void DescriptorSet::setBuffer(DescriptorSetLayout const& layout,
@@ -149,11 +154,13 @@ void DescriptorSet::setBuffer(DescriptorSetLayout const& layout,
     FILAMENT_CHECK_PRECONDITION(DSLB::isBuffer(layout.getDescriptorType(binding)))
             << "descriptor " << +binding << "is not a buffer";
 
-    if (mDescriptors[binding].buffer.boh != boh || mDescriptors[binding].buffer.size != size) {
-        // we don't set the dirty bit if only offset changes
+    auto& buffer = mDescriptors[binding].buffer;
+    if (buffer.boh != boh ||
+        buffer.offset != offset ||
+        buffer.size != size) {
         mDirty.set(binding);
     }
-    mDescriptors[binding].buffer = { boh, offset, size };
+    buffer = { boh, offset, size };
     mValid.set(binding, bool(boh));
 }
 
@@ -198,9 +205,40 @@ DescriptorSet DescriptorSet::duplicate(
     return set;
 }
 bool DescriptorSet::isTextureCompatibleWithDescriptor(
-    backend::TextureType t, backend::DescriptorType d) noexcept {
+    backend::TextureType t, backend::SamplerType s, backend::DescriptorType d) noexcept {
     using namespace backend;
 
+    switch (s) {
+        case SamplerType::SAMPLER_2D:
+            if (!is2dTypeDescriptor(d)) {
+                return false;
+            }
+            break;
+        case SamplerType::SAMPLER_2D_ARRAY:
+            if (!is2dArrayTypeDescriptor(d)) {
+                return false;
+            }
+            break;
+        case SamplerType::SAMPLER_CUBEMAP:
+            if (!isCubeTypeDescriptor(d)) {
+                return false;
+            }
+            break;
+        case SamplerType::SAMPLER_CUBEMAP_ARRAY:
+            if (!isCubeArrayTypeDescriptor(d)) {
+                return false;
+            }
+            break;
+        case SamplerType::SAMPLER_3D:
+            if (!is3dTypeDescriptor(d)) {
+                return false;
+            }
+            break;
+        case SamplerType::SAMPLER_EXTERNAL:
+            break;
+    }
+
+    // check that the descriptor type is compatible with the texture format type
     switch (d) {
         case DescriptorType::SAMPLER_2D_FLOAT:
         case DescriptorType::SAMPLER_2D_ARRAY_FLOAT:

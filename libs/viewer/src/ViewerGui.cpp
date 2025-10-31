@@ -854,6 +854,11 @@ void ViewerGui::updateUserInterface() {
 
                 ImGui::SliderInt("Slice Count", &sliceCount, 1, 10);
                 ImGui::SliderInt("Steps Per Slice", &stepsPerSlice, 1, 4);
+                ImGui::Checkbox("Use Visibility Bitmasks", &ssao.gtao.useVisibilityBitmasks);
+                if (ssao.gtao.useVisibilityBitmasks) {
+                    ImGui::SliderFloat("Constant Thickness", &ssao.gtao.constThickness, 0.01f, 10.0f);
+                    ImGui::Checkbox("Linear Thickness", &ssao.gtao.linearThickness);
+                }
 
                 ssao.gtao.sampleSliceCount = static_cast<uint8_t>(sliceCount);
                 ssao.gtao.sampleStepsPerSlice = static_cast<uint8_t>(stepsPerSlice);
@@ -1133,15 +1138,22 @@ void ViewerGui::updateUserInterface() {
                 debug.getPropertyAddress<bool>("d.stereo.combine_multiview_images"));
         ImGui::Unindent();
 #endif
-#endif
-        ImGui::SliderFloat("Ocular distance", &mSettings.viewer.cameraEyeOcularDistance, 0.0f,
-                1.0f);
+        ImGui::SliderFloat("Ocular distance",
+            &mSettings.viewer.cameraEyeOcularDistance, 0.0f, 1.0f);
 
         float toeInDegrees = mSettings.viewer.cameraEyeToeIn / f::PI * 180.0f;
         ImGui::SliderFloat("Toe in", &toeInDegrees, 0.0f, 30.0, "%.3f°");
         mSettings.viewer.cameraEyeToeIn = toeInDegrees / 180.0f * f::PI;
 
         ImGui::Unindent();
+#endif
+    }
+
+    if (ImGui::CollapsingHeader("Debug Options")) {
+        mSettings.debug.skipFrames = 0;
+        if (ImGui::Button("Skip 10 frames")) {
+            mSettings.debug.skipFrames = 10;
+        }
     }
 
     colorGradingUI(mSettings, mRangePlot, mCurvePlot, mToneMapPlot);

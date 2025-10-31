@@ -51,7 +51,7 @@ class OpenGLDriver;
 bool TimerQueryFactory::mGpuTimeSupported = false;
 
 TimerQueryFactoryInterface* TimerQueryFactory::init(
-        OpenGLPlatform& platform, OpenGLContext& context) noexcept {
+        OpenGLPlatform& platform, OpenGLContext& context) {
     (void)context;
 
     TimerQueryFactoryInterface* impl = nullptr;
@@ -114,14 +114,14 @@ void TimerQueryNativeFactory::createTimerQuery(GLTimerQuery* tq) {
 
     tq->state = std::make_shared<GLTimerQuery::State>();
     mContext.procs.genQueries(1u, &tq->state->gl.query);
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 }
 
 void TimerQueryNativeFactory::destroyTimerQuery(GLTimerQuery* tq) {
     assert_invariant(tq->state);
 
     mContext.procs.deleteQueries(1u, &tq->state->gl.query);
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 
     tq->state.reset();
 }
@@ -131,14 +131,14 @@ void TimerQueryNativeFactory::beginTimeElapsedQuery(GLTimerQuery* tq) {
 
     tq->state->elapsed.store(int64_t(TimerQueryResult::NOT_READY), std::memory_order_relaxed);
     mContext.procs.beginQuery(GL_TIME_ELAPSED, tq->state->gl.query);
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 }
 
 void TimerQueryNativeFactory::endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQuery* tq) {
     assert_invariant(tq->state);
 
     mContext.procs.endQuery(GL_TIME_ELAPSED);
-    CHECK_GL_ERROR(utils::slog.e)
+    CHECK_GL_ERROR()
 
     std::weak_ptr<GLTimerQuery::State> const weak = tq->state;
 
@@ -153,7 +153,7 @@ void TimerQueryNativeFactory::endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQ
 
         GLuint available = 0;
         context.procs.getQueryObjectuiv(state->gl.query, GL_QUERY_RESULT_AVAILABLE, &available);
-        CHECK_GL_ERROR(utils::slog.e)
+        CHECK_GL_ERROR()
         if (!available) {
             // we need to try this one again later
             return false;
@@ -172,46 +172,12 @@ void TimerQueryNativeFactory::endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQ
 // ------------------------------------------------------------------------------------------------
 
 TimerQueryFenceFactory::TimerQueryFenceFactory(OpenGLPlatform& platform)
-        : mPlatform(platform) {
-    mQueue.reserve(2);
-    mThread = std::thread([this]() {
-        utils::JobSystem::setThreadName("OpenGLTimerQueryFence");
-        utils::JobSystem::setThreadPriority(utils::JobSystem::Priority::URGENT_DISPLAY);
-        auto& queue = mQueue;
-        bool exitRequested;
-        do {
-            std::unique_lock<utils::Mutex> lock(mLock);
-            mCondition.wait(lock, [this, &queue]() -> bool {
-                return mExitRequested || !queue.empty();
-            });
-            exitRequested = mExitRequested;
-            if (!queue.empty()) {
-                Job const job(queue.front());
-                queue.erase(queue.begin());
-                lock.unlock();
-                job();
-            }
-        } while (!exitRequested);
-    });
+        : mPlatform(platform),
+          mJobQueue("OpenGLTimerQueryFence", utils::AsyncJobQueue::Priority::URGENT_DISPLAY) {
 }
 
 TimerQueryFenceFactory::~TimerQueryFenceFactory() {
-    assert_invariant(mQueue.empty());
-    if (mThread.joinable()) {
-        std::unique_lock<utils::Mutex> lock(mLock);
-        mExitRequested = true;
-        mCondition.notify_one();
-        lock.unlock();
-        if (mThread.joinable()) {
-            mThread.join();
-        }
-    }
-}
-
-void TimerQueryFenceFactory::push(TimerQueryFenceFactory::Job&& job) {
-    std::unique_lock<utils::Mutex> const lock(mLock);
-    mQueue.push_back(std::move(job));
-    mCondition.notify_one();
+    mJobQueue.drainAndExit();
 }
 
 void TimerQueryFenceFactory::createTimerQuery(GLTimerQuery* tq) {
@@ -236,7 +202,7 @@ void TimerQueryFenceFactory::beginTimeElapsedQuery(GLTimerQuery* tq) {
     //    on a dummy target for instance, or somehow latch the begin time at the next renderpass
     //    start.
 
-    push([&platform = mPlatform, fence = mPlatform.createFence(), weak]() {
+    mJobQueue.push([&platform = mPlatform, fence = mPlatform.createFence(), weak]() {
         auto state = weak.lock();
         if (state) {
             platform.waitFence(fence, FENCE_WAIT_FOR_EVER);
@@ -252,7 +218,7 @@ void TimerQueryFenceFactory::endTimeElapsedQuery(OpenGLDriver&, GLTimerQuery* tq
     assert_invariant(tq->state);
     std::weak_ptr<GLTimerQuery::State> const weak = tq->state;
 
-    push([&platform = mPlatform, fence = mPlatform.createFence(), weak]() {
+    mJobQueue.push([&platform = mPlatform, fence = mPlatform.createFence(), weak]() {
         auto state = weak.lock();
         if (state) {
             platform.waitFence(fence, FENCE_WAIT_FOR_EVER);

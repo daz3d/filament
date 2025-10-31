@@ -34,6 +34,7 @@
 #include "details/Skybox.h"
 #include "details/Stream.h"
 #include "details/SwapChain.h"
+#include "details/Sync.h"
 #include "details/Texture.h"
 #include "details/VertexBuffer.h"
 #include "details/View.h"
@@ -54,14 +55,14 @@
 
 #include <utils/Allocator.h>
 #include <utils/CallStack.h>
-#include <utils/compiler.h>
-#include <utils/debug.h>
 #include <utils/Invocable.h>
-#include <utils/Log.h>
-#include <utils/ostream.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
 #include <utils/PrivateImplementation-impl.h>
 #include <utils/ThreadUtils.h>
+#include <utils/compiler.h>
+#include <utils/debug.h>
+#include <utils/ostream.h>
 
 #include <math/vec3.h>
 #include <math/vec4.h>
@@ -93,6 +94,32 @@ namespace filament {
 
 using namespace backend;
 using namespace filaflat;
+
+namespace {
+
+backend::Platform::DriverConfig getDriverConfig(FEngine* instance) {
+    return {
+        .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),
+        .metalUploadBufferSizeBytes = instance->getConfig().metalUploadBufferSizeBytes,
+        .disableParallelShaderCompile = instance->features.backend.disable_parallel_shader_compile,
+        .disableAmortizedShaderCompile =
+                instance->features.backend.disable_amortized_shader_compile,
+        .disableHandleUseAfterFreeCheck =
+                instance->features.backend.disable_handle_use_after_free_check,
+        .disableHeapHandleTags = instance->features.backend.disable_heap_handle_tags,
+        .forceGLES2Context = instance->getConfig().forceGLES2Context,
+        .stereoscopicType = instance->getConfig().stereoscopicType,
+        .assertNativeWindowIsValid =
+                instance->features.backend.opengl.assert_native_window_is_valid,
+        .metalDisablePanicOnDrawableFailure =
+                instance->getConfig().metalDisablePanicOnDrawableFailure,
+        .gpuContextPriority = instance->getConfig().gpuContextPriority,
+        .vulkanEnableStagingBufferBypass =
+                instance->features.backend.vulkan.enable_staging_buffer_bypass,
+    };
+}
+
+} // anonymous
 
 struct Engine::BuilderDetails {
     Backend mBackend = Backend::DEFAULT;
@@ -127,21 +154,11 @@ Engine* FEngine::create(Builder const& builder) {
             instance->mOwnPlatform = true;
         }
         if (platform == nullptr) {
-            slog.e << "Selected backend not supported in this build." << io::endl;
+            LOG(ERROR) << "Selected backend not supported in this build.";
             delete instance;
             return nullptr;
         }
-        DriverConfig const driverConfig{
-                .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),
-                .metalUploadBufferSizeBytes = instance->getConfig().metalUploadBufferSizeBytes,
-                .disableParallelShaderCompile = instance->features.backend.disable_parallel_shader_compile,
-                .disableHandleUseAfterFreeCheck = instance->features.backend.disable_handle_use_after_free_check,
-                .disableHeapHandleTags = instance->features.backend.disable_heap_handle_tags,
-                .forceGLES2Context = instance->getConfig().forceGLES2Context,
-                .stereoscopicType = instance->getConfig().stereoscopicType,
-                .assertNativeWindowIsValid = instance->features.backend.opengl.assert_native_window_is_valid,
-        };
-        instance->mDriver = platform->createDriver(sharedContext, driverConfig);
+        instance->mDriver = platform->createDriver(sharedContext, getDriverConfig(instance));
 
     } else {
         // start the driver thread
@@ -280,8 +297,8 @@ FEngine::FEngine(Builder const& builder) :
     // (it may not be the case)
     mJobSystem.adopt();
 
-    slog.i << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
-           << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)") << io::endl;
+    LOG(INFO) << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
+              << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)");
 }
 
 uint32_t FEngine::getJobSystemThreadPoolSize(Config const& config) noexcept {
@@ -316,8 +333,8 @@ void FEngine::init() {
     assert_invariant(mActiveFeatureLevel > FeatureLevel::FEATURE_LEVEL_0);
 #endif
 
-    slog.i << "Backend feature level: " << int(driverApi.getFeatureLevel()) << io::endl;
-    slog.i << "FEngine feature level: " << int(mActiveFeatureLevel) << io::endl;
+    LOG(INFO) << "Backend feature level: " << int(driverApi.getFeatureLevel());
+    LOG(INFO) << "FEngine feature level: " << int(mActiveFeatureLevel);
 
 
     mResourceAllocatorDisposer = std::make_shared<ResourceAllocatorDisposer>(driverApi);
@@ -345,7 +362,8 @@ void FEngine::init() {
 
     // Compute a clip-space [-1 to 1] to texture space [0 to 1] matrix, taking into account
     // backend differences.
-    const bool textureSpaceYFlipped = mBackend == Backend::METAL || mBackend == Backend::VULKAN;
+    const bool textureSpaceYFlipped = mBackend == Backend::METAL || mBackend == Backend::VULKAN ||
+                                      mBackend == Backend::WEBGPU;
     if (textureSpaceYFlipped) {
         mUvFromClipMatrix = mat4f(mat4f::row_major_init{
                 0.5f,  0.0f,   0.0f, 0.5f,
@@ -450,6 +468,9 @@ void FEngine::init() {
         }
         mDefaultMaterial = downcast(defaultMaterialBuilder.build(*this));
     }
+    // We must commit the default material instance here. It may not be used in a scene, but its
+    // descriptor set may still be used for shared variants.
+    mDefaultMaterial->getDefaultInstance()->commit(driverApi);
 
     if (UTILS_UNLIKELY(getSupportedFeatureLevel() >= FeatureLevel::FEATURE_LEVEL_1)) {
         mDefaultColorGrading = downcast(ColorGrading::Builder().build(*this));
@@ -543,8 +564,7 @@ void FEngine::shutdown() {
     // print out some statistics about this run
     size_t const wm = mCommandBufferQueue.getHighWatermark();
     size_t const wmpct = wm / (getCommandBufferSize() / 100);
-    slog.d << "CircularBuffer: High watermark "
-           << wm / 1024 << " KiB (" << wmpct << "%)" << io::endl;
+    DLOG(INFO) << "CircularBuffer: High watermark " << wm / 1024 << " KiB (" << wmpct << "%)";
 #endif
 
     DriverApi& driver = getDriverApi();
@@ -739,9 +759,9 @@ int FEngine::loop() {
     if (mPlatform == nullptr) {
         mPlatform = PlatformFactory::create(&mBackend);
         mOwnPlatform = true;
-        slog.i << "FEngine resolved backend: " << to_string(mBackend) << io::endl;
+        LOG(INFO) << "FEngine resolved backend: " << to_string(mBackend);
         if (mPlatform == nullptr) {
-            slog.e << "Selected backend not supported in this build." << io::endl;
+            LOG(ERROR) << "Selected backend not supported in this build.";
             mDriverBarrier.latch();
             return 0;
         }
@@ -750,17 +770,7 @@ int FEngine::loop() {
     JobSystem::setThreadName("FEngine::loop");
     JobSystem::setThreadPriority(JobSystem::Priority::DISPLAY);
 
-    DriverConfig const driverConfig {
-            .handleArenaSize = getRequestedDriverHandleArenaSize(),
-            .metalUploadBufferSizeBytes = mConfig.metalUploadBufferSizeBytes,
-            .disableParallelShaderCompile = features.backend.disable_parallel_shader_compile,
-            .disableHandleUseAfterFreeCheck = features.backend.disable_handle_use_after_free_check,
-            .disableHeapHandleTags = features.backend.disable_heap_handle_tags,
-            .forceGLES2Context = mConfig.forceGLES2Context,
-            .stereoscopicType =  mConfig.stereoscopicType,
-            .assertNativeWindowIsValid = features.backend.opengl.assert_native_window_is_valid,
-    };
-    mDriver = mPlatform->createDriver(mSharedGLContext, driverConfig);
+    mDriver = mPlatform->createDriver(mSharedGLContext, getDriverConfig(this));
 
     mDriverBarrier.latch();
     if (UTILS_UNLIKELY(!mDriver)) {
@@ -777,7 +787,8 @@ int FEngine::loop() {
     #endif
     if (portString != nullptr) {
         const int port = atoi(portString);
-        debug.server = new matdbg::DebugServer(mBackend, mDriver->getShaderLanguage(),
+        debug.server = new matdbg::DebugServer(mBackend,
+                mDriver->getShaderLanguages(ShaderLanguage::UNSPECIFIED).front(),
                 matdbg::DbgShaderModel((uint8_t) mDriver->getShaderModel()), port);
 
         // Sometimes the server can fail to spin up (e.g. if the above port is already in use).
@@ -820,9 +831,9 @@ int FEngine::loop() {
 #if FILAMENT_ENABLE_MATDBG
     if(debug.server) {
         delete debug.server;
-    } 
+    }
 #endif
-#if FILAMENT_ENABLE_FGVIEWER 
+#if FILAMENT_ENABLE_FGVIEWER
     if(debug.fgviewerServer) {
         delete debug.fgviewerServer;
     }
@@ -898,8 +909,8 @@ FIndirectLight* FEngine::createIndirectLight(const IndirectLight::Builder& build
 }
 
 FMaterial* FEngine::createMaterial(const Material::Builder& builder,
-        std::unique_ptr<MaterialParser> materialParser) noexcept {
-    return create(mMaterials, builder, std::move(materialParser));
+        MaterialDefinition const& definition) noexcept {
+    return create(mMaterials, builder, definition);
 }
 
 FSkybox* FEngine::createSkybox(const Skybox::Builder& builder) noexcept {
@@ -1002,6 +1013,15 @@ FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t f
     return p;
 }
 
+FSync* FEngine::createSync() noexcept {
+    FSync* p = mHeapAllocator.make<FSync>(*this);
+    if (UTILS_LIKELY(p)) {
+        std::lock_guard const guard(mSyncListLock);
+        mSyncs.insert(p);
+    }
+    return p;
+}
+
 /*
  * Objects created with a component manager
  */
@@ -1041,8 +1061,8 @@ UTILS_NOINLINE
 void FEngine::cleanupResourceList(ResourceList<T>&& list) {
     if (UTILS_UNLIKELY(!list.empty())) {
 #ifndef NDEBUG
-        slog.d << "cleaning up " << list.size()
-               << " leaked " << CallStack::typeName<T>().c_str() << io::endl;
+        DLOG(INFO) << "cleaning up " << list.size() << " leaked "
+                   << CallStack::typeName<T>().c_str();
 #endif
         list.forEach([this, &allocator = mHeapAllocator](T* item) {
             item->terminate(*this);
@@ -1192,6 +1212,11 @@ bool FEngine::destroy(const FSwapChain* p) {
 }
 
 UTILS_NOINLINE
+bool FEngine::destroy(const FSync* p) {
+    return terminateAndDestroyLocked(mSyncListLock, p, mSyncs);
+}
+
+UTILS_NOINLINE
 bool FEngine::destroy(const FStream* p) {
     return terminateAndDestroy(p, mStreams);
 }
@@ -1231,21 +1256,13 @@ bool FEngine::destroy(const FMaterialInstance* p) {
             size_t const primitiveCount = rcm.getPrimitiveCount(ri, 0);
             for (size_t j = 0; j < primitiveCount; j++) {
                 auto const* const mi = rcm.getMaterialInstanceAt(ri, 0, j);
-                if (features.engine.debug.assert_material_instance_in_use) {
-                    FILAMENT_CHECK_PRECONDITION(mi != p)
-                            << "destroying MaterialInstance \""
-                            << mi->getName() << "\" which is still in use by Renderable (entity="
-                            << entity.getId() << ", instance="
-                            << ri.asValue() << ", index=" << j << ")";
-                } else {
-                    if (UTILS_UNLIKELY(mi == p)) {
-                        slog.e  << "destroying MaterialInstance \""
-                                << mi->getName() << "\" which is still in use by Renderable (entity="
-                                << entity.getId() << ", instance="
-                                << ri.asValue() << ", index=" << j << ")"
-                                << io::endl;
-                    }
-                }
+                auto const& featureFlags = features.engine.debug;
+                FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION(
+                        mi != p,
+                        featureFlags.assert_material_instance_in_use)
+                        << "destroying MaterialInstance \"" << mi->getName()
+                        << "\" which is still in use by Renderable (entity=" << entity.getId()
+                        << ", instance=" << ri.asValue() << ", index=" << j << ")";
             }
         }
     }
@@ -1278,6 +1295,10 @@ bool FEngine::isValid(const FVertexBuffer* p) const {
 
 bool FEngine::isValid(const FFence* p) const {
     return isValid(p, mFences);
+}
+
+bool FEngine::isValid(const FSync* p) const {
+    return isValid(p, mSyncs);
 }
 
 bool FEngine::isValid(const FIndexBuffer* p) const {

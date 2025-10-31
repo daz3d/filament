@@ -40,7 +40,7 @@ std::string fragmentTexturedLod (R"(#version 450 core
 layout(location = 0) out vec4 fragColor;
 layout(location = 0) in vec2 uv;
 
-layout(location = 0, set = 0) uniform sampler2D backend_test_sib_tex;
+layout(binding = 0, set = 0) uniform sampler2D backend_test_sib_tex;
 
 void main() {
     fragColor = textureLod(backend_test_sib_tex, uv, 1);
@@ -154,7 +154,7 @@ TEST_F(BackendTest, TextureViewLod) {
         }
 
         backend::Handle<HwRenderTarget> defaultRenderTarget =
-                cleanup.add(api.createDefaultRenderTarget(0));
+                cleanup.add(api.createDefaultRenderTarget());
 
         PipelineState state = getColorWritePipelineState();
         texturedShader.addProgramToPipelineState(state);
@@ -163,7 +163,7 @@ TEST_F(BackendTest, TextureViewLod) {
         params.viewport = getFullViewport();
 
         DescriptorSetHandle descriptorSet13 = texturedShader.createDescriptorSet(api);
-        api.updateDescriptorSetTexture(descriptorSet13, 0, texture13, {
+        api.updateDescriptorSetTexture(descriptorSet13, 0, texture13, SamplerParams{
                 .filterMag = SamplerMagFilter::NEAREST,
                 .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
 
@@ -185,7 +185,7 @@ TEST_F(BackendTest, TextureViewLod) {
         auto texture22 = cleanup.add(api.createTextureView(texture, 2, 2));
 
         DescriptorSetHandle descriptorSet22 = texturedShader.createDescriptorSet(api);
-        api.updateDescriptorSetTexture(descriptorSet22, 0, texture22, {
+        api.updateDescriptorSetTexture(descriptorSet22, 0, texture22, SamplerParams{
                 .filterMag = SamplerMagFilter::NEAREST,
                 .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
 

@@ -21,15 +21,12 @@ RDIFF_UPDATE_GOLDEN_STR = 'RDIFF_BRANCH'
 
 def _parse_commit(commit_str):
   lines = commit_str.split('\n')
-  if len(lines) >= 4:
+  if len(lines) >= 5:
     commit, author, date, _, title, *desc = lines
   else:
     print(commit_str, file=sys.stderr)
-    return (
-      lines[0],
-      lines[1],
-      '',
-    )
+    return (commit_str, '', '')
+
   commit = commit.split(' ')[1]
   title = title.strip()
 
@@ -44,7 +41,7 @@ def _parse_commit(commit_str):
   )
 
 if __name__ == "__main__":
-  RE_STR = rf"{RDIFF_UPDATE_GOLDEN_STR}(?:S)?=[\[]?([a-zA-Z0-9,\s\-\/]+)[\]]?"
+  RE_STR = rf"{RDIFF_UPDATE_GOLDEN_STR}(?:\s)?\=(?:\s)?([a-zA-Z0-9\s\-\/]+)"
 
   parser = ArgParseImpl()
   parser.add_argument('--file', help='A file containing the commit message')

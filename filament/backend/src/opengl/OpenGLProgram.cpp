@@ -121,7 +121,7 @@ void OpenGLProgram::initialize(OpenGLDriver& gld) {
  * checkProgramStatus() has been successfully called.
  */
 void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint program,
-        LazyInitializationData& lazyInitializationData) noexcept {
+        LazyInitializationData& lazyInitializationData) {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
     // from the pipeline layout we compute a mapping from {set, binding} to {binding}
@@ -214,7 +214,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
                 case DescriptorType::INPUT_ATTACHMENT:
                     break;
             }
-            CHECK_GL_ERROR(utils::slog.e)
+            CHECK_GL_ERROR()
         }
     }
 

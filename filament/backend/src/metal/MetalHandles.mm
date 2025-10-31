@@ -27,10 +27,11 @@
 
 #include "private/backend/BackendUtils.h"
 
-#include <utils/compiler.h>
+#include <utils/Logger.h>
 #include <utils/Panic.h>
-#include <utils/trap.h>
+#include <utils/compiler.h>
 #include <utils/debug.h>
+#include <utils/trap.h>
 
 #include <math/scalar.h>
 
@@ -101,6 +102,9 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
     if (any(usage & TextureUsage::BLIT_SRC)) {
         u |= MTLTextureUsageShaderRead;
     }
+    if (any(usage & TextureUsage::GEN_MIPMAPPABLE)) {
+        u |= (MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+    }
 
     return MTLTextureUsage(u);
 }
@@ -114,15 +118,19 @@ MetalSwapChain::MetalSwapChain(
       layerDrawableMutex(std::make_shared<std::mutex>()),
       type(SwapChainType::CAMETALLAYER) {
 
+    FILAMENT_CHECK_PRECONDITION([nativeWindow isKindOfClass:[CAMetalLayer class]])
+            << "nativeWindow pointer of class "
+            << [NSStringFromClass([nativeWindow class]) UTF8String] << " is not a CAMetalLayer";
+
     if (!(flags & SwapChain::CONFIG_TRANSPARENT) && !nativeWindow.opaque) {
-        utils::slog.w << "Warning: Filament SwapChain has no CONFIG_TRANSPARENT flag, "
-                         "but the CAMetaLayer(" << (__bridge void*) nativeWindow << ")"
-                         " has .opaque set to NO." << utils::io::endl;
+        LOG(WARNING) << "Warning: Filament SwapChain has no CONFIG_TRANSPARENT flag, but the "
+                        "CAMetaLayer("
+                     << (__bridge void*) nativeWindow << ") has .opaque set to NO.";
     }
     if ((flags & SwapChain::CONFIG_TRANSPARENT) && nativeWindow.opaque) {
-        utils::slog.w << "Warning: Filament SwapChain has the CONFIG_TRANSPARENT flag, "
-                         "but the CAMetaLayer(" << (__bridge void*) nativeWindow << ")"
-                         " has .opaque set to YES." << utils::io::endl;
+        LOG(WARNING) << "Warning: Filament SwapChain has the CONFIG_TRANSPARENT flag, but the "
+                        "CAMetaLayer("
+                     << (__bridge void*) nativeWindow << ") has .opaque set to YES.";
     }
 
     // Needed so we can use the SwapChain as a blit source.
@@ -287,6 +295,12 @@ void MetalSwapChain::ensureDepthStencilTexture() {
 
 void MetalSwapChain::setFrameScheduledCallback(
         CallbackHandler* handler, FrameScheduledCallback&& callback, uint64_t flags) {
+    if (!callback) {
+        frameScheduled.handler = nullptr;
+        frameScheduled.callback.reset();
+        frameScheduled.flags = 0;
+        return;
+    }
     frameScheduled.handler = handler;
     frameScheduled.callback = std::make_shared<FrameScheduledCallback>(std::move(callback));
     frameScheduled.flags = flags;
@@ -1478,6 +1492,11 @@ id<MTLBuffer> MetalDescriptorSet::finalizeAndGetBuffer(MetalDriver* driver, Shad
         buffer = { [context.device newBufferWithLength:encoder.encodedLength
                                                options:MTLResourceStorageModeShared],
             TrackedMetalBuffer::Type::DESCRIPTOR_SET };
+#if FILAMENT_METAL_DEBUG_LABELS
+        if (!label.empty()) {
+            buffer.get().label = @(label.c_str_safe());
+        }
+#endif
     }
     [encoder setArgumentBuffer:buffer.get() offset:0];
 

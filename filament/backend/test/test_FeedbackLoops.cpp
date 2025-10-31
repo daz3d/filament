@@ -25,7 +25,7 @@
 #include <backend/Handle.h>
 
 #include <utils/Hash.h>
-#include <utils/Log.h>
+#include <utils/Logger.h>
 
 #include <fstream>
 #include <string>
@@ -126,7 +126,7 @@ TEST_F(BackendTest, FeedbackLoops) {
         TrianglePrimitive const triangle(getDriverApi());
 
         // Create a texture.
-        auto usage = TextureUsage::COLOR_ATTACHMENT | TextureUsage::SAMPLEABLE;
+        auto usage = TextureUsage::COLOR_ATTACHMENT | TextureUsage::SAMPLEABLE | TextureUsage::UPLOADABLE;
         Handle<HwTexture> const texture = cleanup.add(api.createTexture(
             SamplerType::SAMPLER_2D, kNumLevels, kTexFormat, 1, kTexWidth, kTexHeight, 1, usage));
 
@@ -137,8 +137,7 @@ TEST_F(BackendTest, FeedbackLoops) {
         // Create a RenderTarget for each miplevel.
         Handle<HwRenderTarget> renderTargets[kNumLevels];
         for (uint8_t level = 0; level < kNumLevels; level++) {
-            slog.i << "Level " << int(level) << ": " <<
-                    (kTexWidth >> level) << "x" << (kTexHeight >> level) << io::endl;
+            LOG(INFO) << "Level " << int(level) << ": " << (kTexWidth >> level) << "x" << (kTexHeight >> level);
             renderTargets[level] = cleanup.add(api.createRenderTarget( TargetBufferFlags::COLOR,
                     kTexWidth >> level, kTexHeight >> level, 1, 0, { texture, level, 0 }, {}, {}));
         }
@@ -180,7 +179,7 @@ TEST_F(BackendTest, FeedbackLoops) {
 
                 auto descriptorSet = shader.createDescriptorSet(api);
                 auto textureView = passCleanup.add(api.createTextureView(texture, sourceLevel, 1));
-                api.updateDescriptorSetTexture(descriptorSet, 0, textureView, {
+                api.updateDescriptorSetTexture(descriptorSet, 0, textureView, SamplerParams{
                         .filterMag = SamplerMagFilter::LINEAR,
                         .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
                 });
@@ -217,7 +216,7 @@ TEST_F(BackendTest, FeedbackLoops) {
 
                 auto descriptorSet = shader.createDescriptorSet(api);
                 auto textureView = passCleanup.add(api.createTextureView(texture, sourceLevel, 1));
-                api.updateDescriptorSetTexture(descriptorSet, 0, textureView, {
+                api.updateDescriptorSetTexture(descriptorSet, 0, textureView, SamplerParams{
                         .filterMag = SamplerMagFilter::LINEAR,
                         .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
                 });
@@ -247,7 +246,7 @@ TEST_F(BackendTest, FeedbackLoops) {
             // NOTE: Calling glReadPixels on any miplevel other than the base level
             // seems to be un-reliable on some GPU's.
             if (frame == kNumFrames - 1) {
-                EXPECT_IMAGE(renderTargets[0], getExpectations(),
+                EXPECT_IMAGE(renderTargets[0],
                         ScreenshotParams(kTexWidth, kTexHeight, "FeedbackLoops", 4192780705));
             }
 

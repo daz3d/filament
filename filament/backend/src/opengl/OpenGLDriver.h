@@ -24,10 +24,12 @@
 #include "GLBufferObject.h"
 #include "GLDescriptorSet.h"
 #include "GLDescriptorSetLayout.h"
+#include "GLMemoryMappedBuffer.h"
 #include "GLTexture.h"
 #include "ShaderCompilerService.h"
 
 #include <backend/AcquiredImage.h>
+#include <backend/CallbackHandler.h>
 #include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 #include <backend/PipelineState.h>
@@ -43,6 +45,7 @@
 #include <utils/FixedCapacityVector.h>
 #include <utils/compiler.h>
 #include <utils/CString.h>
+#include <utils/ImmutableCString.h>
 #include <utils/debug.h>
 
 #include <math/vec4.h>
@@ -102,6 +105,10 @@ public:
     struct GLSwapChain : public HwSwapChain {
         using HwSwapChain::HwSwapChain;
         bool rec709 = false;
+        struct {
+            CallbackHandler* handler = nullptr;
+            std::shared_ptr<FrameScheduledCallback> callback = nullptr;
+        } frameScheduled;
     };
 
     struct GLVertexBufferInfo : public HwVertexBufferInfo {
@@ -149,6 +156,8 @@ public:
 
     using GLDescriptorSet = filament::backend::GLDescriptorSet;
 
+    using GLMemoryMappedBuffer = filament::backend::GLMemoryMappedBuffer;
+
     struct GLStream : public HwStream {
         using HwStream::HwStream;
         struct Info {
@@ -189,15 +198,30 @@ public:
     struct GLFence : public HwFence {
         using HwFence::HwFence;
         struct State {
-            std::mutex lock;
-            std::condition_variable cond;
+            utils::Mutex lock; // NOLINT(*-include-cleaner)
+            utils::Condition cond; // NOLINT(*-include-cleaner)
             FenceStatus status{ FenceStatus::TIMEOUT_EXPIRED };
         };
         std::shared_ptr<State> state{ std::make_shared<State>() };
     };
 
+    // Note: named "GLSyncFence" to avoid confusion with the GL handle,
+    // "GLsync" (lowercase S)
+    struct GLSyncFence : public HwSync {
+        struct CallbackData {
+            CallbackHandler* handler;
+            Platform::SyncCallback cb;
+            Platform::Sync* sync;
+            void* userData;
+        };
+        std::mutex lock;
+        std::vector<std::unique_ptr<CallbackData>> conversionCallbacks;
+    };
+
     OpenGLDriver(OpenGLDriver const&) = delete;
     OpenGLDriver& operator=(OpenGLDriver const&) = delete;
+
+    using DriverBase::scheduleDestroy;
 
 private:
     OpenGLPlatform& mPlatform;
@@ -213,7 +237,8 @@ private:
     }
 
     ShaderModel getShaderModel() const noexcept override;
-    ShaderLanguage getShaderLanguage() const noexcept override;
+    utils::FixedCapacityVector<ShaderLanguage> getShaderLanguages(
+            ShaderLanguage preferredLanguage) const noexcept override;
 
     /*
      * OpenGLDriver interface
@@ -374,23 +399,23 @@ private:
 
     std::unordered_map<GLuint, BufferObjectStreamDescriptor> mStreamUniformDescriptors;
 
-    void attachStream(GLTexture* t, GLStream* stream) noexcept;
+    void attachStream(GLTexture* t, GLStream* stream);
     void detachStream(GLTexture* t) noexcept;
     void replaceStream(GLTexture* t, GLStream* stream) noexcept;
     math::mat3f getStreamTransformMatrix(Handle<HwStream> sh);
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
     // tasks executed on the main thread after the fence signaled
-    void whenGpuCommandsComplete(const std::function<void()>& fn) noexcept;
+    void whenGpuCommandsComplete(const std::function<void()>& fn);
     void executeGpuCommandsCompleteOps() noexcept;
     std::vector<std::pair<GLsync, std::function<void()>>> mGpuCommandCompleteOps;
 
-    void whenFrameComplete(const std::function<void()>& fn) noexcept;
+    void whenFrameComplete(const std::function<void()>& fn);
     std::vector<std::function<void()>> mFrameCompleteOps;
 #endif
 
     // tasks regularly executed on the main thread at until they return true
-    void runEveryNowAndThen(std::function<bool()> fn) noexcept;
+    void runEveryNowAndThen(std::function<bool()> fn);
     void executeEveryNowAndThenOps() noexcept;
     std::vector<std::function<bool()>> mEveryNowAndThenOps;
 

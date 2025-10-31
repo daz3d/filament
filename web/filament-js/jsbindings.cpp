@@ -623,11 +623,16 @@ class_<Renderer>("Renderer")
         }
         engine->execute();
     }), allow_raw_pointers())
+    .function("getUserTime", &Renderer::getUserTime)
+    .function("resetUserTime", &Renderer::resetUserTime)
+    .function("skipNextFrames", &Renderer::skipNextFrames)
+    .function("getFrameToSkipCount", &Renderer::getFrameToSkipCount)
     .function("_setClearOptions", &Renderer::setClearOptions, allow_raw_pointers())
     .function("getClearOptions", &Renderer::getClearOptions)
     .function("setPresentationTime", &Renderer::setPresentationTime)
     .function("setVsyncTime", &Renderer::setVsyncTime)
     .function("skipFrame", &Renderer::skipFrame)
+    .function("shouldRenderFrame", &Renderer::shouldRenderFrame)
     .function("beginFrame", EMBIND_LAMBDA(bool, (Renderer* self, SwapChain* swapChain), {
         return self->beginFrame(swapChain);
     }), allow_raw_pointers())
@@ -655,6 +660,8 @@ class_<View>("View")
     .function("setCamera", &View::setCamera, allow_raw_pointers())
     .function("hasCamera", &View::hasCamera)
     .function("setColorGrading", &View::setColorGrading, allow_raw_pointers())
+    .function("setChannelDepthClearEnabled", &View::setChannelDepthClearEnabled)
+    .function("isChannelDepthClearEnabled", &View::isChannelDepthClearEnabled)
     .function("setBlendMode", &View::setBlendMode)
     .function("getBlendMode", &View::getBlendMode)
     .function("setViewport", &View::setViewport)
@@ -1099,6 +1106,7 @@ class_<RenderableManager>("RenderableManager")
 
     .function("getAxisAlignedBoundingBox", &RenderableManager::getAxisAlignedBoundingBox)
     .function("getPrimitiveCount", &RenderableManager::getPrimitiveCount)
+    .function("getInstanceCount", &RenderableManager::getInstanceCount)
     .function("setMaterialInstanceAt", &RenderableManager::setMaterialInstanceAt,
             allow_raw_pointers())
     .function("clearMaterialInstanceAt", &RenderableManager::clearMaterialInstanceAt)

@@ -18,15 +18,18 @@
 #define TNT_FILAMENT_BACKEND_VULKANDRIVER_H
 
 #include "VulkanBlitter.h"
+#include "VulkanBufferCache.h"
 #include "VulkanConstants.h"
 #include "VulkanContext.h"
 #include "VulkanFboCache.h"
 #include "VulkanHandles.h"
+#include "VulkanMemory.h"
 #include "VulkanPipelineCache.h"
+#include "VulkanQueryManager.h"
 #include "VulkanReadPixels.h"
 #include "VulkanSamplerCache.h"
+#include "VulkanSemaphoreManager.h"
 #include "VulkanStagePool.h"
-#include "VulkanQueryManager.h"
 #include "VulkanYcbcrConversionCache.h"
 #include "vulkan/VulkanDescriptorSetCache.h"
 #include "vulkan/VulkanDescriptorSetLayoutCache.h"
@@ -41,6 +44,7 @@
 #include "DriverBase.h"
 #include "private/backend/Driver.h"
 
+#include <utils/FixedCapacityVector.h>
 #include <utils/Allocator.h>
 #include <utils/compiler.h>
 
@@ -54,7 +58,7 @@ constexpr uint8_t MAX_RENDERTARGET_ATTACHMENT_TEXTURES =
 
 class VulkanDriver final : public DriverBase {
 public:
-    static Driver* create(VulkanPlatform* platform, VulkanContext const& context,
+    static Driver* create(VulkanPlatform* platform, VulkanContext& context,
             Platform::DriverConfig const& driverConfig);
 
 #if FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
@@ -67,7 +71,7 @@ public:
     private:
         static DebugUtils* get();
 
-        DebugUtils(VkInstance instance, VkDevice device, VulkanContext const* context);
+        DebugUtils(VkInstance instance, VkDevice device, VulkanContext const& context);
         ~DebugUtils();
 
         VkInstance const mInstance;
@@ -90,7 +94,7 @@ private:
     void debugCommandBegin(CommandStream* cmds, bool synchronous,
             const char* methodName) noexcept override;
 
-    VulkanDriver(VulkanPlatform* platform, VulkanContext const& context,
+    VulkanDriver(VulkanPlatform* platform, VulkanContext& context,
             Platform::DriverConfig const& driverConfig);
 
     ~VulkanDriver() noexcept override;
@@ -98,7 +102,8 @@ private:
     Dispatcher getDispatcher() const noexcept final;
 
     ShaderModel getShaderModel() const noexcept final;
-    ShaderLanguage getShaderLanguage() const noexcept final;
+    utils::FixedCapacityVector<ShaderLanguage> getShaderLanguages(
+            ShaderLanguage preferredLanguage) const noexcept final;
 
     template<typename T>
     friend class ConcreteDispatcher;
@@ -123,6 +128,9 @@ private:
     void bindPipelineImpl(PipelineState const& pipelineState, VkPipelineLayout pipelineLayout,
             fvkutils::DescriptorSetMask descriptorSetMask);
 
+    // Flush the current command buffer and reset the pipeline state.
+    void endCommandRecording();
+
     VulkanPlatform* mPlatform = nullptr;
     fvkmemory::ResourceManager mResourceManager;
 
@@ -132,12 +140,14 @@ private:
     VmaAllocator mAllocator = VK_NULL_HANDLE;
     VkDebugReportCallbackEXT mDebugCallback = VK_NULL_HANDLE;
 
-    VulkanContext mContext = {};
+    VulkanContext& mContext;
 
+    VulkanSemaphoreManager mSemaphoreManager;
     VulkanCommands mCommands;
     VulkanPipelineLayoutCache mPipelineLayoutCache;
     VulkanPipelineCache mPipelineCache;
     VulkanStagePool mStagePool;
+    VulkanBufferCache mBufferCache;
     VulkanFboCache mFramebufferCache;
     VulkanYcbcrConversionCache mYcbcrConversionCache;
     VulkanSamplerCache mSamplerCache;
@@ -181,6 +191,7 @@ private:
     } mAppState;
 
     bool const mIsSRGBSwapChainSupported;
+    bool const mIsMSAASwapChainSupported;
     backend::StereoscopicType const mStereoscopicType;
 };
 
