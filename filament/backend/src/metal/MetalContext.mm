@@ -24,6 +24,10 @@
 
 #include <utility>
 
+//DAZ ADD
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 namespace filament {
 namespace backend {
 
@@ -230,3 +234,7 @@ void MetalPushConstantBuffer::clear() {
 
 } // namespace backend
 } // namespace filament
+
+//DAZ ADD
+#pragma clang diagnostic pop
+

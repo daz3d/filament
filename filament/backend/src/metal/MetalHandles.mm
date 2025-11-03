@@ -37,6 +37,10 @@
 
 #include <math.h>
 
+//DAZ ADD
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 // A wrapper around a C void* pointer that will free the memory when deallocated, unless the pointer
 // is first reset.
 // ReleasablePointer serves a similar purpose as std::unique_ptr, but avoids false positives with
@@ -1575,3 +1579,6 @@ id<MTLBuffer> MetalDescriptorSet::finalizeAndGetBuffer(MetalDriver* driver, Shad
 
 } // namespace backend
 } // namespace filament
+
+//DAZ ADD
+#pragma clang diagnostic pop
